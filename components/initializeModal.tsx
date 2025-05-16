@@ -1,4 +1,5 @@
-import { createLutForCandyMachineAndGuard } from "../utils/createLutForCandyGuard";
+// components/initializeModal.tsx
+import { createLutForCandyMachineAndGuard } from "../utils/metaplex/createLutForCandyGuard";
 import {
   Box,
   Button,
@@ -32,7 +33,7 @@ import {
 import React from "react";
 import { useEffect, useState } from "react";
 import { allowLists } from "@/allowlist";
-import { getRequiredCU } from "@/utils/mintHelper";
+import { getRequiredCU } from "@/utils/metaplex/mintHelper";
 import { createCollectionV1 } from "@metaplex-foundation/mpl-core";
 import {
   CandyGuard,

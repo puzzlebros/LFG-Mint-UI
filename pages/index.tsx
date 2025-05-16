@@ -1,307 +1,404 @@
+// pages/index.tsx
+import React, { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import {
-  PublicKey,
-  publicKey,
-  Umi,
-} from "@metaplex-foundation/umi";
-import { DigitalAssetWithToken, JsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
-import dynamic from "next/dynamic";
-import { Dispatch, SetStateAction, useEffect, useMemo, useState } from "react";
-import { useUmi } from "../utils/useUmi";
-import { fetchCandyMachine, safeFetchCandyGuard, CandyGuard, CandyMachine } from "@metaplex-foundation/mpl-core-candy-machine"
-import styles from "../styles/Home.module.css";
-import { guardChecker } from "../utils/checkAllowed";
-import { Center, Card, CardHeader, CardBody, StackDivider, Heading, Stack, useToast, Text, Skeleton, useDisclosure, Button, Modal, ModalBody, ModalCloseButton, ModalContent, Image, ModalHeader, ModalOverlay, Box, Divider, VStack, Flex } from '@chakra-ui/react';
-import { ButtonList } from "../components/mintButton";
-import { GuardReturn } from "../utils/checkerHelper";
-import { ShowNft } from "../components/showNft";
-import { InitializeModal } from "../components/initializeModal";
-import { image, headerText } from "../settings";
-import { useSolanaTime } from "@/utils/SolanaTimeContext";
-import { DasApiAsset } from "@metaplex-foundation/digital-asset-standard-api";
+  Box,
+  Flex,
+  Center,
+  Stack,
+  Heading,
+  Text,
+  Button,
+  Tooltip
+} from '@chakra-ui/react';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import { useWallet } from '@solana/wallet-adapter-react';
 
-const WalletMultiButtonDynamic = dynamic(
-  async () =>
-    (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
-  { ssr: false }
-);
+import HorizontalScroller, { ScrollerItem } from '../components/HorizontalScroller';
+import Leaderboard                              from '../components/Leaderboard';
+import TraitDresser                             from '../components/TraitDresser';
+import InteractiveHeading                       from '@/components/InteractiveHeading';
+import Cloud from "../components/Cloud";
+import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 
-const useCandyMachine = (
-  umi: Umi,
-  candyMachineId: string,
-  checkEligibility: boolean,
-  setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  firstRun: boolean,
-  setfirstRun: Dispatch<SetStateAction<boolean>>
-) => {
-  const [candyMachine, setCandyMachine] = useState<CandyMachine>();
-  const [candyGuard, setCandyGuard] = useState<CandyGuard>();
-  const toast = useToast();
+// ParallaxImage runs only on the client
+const ParallaxImage = dynamic(() => import('../components/ParallaxImage'), { ssr: false });
 
+export default function HomePage() {
+  const [isInTop10, setIsInTop10] = useState(false);
+  const { publicKey } = useWallet();
+  const myWallet      = publicKey?.toString();
+  const router = useRouter();
 
+  // freeze state + countdown
+  const { isFrozen, next, countdown } = useWeeklyCycle();
+    
+  // ref to measure container size
+  const welcomeRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState({ w: 0, h: 0 });
+
+  const welcomeScroller: ScrollerItem[] = [
+    { text: 'PLAY',
+      textStyle: "normal",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.Pink", fontSize: "2rem" } // plus any other TextProps
+    },
+    { text: 'RANK',
+      textStyle: "condensed",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.Pink", fontSize: "2rem" } // plus any other TextProps
+    },
+    { textStyle: "narrow",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.Pink", fontSize: "2rem" }, // plus any other TextProps
+      text: 'MINT'
+    },
+    { //iconSrc: '/images/logo-nav.png', 
+      textStyle: "extraCondensedOblique",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.Pink", fontSize: "2rem" }, // plus any other TextProps
+      text: 'COLLECT',
+    },
+  ];
+
+  const rankingScroller: ScrollerItem[] = [
+    { //iconSrc: '/images/logo-nav.png',
+      text: 'RANKING',
+      textStyle: "condensed",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
+    },
+    { //iconSrc: '/images/logo-nav.png',
+      text: 'RANKING',
+      textStyle: "normal",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
+    },
+    { //iconSrc: '/images/logo-nav.png', 
+      text: 'RANKING',
+      textStyle: "narrow",           // pulls your theme’s `textStyles.condensed`
+      textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
+    },
+  ];
+
+  // when mount or resize, capture dimensions
   useEffect(() => {
-    (async () => {
-      if (checkEligibility) {
-        if (!candyMachineId) {
-          console.error("No candy machine in .env!");
-          if (!toast.isActive("no-cm")) {
-            toast({
-              id: "no-cm",
-              title: "No candy machine in .env!",
-              description: "Add your candy machine address to the .env file!",
-              status: "error",
-              duration: 999999,
-              isClosable: true,
-            });
-          }
-          return;
-        }
-
-        let candyMachine;
-        try {
-          candyMachine = await fetchCandyMachine(umi, publicKey(candyMachineId));
-        } catch (e) {
-          console.error(e);
-          toast({
-            id: "no-cm-found",
-            title: "The CM from .env is invalid",
-            description: "Are you using the correct environment?",
-            status: "error",
-            duration: 999999,
-            isClosable: true,
-          });
-        }
-        setCandyMachine(candyMachine);
-        if (!candyMachine) {
-          return;
-        }
-        let candyGuard;
-        try {
-          candyGuard = await safeFetchCandyGuard(umi, candyMachine.mintAuthority);
-        } catch (e) {
-          console.error(e);
-          toast({
-            id: "no-guard-found",
-            title: "No Candy Guard found!",
-            description: "Do you have one assigned?",
-            status: "error",
-            duration: 999999,
-            isClosable: true,
-          });
-        }
-        if (!candyGuard) {
-          return;
-        }
-        setCandyGuard(candyGuard);
-        if (firstRun){
-          setfirstRun(false)
-        }
+    function update() {
+      if (welcomeRef.current) {
+        const { width, height } = welcomeRef.current.getBoundingClientRect();
+        setDims({ w: width, h: height });
       }
-    })();
-  }, [umi, checkEligibility]);
-
-  return { candyMachine, candyGuard };
-
-};
-
-
-export default function Home() {
-  const umi = useUmi();
-  const solanaTime = useSolanaTime();
-  const toast = useToast();
-  const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
-  const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
-  const [mintsCreated, setMintsCreated] = useState<{ mint: PublicKey, offChainMetadata: JsonMetadata | undefined }[] | undefined>();
-  const [isAllowed, setIsAllowed] = useState<boolean>(false);
-  const [loading, setLoading] = useState(true);
-  const [ownedTokens, setOwnedTokens] = useState<DigitalAssetWithToken[]>();
-  const [ownedCoreAssets, setOwnedCoreAssets] = useState<DasApiAsset[]>();
-
-  const [guards, setGuards] = useState<GuardReturn[]>([
-    { label: "startDefault", allowed: false, maxAmount: 0 },
-  ]);
-  const [firstRun, setFirstRun] = useState(true);
-  const [checkEligibility, setCheckEligibility] = useState<boolean>(true);
-
-
-  if (!process.env.NEXT_PUBLIC_CANDY_MACHINE_ID) {
-    console.error("No candy machine in .env!")
-    if (!toast.isActive('no-cm')) {
-      toast({
-        id: 'no-cm',
-        title: 'No candy machine in .env!',
-        description: "Add your candy machine address to the .env file!",
-        status: 'error',
-        duration: 999999,
-        isClosable: true,
-      })
     }
-  }
-  const candyMachineId: PublicKey = useMemo(() => {
-    if (process.env.NEXT_PUBLIC_CANDY_MACHINE_ID) {
-      return publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID);
-    } else {
-      console.error(`NO CANDY MACHINE IN .env FILE DEFINED!`);
-      toast({
-        id: 'no-cm',
-        title: 'No candy machine in .env!',
-        description: "Add your candy machine address to the .env file!",
-        status: 'error',
-        duration: 999999,
-        isClosable: true,
-      })
-      return publicKey("11111111111111111111111111111111");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
-  const { candyMachine, candyGuard } = useCandyMachine(umi, candyMachineId, checkEligibility, setCheckEligibility, firstRun, setFirstRun);
 
+  const cloudUrls = [
+    "/images/clouds/Cloud_1.png",
+    "/images/clouds/Cloud_2.png",
+    "/images/clouds/Cloud_3.png",
+    "/images/clouds/Cloud_4.png",
+    "/images/clouds/Cloud_5.png",
+    "/images/clouds/Cloud_6.png",
+    "/images/clouds/Cloud_7.png",
+  ];
+
+  // listen to game ranking button
   useEffect(() => {
-    const checkEligibilityFunc = async () => {
-      if (!candyMachine || !candyGuard || !checkEligibility || isShowNftOpen) {
-        return;
-      }
-      setFirstRun(false);
-      
-      const { guardReturn, ownedTokens, ownedCoreAssets } = await guardChecker(
-        umi, candyGuard, candyMachine, solanaTime
-      );
-
-      setOwnedTokens(ownedTokens);
-      setGuards(guardReturn);
-      setOwnedCoreAssets(ownedCoreAssets);
-      setIsAllowed(false);
-
-      let allowed = false;
-      for (const guard of guardReturn) {
-        if (guard.allowed) {
-          allowed = true;
-          break;
-        }
-      }
-
-      setIsAllowed(allowed);
-      setLoading(false);
-    };
-
-    checkEligibilityFunc();
-    // On purpose: not check for candyMachine, candyGuard, solanaTime
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [umi, checkEligibility, firstRun]);
-
-  const PageContent = () => {
-    return (
-      <>
-        <style jsx global>
-          {`
-      body {
-          background: #2d3748; 
-       }
-   `}
-        </style>
-        <Card>
-          <CardHeader>
-            <Flex minWidth='max-content' alignItems='center' gap='2'>
-              <Box>
-                <Heading size='md'>{headerText}</Heading>
-              </Box>
-              {loading ? (<></>) : (
-                <Flex justifyContent="flex-end" marginLeft="auto">
-                  <Box background={"teal.100"} borderRadius={"5px"} minWidth={"50px"} minHeight={"50px"} p={2} >
-                    <VStack >
-                      <Text fontSize={"sm"}>Available NFTs:</Text>
-                      <Text fontWeight={"semibold"}>{Number(candyMachine?.data.itemsAvailable) - Number(candyMachine?.itemsRedeemed)}/{Number(candyMachine?.data.itemsAvailable)}</Text>
-                    </VStack>
-                  </Box>
-                </Flex>
-              )}
-            </Flex>
-          </CardHeader>
-
-          <CardBody>
-            <Center>
-              <Box
-                rounded={'lg'}
-                mt={-12}
-                pos={'relative'}>
-                <Image
-                  rounded={'lg'}
-                  height={230}
-                  objectFit={'cover'}
-                  alt={"project Image"}
-                  src={image}
-                />
-              </Box>
-            </Center>
-            <Stack divider={<StackDivider />} spacing='8'>
-              {loading ? (
-                <div>
-                  <Divider my="10px" />
-                  <Skeleton height="30px" my="10px" />
-                  <Skeleton height="30px" my="10px" />
-                  <Skeleton height="30px" my="10px" />
-                </div>
-              ) : (
-                <ButtonList
-                  guardList={guards}
-                  candyMachine={candyMachine}
-                  candyGuard={candyGuard}
-                  umi={umi}
-                  ownedTokens={ownedTokens}
-                  setGuardList={setGuards}
-                  mintsCreated={mintsCreated}
-                  setMintsCreated={setMintsCreated}
-                  onOpen={onShowNftOpen}
-                  setCheckEligibility={setCheckEligibility}
-                  ownedCoreAssets={ownedCoreAssets}
-                />
-              )}
-            </Stack>
-          </CardBody>
-        </Card >
-        { umi.identity.publicKey === candyMachine?.authority ? (
-          <>
-            <Center>
-              <Button backgroundColor={"red.200"} marginTop={"10"} onClick={onInitializerOpen}>Admin Menu</Button>
-            </Center>
-            <Modal isOpen={isInitializerOpen} onClose={onInitializerClose}>
-              <ModalOverlay />
-              <ModalContent maxW="600px">
-                <ModalHeader>Initializer</ModalHeader>
-                <ModalCloseButton />
-                <ModalBody>
-                  < InitializeModal umi={umi} candyMachine={candyMachine} candyGuard={candyGuard} />
-                </ModalBody>
-              </ModalContent>
-            </Modal>
-
-          </>)
-          :
-          (<></>)
-        }
-
-        <Modal isOpen={isShowNftOpen} onClose={onShowNftClose}>
-          <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Your minted NFT:</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody>
-              <ShowNft nfts={mintsCreated} />
-            </ModalBody>
-          </ModalContent>
-        </Modal>
-      </>
-    );
-  };
+    if (router.asPath.includes('#ranking')) {
+      const el = document.getElementById('ranking');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [router.asPath]);
 
   return (
-    <main>
-      <div className={styles.wallet}>
-        <WalletMultiButtonDynamic />
-      </div>
+    <Box
+      w="100%"
+      h="100%"
+      overflowY="auto"
+      scrollSnapType="y mandatory"
+      scrollSnapStop="always"
+      display="flex"
+      flexDirection="column"
+      sx={{ '&::-webkit-scrollbar': { display: 'none' } }}
+      minH="0"
+    >
+      {/** ——— Welcome Section ——— **/}
+      <Box
+        ref={welcomeRef}
+        as="section"
+        flex="none"
+        w="100%"
+        h="100%"
+        scrollSnapAlign="start"
+        scrollSnapStop="always"
+        position="relative"
+        bgGradient="linear(
+          to-b,
+          brand.gradientStart 0%,
+          brand.gradientMid 29.5%,
+          brand.gradientEnd 100%
+        )"
+        pt={4}      // space below navbar
+        pb="100px"   // reserve space for the fixed scroller
+        overflow="hidden"
+      >
+        {/* — Clouds behind everything — */}
+        {dims.h > 0 && cloudUrls.map((src, i) => (
+          <Cloud
+            key={i}
+            src={src}
+            containerWidth={dims.w}
+            containerHeight={dims.h}
+          />
+        ))}
+        
+        <Flex
+          position="relative"
+          direction="column"
+          align="center"
+          justify="center"
+          h="100%"
+          zIndex={1}
+        >
+          <InteractiveHeading
+            color="#FFF"
+            fontSize="48rem"
+            fontWeight="normal"
+            letterSpacing="0.01em"
+            lineHeight="0.8"
+            minWidth={25}
+            maxWidth={115}
+            minSlant={-30}
+            maxSlant={20}
+            previewWdth={0}
+            previewSlnt={0}
+            transitionDuration={0.2}
+          >
+            LFG
+          </InteractiveHeading>
+        </Flex>
 
-      <div className={styles.center}>
-        <PageContent key="content" />
-      </div>
-    </main>
+        {/* fixed scroller at bottom */}
+        <HorizontalScroller
+          items={welcomeScroller}
+          speed={5}
+          height="50px"
+          bgColor="brand.DarkPurple"
+          zIndex={2}
+          align="bottom"
+        />
+      </Box>
+
+      {/** ——— Game Section ——— **/}
+      <Box
+        as="section"
+        flex="none"
+        w="100%"
+        h="100%"
+        scrollSnapAlign="start"
+        scrollSnapStop="always"
+        position="relative"
+        // bgImage="url('/images/game-bg.png')"
+        bgSize="cover"
+        bgPosition="center"
+      >
+        <Center h="100%" mt="-5">
+          <Stack
+          spacing={2}
+          textAlign="center"
+          align="center"
+          w="full"           // let it grow to the viewport…
+          maxW="420px"       // …but no wider than 600px
+          mx="auto"          // center it horizontally
+          >
+
+            <Heading
+            as="h1"
+            fontSize="7.7rem"
+            textStyle="condensed"
+              >LET'S JUMP!</Heading>
+            <Text
+            textStyle="copy"
+            fontSize="1.3rem"
+            whiteSpace="normal"      // make sure wrapping is allowed
+            wordBreak="break-word"   // break long words if necessary
+            >
+                <Text as="span" fontWeight="bold">
+              Jump into the action and climb your way up to the ranking.
+              </Text>
+              <br />
+              If you manage to get into the top 10, you will be able to claim a FREE mint from the collection.
+            </Text>
+
+            <Tooltip
+            label={
+              isFrozen
+                ? `Leaderboard frozen until ${next.toLocaleString()}`
+                : `Next freeze in ${countdown}`
+            }
+          >
+            <Button
+              mt="10"
+              size="default"
+              isDisabled={isFrozen}
+              onClick={() => !isFrozen && window.location.assign("/game")}
+            >
+              PLAY
+            </Button>
+          </Tooltip>
+
+          </Stack>
+        </Center>
+
+        {/* <Box position="absolute" top="50%" left="5%" transform="translateY(-50%)" zIndex={0}>
+          <ParallaxImage
+            src="/images/game-floating.png"
+            alt="Game Floating"
+            width="300px"
+          />
+        </Box> */}
+
+      </Box>
+
+      {/** ——— Ranking Section ——— **/}
+      <Box
+        id="ranking"
+        as="section"
+        flex="none"
+        w="100%"
+        h="100%"
+        scrollSnapAlign="start"
+        scrollSnapStop="always"
+        position="relative"
+        bg="brand.White"
+      >
+        <Center h="100%" mt="-3">
+          <Stack spacing={2} textAlign="center" align="center" maxW="600px" w="100%">
+
+            <Heading 
+            size="xl"
+            fontSize="8rem"
+            textStyle="condensed"
+            mt="2"
+            >
+              TOP 10</Heading>
+
+            {/* <Text textStyle="copy" color="brand.DarkPurple">
+              See where you stand in the community!
+            </Text> */}
+
+            <Center w="100%" mt="-4">
+              <Leaderboard
+                onTopStatus={setIsInTop10}
+                withBorders
+                columnWidths={{
+                  position: "45px",
+                  user:     "150px",
+                  score:    "100px",
+                  wallet:   "420px",
+                }}
+                height="auto"
+              />
+            </Center>
+
+            {myWallet && isInTop10 && isFrozen && (
+              <Button 
+              size="default"
+              onClick={() => (window.location.href = '/mint')}>
+                CLAIM
+              </Button>
+            )}
+
+          </Stack>
+        </Center>
+
+        <HorizontalScroller
+          items={rankingScroller}
+          speed={20}
+          height="50px"
+          bgColor="brand.Purple"
+          zIndex={2}
+          fixed={false}
+          align="bottom"
+        />
+      </Box>
+
+      {/** ——— Mint + Trait-Dresser Section ——— **/}
+      <Box
+        as="section"
+        flex="none"
+        w="100%"
+        h="100vh"
+        scrollSnapAlign="start"
+        scrollSnapStop="always"
+        position="relative"
+        overflow="hidden"
+        // bgImage="url('/images/mint-bg.png')"
+        // bgSize="cover"
+        // bgPosition="center"
+      >
+        {/* Layer 1: background heading */}
+        <Box
+          position="absolute"
+          inset="0"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={0}
+          pointerEvents="none"
+          mt="-30"
+        >
+          <InteractiveHeading
+            minWidth={45}
+            maxWidth={85}
+            minSlant={-10}
+            maxSlant={30}
+            previewWdth={80}
+            previewSlnt={0}
+            transitionDuration={0.2}
+            fontSize="22rem"
+            fontWeight="normal"
+            letterSpacing="0.01em"
+            lineHeight="1"
+            color="brand.Pink"
+          >
+            MINTMINT
+          </InteractiveHeading>
+        </Box>
+
+        {/* Layer 2: centered TraitDresser */}
+        <Box
+          position="absolute"
+          inset="0"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={1}
+        >
+          <TraitDresser
+            skinSrc="/images/skins/1.png"
+            skinSize={480}
+            traitPaths={{
+              eyes:    ['/images/traits/eyes/1.png','/images/traits/eyes/2.png','/images/traits/eyes/3.png'],
+              head:    ['/images/traits/head/1.png','/images/traits/head/2.png','/images/traits/head/3.png'],
+              clothes: ['/images/traits/clothes/1.png','/images/traits/clothes/2.png','/images/traits/clothes/3.png'],
+            }}
+          />
+        </Box>
+
+        {/* Layer 3: Mint button */}
+        <Box
+          position="absolute"
+          bottom="10%"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex={2}
+        >
+          <Button
+            size="default"
+            onClick={() => (window.location.href = '/mint')}
+          >
+            MINT
+          </Button>
+        </Box>
+      </Box>
+    </Box>
   );
 }

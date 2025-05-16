@@ -1,11 +1,7 @@
 export const allowLists = new Map<string, Array<string>> ([
-    ["OG",
+  ["LFG",
     [
-      "5igjA25G8m3VP8aGe2Tdu2GdxnfU4DmUZiGdVyTTi4Hj",
-      "E4udFEc9DCnkNnqGpgvtvJtE84dpUHcyuyUW2esqyC1U"
-    ]],
-    ["early",
-    [
+      "7MV5wkxWr7qc8nTbAVh619VwQnwC4KeyQDdwxbvguwmo",
       "HkMnXx8tGQhiyCgEciQuHdxkhdgP6XNb2sKUhUzua68Y"
     ]],
 ]);
