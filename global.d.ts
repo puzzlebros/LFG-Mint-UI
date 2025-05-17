@@ -20,4 +20,14 @@ declare global {
   }
 }
 
+declare module '@metaplex-foundation/umi' {
+  // this is the interface that `digital-asset-standard-api` was supposed to patch:
+  interface RpcInterface {
+    getAssetsByOwner(args: { owner: import("@metaplex-foundation/umi").PublicKey }): Promise<{
+      items: import("@metaplex-foundation/digital-asset-standard-api").DasApiAsset[];
+      // …you can add count, page, etc if you like
+    }>;
+  }
+}
+
 export {};

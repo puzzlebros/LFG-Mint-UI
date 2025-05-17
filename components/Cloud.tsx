@@ -1,6 +1,7 @@
 //components/Cloud.tsx
 import React, { useMemo } from "react";
-import { Image, ImageProps, keyframes } from "@chakra-ui/react";
+import { Image, ImageProps } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 
 const drift = keyframes`
   0%   { transform: translateX(var(--startX)) translateY(var(--top)); opacity: 0; }

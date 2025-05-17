@@ -9,16 +9,13 @@ import {
   NumberInput,
   NumberInputField,
   NumberInputStepper,
-  SimpleGrid,
   Text,
-  UseToastOptions,
   VStack,
   createStandaloneToast,
 } from "@chakra-ui/react";
 import {
   Umi,
   generateSigner,
-  percentAmount,
   publicKey,
   sol,
   some,
@@ -34,7 +31,6 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { allowLists } from "@/allowlist";
 import { getRequiredCU } from "@/utils/metaplex/mintHelper";
-import { createCollectionV1 } from "@metaplex-foundation/mpl-core";
 import {
   CandyGuard,
   CandyMachine,

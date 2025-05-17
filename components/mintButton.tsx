@@ -6,12 +6,7 @@ import { PublicKey, Umi, createBigInt } from "@metaplex-foundation/umi";
 import { DigitalAssetWithToken, JsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../settings";
 import {
-  Box,
   Button,
-  Flex,
-  HStack,
-  Heading,
-  SimpleGrid,
   Text,
   Tooltip,
   VStack,
