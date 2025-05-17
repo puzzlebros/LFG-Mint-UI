@@ -1,3 +1,4 @@
+//components/ParallaxImage.tsx
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import { Parallax } from "react-scroll-parallax";

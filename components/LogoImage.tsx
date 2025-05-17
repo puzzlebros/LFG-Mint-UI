@@ -1,3 +1,4 @@
+//components/LogoImage.tsx
 import React from "react";
 import { chakra } from "@chakra-ui/react";
 import { motion } from "framer-motion";

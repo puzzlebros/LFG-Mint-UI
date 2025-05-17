@@ -1,3 +1,4 @@
+//utils/metaplex/checkAllowed.ts
 import {
   AddressGate,
   Allocation,

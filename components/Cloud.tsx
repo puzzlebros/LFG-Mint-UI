@@ -1,3 +1,4 @@
+//components/Cloud.tsx
 import React, { useMemo } from "react";
 import { Image, ImageProps, keyframes } from "@chakra-ui/react";
 

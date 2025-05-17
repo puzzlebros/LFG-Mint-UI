@@ -399,6 +399,13 @@ export default function MintPage() {
               />
             </Center>
           )}
+
+                    {/* ─── ADMIN BUTTON (in-column) ─── */}
+          {umi.identity.publicKey === candyMachine?.authority && (
+            <Button size="default" mt={6} onClick={onInitializerOpen}>
+              ADMIN
+            </Button>
+          )}
         </VStack>
 
         {/* ─── RIGHT ─── */}
@@ -435,33 +442,7 @@ export default function MintPage() {
         <PageContent />
       </Box>
 
-      {/* Show Admin Button + Modal if user is the CM authority */}
-      {umi.identity.publicKey === candyMachine?.authority && (
-        <>
-          <Center>
-            <Button size="default" mt={10} onClick={onInitializerOpen}>
-              ADMIN
-            </Button>
-          </Center>
-
-          <Modal isOpen={isInitializerOpen} onClose={onInitializerClose}>
-            <ModalOverlay />
-            <ModalContent maxW="600px">
-              <ModalHeader>Initializer</ModalHeader>
-              <ModalCloseButton />
-              <ModalBody>
-                <InitializeModal
-                  umi={umi}
-                  candyMachine={candyMachine}
-                  candyGuard={candyGuard}
-                />
-              </ModalBody>
-            </ModalContent>
-          </Modal>
-        </>
-      )}
-
-      {/* After minting, show minted NFT in a modal */}
+      {/* Show minted NFT */}
       <Modal isOpen={isShowNftOpen} onClose={onShowNftClose}>
         <ModalOverlay />
         <ModalContent>
@@ -469,6 +450,22 @@ export default function MintPage() {
           <ModalCloseButton />
           <ModalBody>
             <ShowNft nfts={mintsCreated} />
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      {/* InitializeModal */}
+      <Modal isOpen={isInitializerOpen} onClose={onInitializerClose}>
+        <ModalOverlay />
+        <ModalContent maxW="600px">
+          <ModalHeader>Initializer</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <InitializeModal
+              umi={umi}
+              candyMachine={candyMachine!}
+              candyGuard={candyGuard!}
+            />
           </ModalBody>
         </ModalContent>
       </Modal>

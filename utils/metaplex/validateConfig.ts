@@ -1,3 +1,4 @@
+//utils/metaplex/validateConfig.ts
 import {
   FreezeTokenPayment,
   GuardSet,

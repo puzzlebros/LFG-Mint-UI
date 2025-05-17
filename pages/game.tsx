@@ -1,3 +1,4 @@
+//pages/game.tsx
 import { useEffect, useRef } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";

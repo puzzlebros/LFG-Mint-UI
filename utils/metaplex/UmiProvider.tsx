@@ -1,3 +1,4 @@
+//utils/metaplex/UmiProvider.tsx
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters";
 import { mplTokenMetadata } from "@metaplex-foundation/mpl-token-metadata";
