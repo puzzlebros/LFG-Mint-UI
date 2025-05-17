@@ -98,7 +98,7 @@ export default extendTheme({
           h:         "35px",
           px:        "16px",
           textStyle: "condensed",
-          fontSize: "1.3rem"
+          fontSize: "1.4rem"
         },
       },
       variants: {
@@ -107,10 +107,25 @@ export default extendTheme({
           _hover:  { bg: "brand.Lavender" },
           _active: { bg: "brand.DarkPurple" },
           _disabled: {
-            bg:      "brand.Purple",
-            color:   "brand.GreyPurple",
+            bg:      "brand.GreyPurple",
+            color:   "brand.Lavender",
             opacity: 1,
             cursor:  "not-allowed",
+          },
+        },
+          // ─── NEW SECONDARY VARIANT ───
+        secondary: {
+          bg:            "transparent",
+          border:        "2px solid",
+          borderColor:   "brand.Purple",
+          color:         "brand.Purple",
+          _hover:        { borderColor: "brand.Lavender", color: "brand.Lavender", },
+          _active:       { bg: "brand.Lavender", borderColor: "brand.DarkPurple", color: "brand.DarkPurple", },
+          _disabled:     {
+            borderColor: "brand.GreyPurple",
+            color:       "brand.GreyPurple",
+            opacity:     1,
+            cursor:      "not-allowed",
           },
         },
       },
@@ -146,27 +161,59 @@ export default extendTheme({
         color: "brand.DarkPurple",
       },
 
-      // Wallet adapter button
+      // ─── Wallet adapter button default ───
+      "button.wallet-adapter-button-trigger-secondary": {
+        borderRadius:    0,
+        height:          "35px",
+        width:           "200px",
+        background:      "linear-gradient(to right,var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
+        color:           "white",
+        /* … */
+      },
+
+      // ─── Wallet adapter button SECONDARY ───
       "button.wallet-adapter-button-trigger": {
-        borderRadius:           0,
-        height:              "35px",
-        width:                  "200px",
-        color:         "white",
+      /* make the background transparent so our text‐gradient shows */
+        borderRadius:    0,
+        height:          "35px",
+        width:           "150px",
+        /* setup a gradient border */
+        border:               "2px solid transparent",
+        borderImageSlice:     1,
+        borderImageSource:    "linear-gradient(to right, var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
+
+        /* text gradient */
+        color:                "transparent",
+        backgroundClip:       "text",
+        WebkitBackgroundClip: "text",
+        backgroundImage:      "linear-gradient(to right, var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
         fontWeight: "normal",
+        fontSize: "1.4rem",
+        letterSpacing: "1px",
+        textStyle: "condensed",
+        textTransform: "uppercase",
+        textAlign:     "center",
+
+        /* hover & active can be tweaked as you like */
+        _hover: {
+        background:      "linear-gradient(to right,var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
+                fontWeight: "normal",
         fontSize: "1.2rem",
         letterSpacing: "2.5px",
         textStyle: "condensed",
         textTransform: "uppercase",
         textAlign:     "center",
-        background:             "linear-gradient(to right, #6C00FF, #5B00E04D)",
-        _hover: {
-          background: "linear-gradient(to right, #5B00E04D, #6C00FF)",
-          transform:  "scale(1.05)",
-          boxShadow:  "md",
+        color: "white",
         },
         _active: {
-          transform: "scale(0.95)",
-          boxShadow: "sm",
+          backgroundColor: "rgba(0,0,0,0.08)",
+        },
+        _disabled: {
+          /* greyed out outline + solid grey text */
+          borderImageSource: "linear-gradient(to right, var(--chakra-colors-brand-GreyPurple), var(--chakra-colors-brand-GreyPurple))",
+          color:             "var(--chakra-colors-brand-GreyPurple)",
+          opacity:           1,
+          cursor:            "not-allowed",
         },
       },
     },

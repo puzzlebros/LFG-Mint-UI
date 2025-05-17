@@ -13,6 +13,7 @@ import {
 import dynamic from "next/dynamic";
 import LogoImage from "./LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
+import { CustomWalletButton } from "./CustomWalletButton";
 
 const WalletMultiButtonDynamic = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
@@ -129,10 +130,11 @@ function Navbar() {
             </Tooltip>
 
             <Link href="/mint" passHref>
-              <Button size="nav">MINT</Button>
+              <Button size="nav" variant="secondary">MINT</Button>
             </Link>
-
-            <WalletMultiButtonDynamic />
+            
+            <CustomWalletButton/>
+            
           </Box>
         </Flex>
         

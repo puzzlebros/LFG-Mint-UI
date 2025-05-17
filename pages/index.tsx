@@ -11,7 +11,6 @@ import {
   Button,
   Tooltip
 } from '@chakra-ui/react';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
 
@@ -129,12 +128,12 @@ export default function HomePage() {
         scrollSnapAlign="start"
         scrollSnapStop="always"
         position="relative"
-        bgGradient="linear(
-          to-b,
-          brand.gradientStart 0%,
-          brand.gradientMid 29.5%,
-          brand.gradientEnd 100%
-        )"
+      bgGradient="linear(
+      to-b,
+      #93D2FF 0%,
+      #BDACFF 29%,
+      #FFBCD5 100%
+      )"
         pt={4}      // space below navbar
         pb="100px"   // reserve space for the fixed scroller
         overflow="hidden"
@@ -199,7 +198,7 @@ export default function HomePage() {
         bgSize="cover"
         bgPosition="center"
       >
-        <Center h="100%" mt="-5">
+        <Center h="100%">
           <Stack
           spacing={2}
           textAlign="center"
@@ -208,24 +207,55 @@ export default function HomePage() {
           maxW="420px"       // …but no wider than 600px
           mx="auto"          // center it horizontally
           >
-
-            <Heading
-            as="h1"
-            fontSize="7.7rem"
-            textStyle="condensed"
-              >LET'S JUMP!</Heading>
-            <Text
-            textStyle="copy"
-            fontSize="1.3rem"
-            whiteSpace="normal"      // make sure wrapping is allowed
-            wordBreak="break-word"   // break long words if necessary
-            >
-                <Text as="span" fontWeight="bold">
-              Jump into the action and climb your way up to the ranking.
-              </Text>
-              <br />
-              If you manage to get into the top 10, you will be able to claim a FREE mint from the collection.
-            </Text>
+            {isFrozen ? (
+                    <>
+                      <Heading
+                        as="h1"
+                        fontSize="7.7rem"
+                        textStyle="condensed"
+                        color="brand.DarkPurple"
+                        lineHeight="6rem"
+                      >
+                        RANKING PAUSED
+                      </Heading>
+                      <Text
+                        textStyle="copy"
+                        fontSize="1.3rem"
+                        whiteSpace="normal"
+                        wordBreak="break-word"
+                        mt="7"
+                      >
+                        The leaderboard is currently frozen until{" "}
+                        <Text as="span" fontWeight="bold">
+                          {next.toLocaleString()}
+                        </Text>
+                        . Come back then to see the latest standings!
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Heading
+                        as="h1"
+                        fontSize="7.7rem"
+                        textStyle="condensed"
+                      >
+                        LET&apos;S JUMP!
+                      </Heading>
+                      <Text
+                        textStyle="copy"
+                        fontSize="1.3rem"
+                        whiteSpace="normal"
+                        wordBreak="break-word"
+                      >
+                        <Text as="span" fontWeight="bold">
+                          Jump into the action and climb your way up to the ranking.
+                        </Text>
+                        <br />
+                        If you manage to get into the top 10, you will be able to claim
+                        a FREE mint from the collection.
+                      </Text>
+                    </>
+                  )}
 
             <Tooltip
             label={

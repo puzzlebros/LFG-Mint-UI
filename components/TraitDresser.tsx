@@ -36,6 +36,12 @@ export default function TraitDresser({
     }))
   );
 
+  // Keep a ref in sync so cycleTrait sees the latest state
+  const overlaysRef = useRef<Overlay[]>(overlays)
+  useEffect(() => {
+    overlaysRef.current = overlays
+  }, [overlays])
+
   const containerRef = useRef<HTMLDivElement>(null);
   const animating   = useRef(false);
   const queued      = useRef(false);
@@ -72,45 +78,45 @@ export default function TraitDresser({
   }, []);
 
   function cycleTrait() {
-    animating.current = true;
-    queued.current    = false;
+    animating.current = true
+    queued.current = false
 
-    let chosenIndex = Math.floor(Math.random() * overlays.length);
-    const slot      = overlays[chosenIndex];
-    const variants  = traitPaths[slot.category];
-    // avoid repeating same src if possible
-    const choices   = slot.src
-      ? variants.filter(u => u !== slot.src)
-      : variants;
-    const nextSrc   = choices.length > 0
-      ? choices[Math.floor(Math.random() * choices.length)]
-      : variants[Math.floor(Math.random() * variants.length)];
+    // read the *up-to-date* overlays
+    const current = overlaysRef.current
+    const chosenIndex = Math.floor(Math.random() * current.length)
+    const { category, src: lastSrc } = current[chosenIndex]
+    const variants = traitPaths[category]
 
-    // 1) fade out current (or remain hidden)
-    setOverlays(prev =>
+    // filter out the *current* src so you never repeat it
+    const choices = lastSrc ? variants.filter((u) => u !== lastSrc) : variants
+    const nextSrc =
+      choices.length > 0
+        ? choices[Math.floor(Math.random() * choices.length)]
+        : variants[Math.floor(Math.random() * variants.length)]
+
+    // 1) fade out
+    setOverlays((prev) =>
       prev.map((o, i) =>
-        i === chosenIndex
-          ? { ...o, visible: false }
-          : o
+        i === chosenIndex ? { ...o, visible: false } : o
       )
-    );
+    )
 
-    // 2) after fade-out (600ms) swap and fade in
+    // 2) swap & fade in
     setTimeout(() => {
-      setOverlays(prev =>
+      setOverlays((prev) =>
         prev.map((o, i) =>
           i === chosenIndex
             ? { ...o, src: nextSrc, visible: true }
             : o
         )
-      );
-    }, 600);
+      )
+    }, 600)
 
-    // 3) end cycle after total duration (~1.2s)
+    // 3) end cycle (and drain queue)
     setTimeout(() => {
-      animating.current = false;
-      if (queued.current) cycleTrait();
-    }, 1200);
+      animating.current = false
+      if (queued.current) cycleTrait()
+    }, 1200)
   }
 
   return (
@@ -129,7 +135,6 @@ export default function TraitDresser({
         objectFit="cover"
         position="relative"
         zIndex={1}
-        borderRadius="md"
       />
 
       {/* Full-canvas overlays */}

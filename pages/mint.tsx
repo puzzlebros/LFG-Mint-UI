@@ -14,16 +14,9 @@ import {
   safeFetchCandyGuard,
   CandyGuard,
   CandyMachine,
-  StartDate
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { guardChecker } from "../utils/metaplex/checkAllowed";
-
 import {
-  Card,
-  CardHeader,
-  CardBody,
-  StackDivider,
-  Stack,
   useToast,
   Skeleton,
   useDisclosure,
@@ -35,16 +28,13 @@ import {
   ModalHeader,
   ModalOverlay,
   Box,
-  Divider,
   VStack,
   Flex,
   Heading,
   Center,
   Text,
   Button,
-  Grid,
 } from "@chakra-ui/react";
-
 import { ButtonList } from "../components/mintButton";
 import { ShowNft } from "../components/showNft";
 import { InitializeModal } from "../components/initializeModal";
@@ -60,7 +50,6 @@ const pulse = keyframes`
   50%      { transform: scale(1.05); }
 `;
 
-// ——— “vibrating hatch” keyframes ———
 const hatch = keyframes`
   0% {
     filter: blur(3px);
@@ -88,7 +77,7 @@ const hatch = keyframes`
   }
 `;
 
-//
+
 const useCandyMachine = (
   umi: Umi,
   candyMachineId: string,
@@ -103,65 +92,29 @@ const useCandyMachine = (
 
   useEffect(() => {
     (async () => {
-      if (checkEligibility) {
-        if (!candyMachineId) {
-          console.error("No candy machine in .env!");
-          if (!toast.isActive("no-cm")) {
-            toast({
-              id: "no-cm",
-              title: "No candy machine in .env!",
-              description: "Add your candy machine address to the .env file!",
-              status: "error",
-              duration: 999999,
-              isClosable: true,
-            });
-          }
-          return;
-        }
+      console.log("💠 [useCandyMachine] checkEligibility=", checkEligibility);
+      if (!checkEligibility) return;
 
-        let fetchedCandyMachine: CandyMachine | undefined;
-        try {
-          fetchedCandyMachine = await fetchCandyMachine(
-            umi,
-            publicKey(candyMachineId)
-          );
-        } catch (e) {
-          console.error(e);
-          toast({
-            id: "no-cm-found",
-            title: "The CM from .env is invalid",
-            description: "Are you using the correct environment?",
-            status: "error",
-            duration: 999999,
-            isClosable: true,
-          });
-        }
-        setCandyMachine(fetchedCandyMachine);
-        if (!fetchedCandyMachine) { return; }
+      try {
+        console.log("💠 fetching CandyMachine…");
+        const fetched = await fetchCandyMachine(umi, publicKey(candyMachineId));
+        console.log("💠 fetchedCandyMachine:", fetched);
+        setCandyMachine(fetched);
+        if (!fetched) return;
 
-        let fetchedCandyGuard: CandyGuard | null = null;
-        try {
-          fetchedCandyGuard = await safeFetchCandyGuard(
-            umi,
-            fetchedCandyMachine.mintAuthority
-          );
-        } catch (e) {
-          console.error(e);
-          toast({
-            id: "no-guard-found",
-            title: "No Candy Guard found!",
-            description: "Do you have one assigned?",
-            status: "error",
-            duration: 999999,
-            isClosable: true,
-          });
-        }
-
-        // Convert null to undefined to match our state type
-        setCandyGuard(fetchedCandyGuard ?? undefined);
-        if (firstRun) {
-          setFirstRun(false);
-        }
+        console.log("💠 fetching CandyGuard…");
+        const guard = await safeFetchCandyGuard(umi, fetched.mintAuthority);
+        console.log("💠 fetchedCandyGuard:", guard);
+        setCandyGuard(guard ?? undefined);
+        if (firstRun) setFirstRun(false);
+      } catch (e) {
+        console.error("💠 useCandyMachine error", e);
+        toast({
+          title: "Failed to load candy machine/guard",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
       }
     })();
   }, [umi, candyMachineId, checkEligibility]);
@@ -172,41 +125,52 @@ const useCandyMachine = (
 export default function MintPage() {
   const umi = useUmi();
   const toast = useToast();
-  
   const { publicKey: walletPublicKey } = useWallet();
+
+// — UI state —
   const [inTop10, setInTop10] = useState(false);
-
-  useEffect(() => {
-    if (!walletPublicKey) {
-      setInTop10(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        const res = await axios.get<LeaderboardEntry[]>("/api/leaderboard");
-        setInTop10(
-          res.data.some((e) => 
-            e.wallet_address === walletPublicKey.toString()
-          )
-        );
-      } catch (err) {
-        console.error("Could not fetch leaderboard", err);
-      }
-    })();
-  }, [walletPublicKey]);
-
-  const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
-  const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
-
   const [mintsCreated, setMintsCreated] = useState<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[]>();
-  const [isAllowed, setIsAllowed] = useState<boolean>(false);
+  const [isAllowed, setIsAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [ownedTokens, setOwnedTokens] = useState<DigitalAssetWithToken[]>();
   const [ownedCoreAssets, setOwnedCoreAssets] = useState<DasApiAssetAndAssetMintLimit[]>();
   const [guards, setGuards] = useState<GuardReturn[]>([{ label: 'startDefault', allowed: false, maxAmount: 0 }]);
   const [firstRun, setFirstRun] = useState(true);
-  const [checkEligibility, setCheckEligibility] = useState<boolean>(true);
+  const [checkEligibility, setCheckEligibility] = useState(true);
+
+  // — Modals —
+  const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
+  const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
+
+  // ───────── when wallet connects/disconnects ─────────
+  useEffect(() => {
+    if (!walletPublicKey) {
+      // on disconnect: disable buttons immediately
+      setGuards([{ label: 'startDefault', allowed: false, reason: 'Please connect your wallet to mint', maxAmount: 0 }]);
+      setIsAllowed(false);
+      setLoading(false);
+      setCheckEligibility(false);
+    } else {
+      // on (re)connect: trigger a guard‐check
+      setCheckEligibility(true);
+    }
+  }, [walletPublicKey]);
+
+  // — Leaderboard fetch —
+  useEffect(() => {
+    if (!walletPublicKey) {
+      setInTop10(false);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await axios.get<LeaderboardEntry[]>("/api/leaderboard");
+        setInTop10(data.some(e => e.wallet_address === walletPublicKey.toString()));
+      } catch (err) {
+        console.error("Could not fetch leaderboard", err);
+      }
+    })();
+  }, [walletPublicKey]);
 
   // Check for Candy Machine ID
   if (!process.env.NEXT_PUBLIC_CANDY_MACHINE_ID) {
@@ -248,54 +212,63 @@ export default function MintPage() {
 
   // 🔄 Re-fetch CM after a mint to update available count
   useEffect(() => {
-    if (!mintsCreated?.length || !candyMachine) return;
+    console.log("🚦 guardChecker effect:", {
+      checkEligibility,
+      hasCandyMachine: !!candyMachine,
+      hasCandyGuard:   !!candyGuard,
+    });
+    
+    if (!walletPublicKey) {
+      console.log("⏭ guard-check skipped: no wallet");
+      return;
+    }
+
+    if (!checkEligibility || !candyMachine || !candyGuard) {
+      console.log("⏭ guardChecker skipped");
+      return;
+    }
+
+    setLoading(true);
+    let cancelled = false;
+
     (async () => {
+      console.log("🔍 running guardChecker…");
       try {
-        const refreshed = await fetchCandyMachine(umi, candyMachineId);
-        setCandyMachine(refreshed);
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        const { guardReturn, ownedTokens, ownedCoreAssets } =
+          await guardChecker(umi, candyGuard, candyMachine, now);
+
+        if (!cancelled) {
+          console.log("✅ guardChecker returned:", guardReturn);
+          setGuards(guardReturn);
+          setOwnedTokens(ownedTokens);
+          setOwnedCoreAssets(ownedCoreAssets);
+          setIsAllowed(guardReturn.some((g) => g.allowed));
+        }
       } catch (err) {
-        console.error("Failed to refresh CM:", err);
+        console.error("🚨 guardChecker error", err);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setCheckEligibility(false);
+          console.log("🔚 guardChecker done, loading=false");
+        }
       }
     })();
-  }, [mintsCreated, candyMachine, candyMachineId]);
 
-  // ▶️ Guard check + StartDate logic
-  useEffect(() => {
-    const run = async () => {
-      if (!candyMachine || !candyGuard || !checkEligibility || isShowNftOpen) return;
-      setFirstRun(false);
-
-      // Compute clusterTime as current client‐side UNIX seconds
-      const clusterTime = BigInt(Math.floor(Date.now() / 1000));
-
-      // 2️⃣ Extract the on-chain startDate for each group
-       candyGuard?.groups.forEach(g => {
-        const sd = g.guards.startDate;
-        if (sd.__option === 'Some') {
-          const d = (sd as Some<StartDate>).value.date;
-          console.log(`[${g.label}] onChainStart: ${d} now: ${clusterTime}`);
-        }
-      });
-
-        // 3️⃣ Run the guard check
-        const { guardReturn, ownedTokens, ownedCoreAssets } = await guardChecker(
-          umi,
-          candyGuard,
-          candyMachine,
-          clusterTime
-        );
-
-
-      setOwnedTokens(ownedTokens);
-      setGuards(guardReturn);
-      setOwnedCoreAssets(ownedCoreAssets);
-      setIsAllowed(guardReturn.some((g) => g.allowed));
-      setLoading(false);
+    return () => {
+      cancelled = true;
     };
-    run();
-  }, [umi, candyMachine, candyGuard, checkEligibility, isShowNftOpen]);
+ }, [umi, candyMachine, candyGuard, checkEligibility, walletPublicKey]);
 
-  const isMinting = guards.some((g) => g.minting);
+  // ▶️ Re-trigger guard-check once your mint completes
+  useEffect(() => {
+    if (mintsCreated?.length) {
+      setCheckEligibility(true);
+    }
+  }, [mintsCreated]);
+
+  const isMinting = guards.some(g => g.minting);
 
   // Page content as a separate component
   const PageContent = () => {
@@ -305,7 +278,7 @@ export default function MintPage() {
 
     const showLogin = !walletPublicKey;
     const showClaim = Boolean(walletPublicKey && inTop10 && allowGuard && allowGuard.maxAmount > 0);
-    const showMint  = Boolean(walletPublicKey && !showClaim);
+    const showMint  = Boolean(walletPublicKey && !showClaim && isAllowed);
 
     const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);
     const payGuardList   = useMemo(() => guards.filter(g => g.label !== allowListLabel), [guards, allowListLabel]);
@@ -342,7 +315,7 @@ export default function MintPage() {
           </Heading>
 
           {showLogin && (
-            <Text textAlign="center" textStyle="copy" fontSize="1.5rem">
+            <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
               <Text as="span" fontWeight="bold">
                 Log in to join the flock.
               </Text>
@@ -351,7 +324,7 @@ export default function MintPage() {
             </Text>
           )}
           {showClaim && (
-            <Text textAlign="center" textStyle="copy"  fontSize="1.5rem">
+            <Text textAlign="center" textStyle="copy"  fontSize="1.3rem">
               <Text as="span" fontWeight="bold">
                 You are a top 10 winner.
               </Text>
@@ -400,7 +373,7 @@ export default function MintPage() {
             </Center>
           )}
 
-                    {/* ─── ADMIN BUTTON (in-column) ─── */}
+          {/* ─── ADMIN BUTTON (in-column) ─── */}
           {umi.identity.publicKey === candyMachine?.authority && (
             <Button size="default" mt={6} onClick={onInitializerOpen}>
               ADMIN
@@ -437,6 +410,16 @@ export default function MintPage() {
 
   // Return the main layout
   return (
+    <Box
+      minH="100vh"
+      bgGradient="linear(
+      to-b,
+      #93D2FF 0%,
+      #BDACFF 29%,
+      #FFBCD5 100%
+      )"
+    >
+    
     <Center flexDirection="column" py={10}>
       <Box width="full" maxWidth={{ base: "100%", md: "1000px" }} px={{ base: 4, md: 8 }}>
         <PageContent />
@@ -470,5 +453,6 @@ export default function MintPage() {
         </ModalContent>
       </Modal>
     </Center>
+    +    </Box>
   );
 }
