@@ -10,7 +10,7 @@ export function useWeeklyCycle() {
     let debugOverride = false;
 
     // DEV-only URL override
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NEXT_PUBLIC_ENVIRONMENT === 'devnet') {
       const params = new URLSearchParams(window.location.search);
       debugOverride = params.get('freeze') === 'true';
     }

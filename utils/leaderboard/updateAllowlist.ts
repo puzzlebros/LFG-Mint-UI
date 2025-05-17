@@ -104,9 +104,8 @@ export async function updateAllowlistGuard(): Promise<void> {
     candyGuard: guardData.publicKey,
     guards: { botTax: some({ lamports: sol(0.001), lastInstruction: true }) },
     groups: [{
-      label: "allowlist",
+      label: "LFG",
       guards: {
-        solPayment: some({ lamports: sol(0.1), destination: treasuryKP.publicKey }),
         startDate:  some({ date: dateTime(newStart.toISOString()) }),
         endDate:    some({ date: dateTime(newEnd.toISOString()) }),
         allowList:  some({ merkleRoot }),
