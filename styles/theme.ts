@@ -85,7 +85,7 @@ export default extendTheme({
       sizes: {
         default: {
           h:              "40px",
-          w:             "405px",
+          w:             "375px",
           gap:            "10px",
           justifyContent: "center",
           alignItems:     "center",

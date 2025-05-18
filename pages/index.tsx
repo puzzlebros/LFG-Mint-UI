@@ -212,7 +212,7 @@ export default function HomePage() {
                     <>
                       <Heading
                         as="h1"
-                        fontSize="7.7rem"
+                        fontSize="7rem"
                         textStyle="condensed"
                         color="brand.DarkPurple"
                         lineHeight="6rem"
@@ -239,7 +239,7 @@ export default function HomePage() {
                     <>
                       <Heading
                         as="h1"
-                        fontSize="7.7rem"
+                        fontSize="7rem"
                         textStyle="condensed"
                         lineHeight="6rem"
                       >
@@ -311,7 +311,7 @@ export default function HomePage() {
 
             <Heading 
             size="xl"
-            fontSize="8rem"
+            fontSize="7rem"
             textStyle="condensed"
             mt="2"
             >
