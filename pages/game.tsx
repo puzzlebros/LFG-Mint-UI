@@ -1,4 +1,5 @@
-//pages/game.tsx
+// pages/game.tsx
+
 import { useEffect, useRef } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -6,10 +7,72 @@ import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
 import axios from "axios";
 
 export default function GamePage() {
+  // ────────────────────────────────────────────────────────────────────────────
+  // 1. Hooks MUST be called unconditionally, at the top of the component
+  // ────────────────────────────────────────────────────────────────────────────
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { isFrozen, next } = useWeeklyCycle();
   const { publicKey, connected } = useWallet();
 
+  // Whenever connection or publicKey changes, push walletData to Unity
+  useEffect(() => {
+    if (connected && publicKey && iframeRef.current?.contentWindow) {
+      const messageData = {
+        walletAddress: publicKey.toBase58(),
+        userName: "",
+      };
+      const message = { type: "walletData", payload: messageData };
+      iframeRef.current.contentWindow.postMessage(message, window.location.origin);
+      console.log("Sent wallet data to Unity:", message);
+    }
+  }, [connected, publicKey]);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // 2. All functions below are just helpers—no more hooks!
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // Start a session on our backend whenever the user enters the game
+  const startSession = async () => {
+    if (connected && publicKey) {
+      try {
+        const res = await axios.post("/api/game/start", {
+          walletAddress: publicKey.toBase58(),
+          userName: "",
+        });
+        console.log("Session started on server:", res.data);
+      } catch (error) {
+        console.error("Failed to start session:", error);
+      }
+    }
+  };
+
+  // Send walletData to the iframe manually
+  const sendWalletData = () => {
+    if (iframeRef.current && publicKey) {
+      const messageData = {
+        walletAddress: publicKey.toBase58(),
+        userName: "",
+      };
+      const message = { type: "walletData", payload: messageData };
+      iframeRef.current.contentWindow?.postMessage(message, window.location.origin);
+      console.log("Sending wallet data to Unity:", message);
+    } else {
+      console.warn("sendWalletData: Wallet not connected or iframe not available.");
+    }
+  };
+
+  // Called once when the iframe finishes loading
+  const handleIframeLoad = () => {
+    console.log("Iframe loaded.");
+    if (connected && publicKey) {
+      sendWalletData();
+      startSession();
+    }
+  };
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // 3. Now we can early‐return for the frozen state
+  // ────────────────────────────────────────────────────────────────────────────
   if (isFrozen) {
     return (
       <Center h="100vh" p={4}>
@@ -22,68 +85,9 @@ export default function GamePage() {
     );
   }
 
-  // Function to start a session on the server.
-  const startSession = async () => {
-    if (connected && publicKey) {
-      const walletAddress = publicKey.toBase58();
-      const userName = ""; // Optionally, you could derive a display name here.
-      try {
-        const res = await axios.post("/api/game/start", { walletAddress, userName });
-        console.log("Session started on server:", res.data);
-        // You can choose to store sessionId / secretSalt if needed.
-      } catch (error) {
-        console.error("Failed to start session:", error);
-      }
-    }
-  };
-
-  // Function to send wallet data to Unity.
-  const sendWalletData = () => {
-    if (iframeRef.current && publicKey) {
-      const walletAddress = publicKey.toBase58();
-      const userName = ""; // Modify if needed
-      const messageData = { walletAddress, userName };
-
-      window.currentWalletData = messageData;
-
-      const message = {
-        type: "walletData",
-        payload: messageData,
-      };
-
-      console.log("Sending wallet data to Unity:", message);
-      iframeRef.current.contentWindow?.postMessage(message, window.location.origin);
-    } else {
-      console.warn("sendWalletData: Wallet not connected or iframe not available.");
-    }
-  };
-
-  // When connected/publicKey updates, ensure that the global wallet data is updated.
-  useEffect(() => {
-    if (connected && publicKey) {
-      const walletAddress = publicKey.toBase58();
-      const userName = ""; // optionally set a name
-      window.currentWalletData = { walletAddress, userName };
-
-      const message = {
-        type: "walletData",
-        payload: { walletAddress, userName },
-      };
-
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(message, window.location.origin);
-      }
-    }
-  }, [connected, publicKey]);
-
-  // On iframe load, send wallet data to Unity.
-  const handleIframeLoad = () => {
-    console.log("Iframe loaded.");
-    if (connected && publicKey) {
-      sendWalletData();
-    }
-  };
-
+  // ────────────────────────────────────────────────────────────────────────────
+  // 4. Finally, render the live game iframe
+  // ────────────────────────────────────────────────────────────────────────────
   return (
     <Box width="100%" height="100%" overflow="hidden">
       <iframe
