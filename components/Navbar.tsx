@@ -1,29 +1,34 @@
 //components/Navbar.tsx
 import React, { useEffect, useState, useRef } from "react";
-import Link from "next/link";
+import NextLink from "next/link";
 import {
   Flex,
   Box,
   Spacer,
   Button,
   Tooltip,
-  Image,
+  Image as ChakraImage,
   Slide,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  IconButton,
+  useBreakpointValue,
 } from "@chakra-ui/react";
-import dynamic from "next/dynamic";
 import LogoImage from "./LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
 import { CustomWalletButton } from "./CustomWalletButton";
-
-const WalletMultiButtonDynamic = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
-  { ssr: false }
-);
 
 function Navbar() {
   const { isFrozen, next, countdown } = useWeeklyCycle();
   const [visible, setVisible] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const wantsMobile = useBreakpointValue({ base: true, md: false });
+  const isMobile = mounted && wantsMobile;
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -79,19 +84,12 @@ function Navbar() {
 
   return (
     <Slide direction="top" in={visible} style={{ zIndex: 10 }}>
-      <Box>
-        <Flex
-          as="nav"
-          align="center"
-          justify="space-between"
-          px={4}
-          py={2}
-          bg="brand.White"
-          color="white"
-          boxShadow="0 3px 3px rgba(0, 0, 0, 0.1)"
-        >
+      <Box bg="brand.White" boxShadow="0 3px 3px rgba(0,0,0,0.1)">
+        <Flex as="nav" align="center" justify="space-between" px={4} py={2}>
+
+          {/* — Logo on the left — */}
           <Flex align="center" gap={2}>
-            <Link href="/" passHref>
+            <NextLink href="/" passHref>
               <Box cursor="pointer">
                 <LogoImage
                   src="/images/LFG_Iso.png"
@@ -99,8 +97,8 @@ function Navbar() {
                   boxSize="40px"
                 />
               </Box>
-            </Link>
-            <Image
+            </NextLink>
+            <ChakraImage
               src="/images/LFG_Logo.png"
               alt="LFG Logotype"
               h="40px"
@@ -112,32 +110,93 @@ function Navbar() {
 
           <Spacer />
 
-          <Box display="flex" alignItems="center" gap="7">
-            <Tooltip
-              label={
-                isFrozen
-                  ? `Game locked until ${next.toLocaleString()}`
-                  : `Next freeze in ${countdown}`
-              }
-            >
-              <Button
-                size="nav"
-                isDisabled={isFrozen}
-                onClick={() => !isFrozen && window.location.assign("/game")}
-              >
-                PLAY
-              </Button>
-            </Tooltip>
+          {isMobile ? (
+            // ─── Mobile ───
+            <Box display="flex" alignItems="center">
+              <Menu>
+                <MenuButton
+                  as={IconButton}
+                  aria-label="Open menu"
+                  variant="ghost"
+                  width="40px"
+                  icon={
+                    <ChakraImage
+                      src="/images/LFG_Iso.png"
+                      alt="Menu"
+                      boxSize="24px"
+                    />
+                  }
+                />
+                <MenuList>
+                  {/* PLAY */}
+                  <MenuItem as="div" p={0}>
+                    <Tooltip
+                      label={
+                        isFrozen
+                          ? `Game locked until ${next.toLocaleString()}`
+                          : `Next freeze in ${countdown}`
+                      }
+                    >
+                      <Button
+                        size="nav"
+                        isDisabled={isFrozen}
+                        w="full"
+                        onClick={() => !isFrozen && window.location.assign("/game")}
+                      >
+                        PLAY
+                      </Button>
+                    </Tooltip>
+                  </MenuItem>
 
-            <Link href="/mint" passHref>
-              <Button size="nav" variant="secondary">MINT</Button>
-            </Link>
-            
-            <CustomWalletButton/>
-            
-          </Box>
+                  {/* MINT */}
+                  <NextLink href="/mint" passHref>
+                    <MenuItem as="div" p={0}>
+                      <Button
+                        size="nav"
+                        w="full"
+                        onClick={() => window.location.assign("/mint")}
+                      >
+                        MINT
+                      </Button>
+                    </MenuItem>
+                  </NextLink>
+
+                  {/* LOG IN / Wallet */}
+                  <MenuItem as="div" p={0}> <CustomWalletButton/> </MenuItem>
+
+                </MenuList>
+              </Menu>
+            </Box>
+          ) : (
+            // — desktop: all three buttons inline —
+            <Box display="flex" alignItems="center" gap="7">
+              <Tooltip
+                label={
+                  isFrozen
+                    ? `Game locked until ${next.toLocaleString()}`
+                    : `Next freeze in ${countdown}`
+                }
+              >
+                <Button
+                  size="nav"
+                  isDisabled={isFrozen}
+                  onClick={() => !isFrozen && window.location.assign("/game")}
+                >
+                  PLAY
+                </Button>
+              </Tooltip>
+
+              <NextLink href="/mint" passHref>
+                <Button size="nav" variant="secondary">MINT</Button>
+              </NextLink>
+              
+              <CustomWalletButton/>
+              
+            </Box>
+          )}
         </Flex>
         
+        {/* — frozen banner — */}
         {isFrozen && (
             <Box
               bg="brand.Pink"

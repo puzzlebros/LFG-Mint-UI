@@ -111,11 +111,12 @@ export default function HomePage() {
       w="100%"
       h="100%"
       overflowY="auto"
+      overflowX="hidden"
       scrollSnapType="y mandatory"
       scrollSnapStop="always"
       display="flex"
       flexDirection="column"
-      sx={{ '&::-webkit-scrollbar': { display: 'none' } }}
+      sx={{ '&::-webkit-scrollbar': { display: 'none' }, touchAction: 'pan-y', }}
       minH="0"
     >
       {/** ——— Welcome Section ——— **/}
@@ -166,8 +167,8 @@ export default function HomePage() {
             maxWidth={115}
             minSlant={-30}
             maxSlant={20}
-            previewWdth={0}
-            previewSlnt={0}
+            previewWidth={0}
+            previewSlant={0}
             transitionDuration={0.2}
           >
             LFG
@@ -224,6 +225,8 @@ export default function HomePage() {
                         whiteSpace="normal"
                         wordBreak="break-word"
                         mt="7"
+                        mr="5"
+                        ml="5"
                       >
                         The leaderboard is currently frozen until{" "}
                         <Text as="span" fontWeight="bold">
@@ -238,6 +241,7 @@ export default function HomePage() {
                         as="h1"
                         fontSize="7.7rem"
                         textStyle="condensed"
+                        lineHeight="6rem"
                       >
                         LET&apos;S JUMP!
                       </Heading>
@@ -246,6 +250,9 @@ export default function HomePage() {
                         fontSize="1.3rem"
                         whiteSpace="normal"
                         wordBreak="break-word"
+                        mt="7"
+                        mr="5"
+                        ml="5"
                       >
                         <Text as="span" fontWeight="bold">
                           Jump into the action and climb your way up to the ranking.
@@ -380,8 +387,8 @@ export default function HomePage() {
             maxWidth={85}
             minSlant={-10}
             maxSlant={30}
-            previewWdth={80}
-            previewSlnt={0}
+            previewWidth={80}
+            previewSlant={0}
             transitionDuration={0.2}
             fontSize="22rem"
             fontWeight="normal"
