@@ -1,7 +1,7 @@
 // pages/_app.tsx
 import Head from "next/head";
 import type { AppProps } from "next/app";
-import { image, headerText } from "settings";
+import { image, headerText } from "@/settings";
 import { ChakraProvider } from "@chakra-ui/react";
 import { ParallaxProvider } from "react-scroll-parallax";
 import Layout from "../components/Layout";
