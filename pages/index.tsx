@@ -20,6 +20,7 @@ import TraitDresser                             from '../components/TraitDresser
 import InteractiveHeading                       from '@/components/InteractiveHeading';
 import Cloud from "../components/Cloud";
 import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
+import { Footer } from '../components/Footer'
 
 // ParallaxImage runs only on the client
 const ParallaxImage = dynamic(() => import('../components/ParallaxImage'), { ssr: false });
@@ -435,6 +436,8 @@ export default function HomePage() {
             MINT
           </Button>
         </Box>
+            <Footer />
+        
       </Box>
     </Box>
   );

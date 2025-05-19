@@ -44,6 +44,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import axios from "axios";
 import type { LeaderboardEntry } from "@/types/leaderboard";
 import { keyframes } from "@emotion/react";
+import { Footer } from '../components/Footer'
 
 const pulse = keyframes`
   0%, 100% { transform: scale(1); }
@@ -292,9 +293,10 @@ export default function MintPage() {
         direction={{ base: "column", md: "row" }}
         align="center"
         justify="center"
-        h="100vh"
-        gap={16}        // 🆕 extra gutter
+        flex="1"
+        gap={6}        // 🆕 extra gutter
         px={2}
+        mt="20"
       >
         {/* ─── LEFT ─── */}
         <VStack
@@ -309,7 +311,7 @@ export default function MintPage() {
             fontWeight="normal"
             textAlign="center"
             textStyle="condensed"
-            lineHeight="4rem"
+            lineHeight="4.5rem"
           >
             {headerText}
           </Heading>
@@ -410,22 +412,25 @@ export default function MintPage() {
 
   // Return the main layout
   return (
-    <Box
+    <Flex
+      direction="column"
       minH="100vh"
-      bgGradient="linear(
-      to-b,
-      #93D2FF 0%,
-      #BDACFF 29%,
-      #FFBCD5 100%
-      )"
+      bgGradient="linear(to-b, #93D2FF 0%, #BDACFF 29%, #FFBCD5 100%)"
     >
-    
-    <Center flexDirection="column" py={10}>
-      <Box width="full" maxWidth={{ base: "100%", md: "1000px" }} px={{ base: 4, md: 8 }}>
-        <PageContent />
-      </Box>
+      <Flex
+        flex="1"
+        direction="column"
+        align="center"
+        justify="center"
+        overflowY="auto"
+        minH="0"              // <-- allow Flex child to shrink correctly
+        px={{ base: 4, md: 8 }}
+      >
+        <Box width="full" maxWidth={{ base: "100%", md: "1000px" }} px={{ base: 4, md: 8 }}>
+          <PageContent />
+        </Box>
 
-      {/* Show minted NFT */}
+    {/* Show minted NFT */}
       <Modal isOpen={isShowNftOpen} onClose={onShowNftClose}>
         <ModalOverlay />
         <ModalContent>
@@ -452,7 +457,10 @@ export default function MintPage() {
           </ModalBody>
         </ModalContent>
       </Modal>
-    </Center>
-    +    </Box>
+          
+      </Flex>
+    <Footer />
+  </Flex>
+
   );
 }

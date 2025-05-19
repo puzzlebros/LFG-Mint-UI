@@ -1,6 +1,7 @@
 // pages/_app.tsx
 import Head from "next/head";
 import type { AppProps } from "next/app";
+import { Analytics } from "@vercel/analytics/next";
 import { image, headerText } from "@/settings";
 import { ChakraProvider } from "@chakra-ui/react";
 import { ParallaxProvider } from "react-scroll-parallax";
@@ -68,6 +69,7 @@ function MyApp({ Component, pageProps }: AppProps) {
           </ConnectionProvider>
         </ChakraProvider>
       </ParallaxProvider>
+      <Analytics />
     </>
   );
 }

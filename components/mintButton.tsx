@@ -147,12 +147,12 @@ export function ButtonList({
   };
 
 return (
-    <VStack spacing={8} align="center" w="full">
+    <VStack spacing={3} align="center" w="full">
       {buttons.map((btn, idx) => {
         const isClaim = btn.buttonLabel.toUpperCase() === "CLAIM";
         const timerTarget = isClaim ? btn.endTime : btn.startTime;
         return (
-          <VStack key={idx} spacing={3} align="center" w="full">
+          <VStack key={idx} spacing={1} align="center" w="full">
             {isClaim && (
               <>
                 <Text fontSize="sm" fontWeight="bold">
@@ -169,7 +169,7 @@ return (
             <Tooltip label={btn.tooltip}>
               <Button
                 size="default"
-                mt="7"
+                mt="3"
                 {...buttonProps}
                 isDisabled={!btn.allowed}
                 isLoading={guardList.find((g) => g.label === btn.label)?.minting}

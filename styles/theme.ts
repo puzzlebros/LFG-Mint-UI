@@ -13,6 +13,7 @@ export default extendTheme({
     brand: {
       Pink:         "#F279A6",
       Purple:       "#6C00FF",
+      BrightPurple: "#9D72FF",
       DarkPurple:   "#161540",
       DarkPink:     "8C5178",
       White:        "#FFFFFF",
@@ -104,7 +105,7 @@ export default extendTheme({
       variants: {
         primary: {
           bg:      "brand.Purple",
-          _hover:  { bg: "brand.Lavender" },
+          _hover:  { bg: "brand.BrightPurple" },
           _active: { bg: "brand.DarkPurple" },
           _disabled: {
             bg:      "brand.GreyPurple",
@@ -119,7 +120,7 @@ export default extendTheme({
           border:        "2px solid",
           borderColor:   "brand.Purple",
           color:         "brand.Purple",
-          _hover:        { borderColor: "brand.Lavender", color: "brand.Lavender", },
+          _hover:        { borderColor: "brand.BrightPurple", color: "brand.BrightPurple", },
           _active:       { bg: "brand.Lavender", borderColor: "brand.DarkPurple", color: "brand.DarkPurple", },
           _disabled:     {
             borderColor: "brand.GreyPurple",
