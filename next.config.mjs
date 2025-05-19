@@ -2,25 +2,69 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // We add a headers() function that returns an array of routing objects
   async headers() {
     return [
+      // Brotli-compressed WebAssembly
       {
-        // This rule applies to all requests that match /UnityBuild/<anything>.br
-        // For example: /UnityBuild/build.framework.js.br
-        source: "/UnityBuild/(.*)\\.br",
-
+        source: "/UnityBuild/Build/:file*.wasm.br",
         headers: [
-          {
-            key: "Content-Encoding",
-            value: "br", 
-          },
-          {
-            // Possibly adjust this if your .br file is a .wasm or .data
-            // For .js or .framework.js, "application/javascript" is common
-            key: "Content-Type",
-            value: "application/javascript",
-          },
+          { key:   "Content-Type",     value: "application/wasm" },
+          { key:   "Content-Encoding", value: "br"            },
+        ],
+      },
+      // Uncompressed WebAssembly
+      {
+        source: "/UnityBuild/Build/:file*.wasm",
+        headers: [
+          { key: "Content-Type", value: "application/wasm" },
+        ],
+      },
+
+      // Brotli-compressed JavaScript (framework, loader, etc.)
+      {
+        source: "/UnityBuild/Build/:file*.js.br",
+        headers: [
+          { key:   "Content-Type",     value: "application/javascript" },
+          { key:   "Content-Encoding", value: "br"                     },
+        ],
+      },
+      // Uncompressed JavaScript
+      {
+        source: "/UnityBuild/Build/:file*.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript" },
+        ],
+      },
+
+      // Brotli-compressed data blob
+      {
+        source: "/UnityBuild/Build/:file*.data.br",
+        headers: [
+          { key:   "Content-Type",     value: "application/octet-stream" },
+          { key:   "Content-Encoding", value: "br"                        },
+        ],
+      },
+      // Uncompressed data blob
+      {
+        source: "/UnityBuild/Build/:file*.data",
+        headers: [
+          { key: "Content-Type", value: "application/octet-stream" },
+        ],
+      },
+
+      // Brotli-compressed symbols JSON
+      {
+        source: "/UnityBuild/Build/:file*.symbols.json.br",
+        headers: [
+          { key:   "Content-Type",     value: "application/json" },
+          { key:   "Content-Encoding", value: "br"               },
+        ],
+      },
+      // Uncompressed symbols JSON
+      {
+        source: "/UnityBuild/Build/:file*.symbols.json",
+        headers: [
+          { key: "Content-Type", value: "application/json" },
         ],
       },
     ];
