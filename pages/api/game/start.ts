@@ -3,7 +3,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { performReverseLookup } from '@bonfida/spl-name-service';
+import { reverseLookup } from '@bonfida/spl-name-service';
 
 type Data = {
   sessionId: string;
@@ -30,7 +30,7 @@ export default async function handler(
     if (!rpcUrl) throw new Error('Missing SOLANA_RPC_URL in env');
     const connection = new Connection(rpcUrl, 'confirmed');
     // performReverseLookup returns the domain (e.g. "alice.sol") or throws / returns null
-    const maybeName = await performReverseLookup(
+    const maybeName = await reverseLookup(
       connection,
       new PublicKey(walletAddress)
     );
