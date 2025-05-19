@@ -16,14 +16,19 @@ export default function GamePage() {
 
   // Whenever connection or publicKey changes, push walletData to Unity
   useEffect(() => {
-    if (connected && publicKey && iframeRef.current?.contentWindow) {
-      const messageData = {
+    if (publicKey) {
+      // ❶ populate the global
+      window.currentWalletData = {
         walletAddress: publicKey.toBase58(),
         userName: "",
       };
-      const message = { type: "walletData", payload: messageData };
+    }
+    if (connected && iframeRef.current?.contentWindow) {
+      const message = {
+        type: "walletData",
+        payload: window.currentWalletData,
+      };
       iframeRef.current.contentWindow.postMessage(message, window.location.origin);
-      console.log("Sent wallet data to Unity:", message);
     }
   }, [connected, publicKey]);
 
