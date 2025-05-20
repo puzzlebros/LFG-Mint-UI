@@ -71,7 +71,6 @@ export default function GamePage() {
     console.log("Iframe loaded.");
     if (connected && publicKey) {
       sendWalletData();
-      startSession();
     }
   };
 
