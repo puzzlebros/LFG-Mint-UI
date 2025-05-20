@@ -14,6 +14,17 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data | string>
 ) {
+
+  res.setHeader('Access-Control-Allow-Origin', '*');              // or your exact origin
+  res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    // Optionally: res.setHeader('Access-Control-Max-Age','86400');
+    return res.status(200).end();
+  }
+
+  // ─── Only POST from here on ──────────────────────────────────────────────
   if (req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed');
   }
