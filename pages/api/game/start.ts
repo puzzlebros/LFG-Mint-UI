@@ -14,20 +14,33 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data | string>
 ) {
+
+  console.log('🔥 /api/game/start invoked');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('SOLANA_RPC_URL:', process.env.SOLANA_RPC_URL);
+
+  // ─── ENFORCE POST ───────────────────────────────────────────────
   if (req.method !== 'POST') {
+    console.warn('↩️  Rejecting non-POST:', req.method);
     return res.status(405).send('Method Not Allowed');
   }
 
-  const { walletAddress, userName: clientName } = req.body;
-  if (!walletAddress) {
+  // ─── PAYLOAD VALIDATION ────────────────────────────────────────
+  const { walletAddress, userName: clientName } = req.body ?? {};
+  if (!walletAddress || typeof walletAddress !== 'string') {
+    console.warn('❌ Missing or invalid walletAddress');
     return res.status(400).send('Missing walletAddress');
   }
 
   // ─── Try on‐chain reverse lookup via Bonfida SNS ───────────
   let finalName = '';
   try {
-    const rpcUrl = process.env.SOLANA_RPC_URL;
-    if (!rpcUrl) throw new Error('Missing SOLANA_RPC_URL in env');
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC;
+    if (!rpcUrl) throw new Error('Missing NEXT_PUBLIC_RPC in env');
     const connection = new Connection(rpcUrl, 'confirmed');
     // performReverseLookup returns the domain (e.g. "alice.sol") or throws / returns null
     const maybeName = await reverseLookup(
