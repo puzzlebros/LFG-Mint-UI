@@ -11,6 +11,7 @@ import {
   Button,
   Tooltip
 } from '@chakra-ui/react';
+import { useBreakpointValue } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
 
@@ -75,6 +76,18 @@ export default function HomePage() {
       textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
     },
   ];
+
+  const traitSize = useBreakpointValue({ base: 330, md: 480 });
+
+  const mintBgText = useBreakpointValue({
+  base: `MI\nNT`,     // mobile: two lines
+  md:   "MINTMINT",   // tablet+ and up: repeated
+});
+
+const mintBgSize = useBreakpointValue({
+  base: "24rem",      // much larger on phones
+  md:   "22rem",      // your existing 22rem on desktop
+});
 
   // when mount or resize, capture dimensions
   useEffect(() => {
@@ -391,13 +404,14 @@ export default function HomePage() {
             previewWidth={80}
             previewSlant={0}
             transitionDuration={0.2}
-            fontSize="22rem"
+            fontSize={mintBgSize}
             fontWeight="normal"
             letterSpacing="0.01em"
-            lineHeight="1"
+            lineHeight=".75"
             color="brand.Pink"
+            whiteSpace="pre"
           >
-            MINTMINT
+            {mintBgText}
           </InteractiveHeading>
         </Box>
 
@@ -412,7 +426,7 @@ export default function HomePage() {
         >
           <TraitDresser
             skinSrc="/images/skins/1.png"
-            skinSize={480}
+            skinSize={traitSize}
             traitPaths={{
               eyes:    ['/images/traits/eyes/1.png','/images/traits/eyes/2.png','/images/traits/eyes/3.png'],
               head:    ['/images/traits/head/1.png','/images/traits/head/2.png','/images/traits/head/3.png'],

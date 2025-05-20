@@ -102,8 +102,8 @@ export default function Leaderboard({
       p={4}
       borderRadius="md"
       boxShadow="sm"
-      display="inline-block"    // shrink‐wrap to content
-      w="max-content"           // width == sum of column widths
+      display="inline-block"
+      w="max-content"
       h={height}
       minH="140px"
       mx="auto"
@@ -157,7 +157,9 @@ export default function Leaderboard({
               >
                 Score
               </Th>
+              {/* Hide on mobile (base), show at md+ */}
               <Th
+                display={{ base: 'none', md: 'table-cell' }}
                 textStyle="normal"
                 fontWeight="normal"
                 textAlign="center"
@@ -210,7 +212,9 @@ export default function Leaderboard({
                 >
                   {score}
                 </Td>
+                {/* Hide on mobile (base), show at md+ */}
                 <Td
+                  display={{ base: 'none', md: 'table-cell' }}
                   textStyle="ranking"
                   textAlign="center"
                   verticalAlign="middle"

@@ -1,6 +1,6 @@
 // components/InteractiveHeading.tsx
-import { Heading, HeadingProps } from "@chakra-ui/react";
-import { useRef, useEffect } from "react";
+import { Heading, HeadingProps, useToast } from "@chakra-ui/react";
+import { useRef, useEffect, useState, MouseEvent } from "react";
 
 /** clamp a number to [min,max] */
 function clamp(value: number, min: number, max: number) {
@@ -10,36 +10,29 @@ function clamp(value: number, min: number, max: number) {
 export interface InteractiveHeadingProps
   extends Omit<HeadingProps, "children" | "transition" | "transitionDuration"> {
   children: React.ReactNode;
-
-  /** width axis caps (e.g. 26→146) */
   minWidth?: number;
   maxWidth?: number;
-
-  /** slant axis caps in font units (e.g. −15→+15) */
   minSlant?: number;
   maxSlant?: number;
-
-  /** initial “preview” before any input */
   previewWidth?: number;
   previewSlant?: number;
-
-  /** how quickly the fontVariationSettings transition (seconds) */
   transitionDuration?: number;
-
-  /** enable/disable tilt (defaults to true) */
   enableTilt?: boolean;
+  /** how long to wait for a tilt-permission response (ms) */
+  permissionTimeout?: number;
 }
 
 export default function InteractiveHeading({
   children,
-  minWidth          = 26,
-  maxWidth          = 146,
-  minSlant         = -15,
-  maxSlant          = 15,
-  previewWidth      = (26 + 146) / 2,
-  previewSlant      = 0,
-  transitionDuration = 0.3,
-  enableTilt         = true,
+  minWidth            = 26,
+  maxWidth            = 146,
+  minSlant           = -15,
+  maxSlant            = 15,
+  previewWidth        = (26 + 146) / 2,
+  previewSlant        = 0,
+  transitionDuration  = 0.3,
+  enableTilt          = true,
+  permissionTimeout   = 5000,         // ← default 5s
 
   fontSize       = "6xl",
   letterSpacing  = "0.2em",
@@ -47,53 +40,41 @@ export default function InteractiveHeading({
   ...rest
 }: InteractiveHeadingProps) {
   const ref = useRef<HTMLHeadingElement>(null);
+  const toast = useToast();
 
+  // track if tilt was ever allowed or denied
+  const [tiltAllowed, setTiltAllowed]         = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // 1) Core: pointer + deviceorientation (if allowed)
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    // helper: compute and apply axes
     const updateAxes = (xNorm: number, yNorm: number) => {
       const wd = minWidth + xNorm * (maxWidth - minWidth);
       const sl = minSlant + yNorm * (maxSlant - minSlant);
-      el.style.fontVariationSettings = `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
+      el.style.fontVariationSettings = 
+        `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
     };
 
-    // 1) pointermove handler
     const onPointerMove = (e: PointerEvent) => {
-      const xNorm = clamp(e.clientX / window.innerWidth, 0, 1);
-      const yNorm = clamp(e.clientY / window.innerHeight, 0, 1);
-      updateAxes(xNorm, yNorm);
+      updateAxes(clamp(e.clientX / window.innerWidth, 0, 1),
+                 clamp(e.clientY / window.innerHeight,0, 1));
     };
     window.addEventListener("pointermove", onPointerMove);
 
-    // 2) deviceorientation handler
     let onDeviceOrientation: ((e: DeviceOrientationEvent) => void) | null = null;
-    if (enableTilt && typeof DeviceOrientationEvent !== "undefined") {
+    if (enableTilt && tiltAllowed) {
       onDeviceOrientation = (e) => {
-        // gamma: left/right tilt [-90…90], beta: front/back tilt [-180…180]
         const gamma = e.gamma ?? 0;
         const beta  = e.beta  ?? 0;
-        // assume comfortable tilt range ±45°, map to [0..1]
-        const xNorm = clamp((gamma + 45) / 90, 0, 1);
-        const yNorm = clamp((beta  + 45) / 90, 0, 1);
-        updateAxes(xNorm, yNorm);
+        updateAxes(
+          clamp((gamma + 45) / 90, 0, 1),
+          clamp((beta  + 45) / 90, 0, 1)
+        );
       };
-
-      // iOS 13+ requires user permission
-      const devOrient = DeviceOrientationEvent as any;
-      if (typeof devOrient.requestPermission === "function") {
-        devOrient
-          .requestPermission()
-          .then((perm: string) => {
-            if (perm === "granted") {
-              window.addEventListener("deviceorientation", onDeviceOrientation!);
-            }
-          })
-          .catch(console.error);
-      } else {
-        window.addEventListener("deviceorientation", onDeviceOrientation);
-      }
+      window.addEventListener("deviceorientation", onDeviceOrientation);
     }
 
     return () => {
@@ -102,16 +83,84 @@ export default function InteractiveHeading({
         window.removeEventListener("deviceorientation", onDeviceOrientation);
       }
     };
-  }, [
-    minWidth,
-    maxWidth,
-    minSlant,
-    maxSlant,
-    enableTilt,
-  ]);
+  }, [minWidth, maxWidth, minSlant, maxSlant, enableTilt, tiltAllowed]);
 
-  // initial preview style
-  const initialSettings = `"wdth" ${previewWidth}, "slnt" ${previewSlant}`;
+  // 2) Prompt for permission on first tap (iOS)
+  useEffect(() => {
+    const el = ref.current;
+    const devOrient = (DeviceOrientationEvent as any);
+
+    if (enableTilt && typeof devOrient?.requestPermission === "function") {
+      const handleTap = (e: MouseEvent) => {
+        devOrient.requestPermission()
+          .then((perm: string) => {
+            if (perm === "granted") {
+              setTiltAllowed(true);
+              toast({ title:"Tilt enabled", status:"success", duration:2000 });
+            } else {
+              setPermissionDenied(true);
+              toast({ title:"Tilt denied", status:"warning", duration:2000 });
+            }
+          })
+          .catch(() => {
+            setPermissionDenied(true);
+            toast({ title:"Tilt error", status:"error", duration:2000 });
+          });
+        el?.removeEventListener("pointerdown", handleTap as any);
+      };
+
+      toast({ title:"Tap heading to enable tilt", status:"info", duration:3000 });
+      el?.addEventListener("pointerdown", handleTap as any);
+    } else {
+      // not iOS 13+ or no API → treat as allowed
+      setTiltAllowed(true);
+    }
+  }, [enableTilt, toast]);
+
+  // 3) Fallback on explicit denial OR on no response within timeout
+  useEffect(() => {
+    if (!enableTilt) return;
+
+    let timer: NodeJS.Timeout|number;
+    // start timeout if we haven't got a grant/deny yet
+    if (!tiltAllowed && !permissionDenied) {
+      timer = setTimeout(() => {
+        setPermissionDenied(true);
+        toast({ title:"Auto-animating heading", status:"info", duration:2000 });
+      }, permissionTimeout);
+    }
+
+    return () => {
+      clearTimeout(timer as any);
+    };
+  }, [enableTilt, tiltAllowed, permissionDenied, permissionTimeout, toast]);
+
+  // 4) Auto-animate when permissionDenied === true
+  useEffect(() => {
+    if (!(enableTilt && permissionDenied)) return;
+    let rafId: number;
+    let startTs = 0;
+
+    const animate = (ts: number) => {
+      if (!startTs) startTs = ts;
+      const t = (ts - startTs) / 1000;
+      const xNorm = (Math.sin(t) + 1) / 2;
+      const yNorm = (Math.cos(t) + 1) / 2;
+      if (ref.current) {
+        const wd = minWidth + xNorm * (maxWidth - minWidth);
+        const sl = minSlant + yNorm * (maxSlant - minSlant);
+        ref.current.style.fontVariationSettings = 
+          `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
+      }
+      rafId = requestAnimationFrame(animate);
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafId);
+  }, [enableTilt, permissionDenied, minWidth, maxWidth, minSlant, maxSlant]);
+
+  // initial preview
+  const initial = `"wdth" ${previewWidth}, "slnt" ${previewSlant}`;
 
   return (
     <Heading
@@ -122,7 +171,7 @@ export default function InteractiveHeading({
       letterSpacing={letterSpacing}
       lineHeight={lineHeight}
       sx={{
-        fontVariationSettings: initialSettings,
+        fontVariationSettings: initial,
         transition:            `font-variation-settings ${transitionDuration}s ease`,
       }}
       {...rest}
