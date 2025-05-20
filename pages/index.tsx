@@ -123,14 +123,15 @@ const mintBgSize = useBreakpointValue({
   return (
     <Box
       w="100%"
-      h="100%"
+      h="100vh"
       overflowY="auto"
       overflowX="hidden"
       scrollSnapType="y mandatory"
       scrollSnapStop="always"
+      overscrollBehaviorY="contain"
       display="flex"
       flexDirection="column"
-      sx={{ '&::-webkit-scrollbar': { display: 'none' }, touchAction: 'pan-y', }}
+      sx={{ WebkitOverscrollBehavior: 'contain', '&::-webkit-scrollbar': { display: 'none' }, touchAction: 'pan-y', }}
       minH="0"
     >
       {/** ——— Welcome Section ——— **/}
