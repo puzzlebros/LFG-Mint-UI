@@ -381,6 +381,7 @@ const mintBgSize = useBreakpointValue({
         scrollSnapStop="always"
         position="relative"
         overflow="hidden"
+        overscrollBehaviorY="contain"
         // bgImage="url('/images/mint-bg.png')"
         // bgSize="cover"
         // bgPosition="center"
@@ -450,8 +451,11 @@ const mintBgSize = useBreakpointValue({
             MINT
           </Button>
         </Box>
-            <Footer />
-        
+
+        <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
+         <Footer />
+       </Box>
+       
       </Box>
     </Box>
   );

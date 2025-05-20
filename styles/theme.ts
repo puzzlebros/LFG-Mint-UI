@@ -82,24 +82,22 @@ export default extendTheme({
         letterSpacing: "2.5px",
         textTransform: "uppercase",
         textAlign:     "center",
+        fontSize: { base: "1rempx", md: "1.2rem" },
       },
       sizes: {
         default: {
           h:              "40px",
-          w:             "375px",
+          w:  { base: "275px", sm: "200px", md: "375px" },
           gap:            "10px",
           justifyContent: "center",
           alignItems:     "center",
           flexShrink:     0,
           textStyle:      "narrow",
-          fontSize: "1.2rem"
         },
         nav: {
-          w:         "170px",
-          h:         "35px",
-          px:        "16px",
-          textStyle: "condensed",
-          fontSize: "1.4rem"
+          w: { base: "250px", md: "170px" },
+          h: { base: "45px", md: "35px" },
+          textStyle:  "narrow",
         },
       },
       variants: {
@@ -176,8 +174,8 @@ export default extendTheme({
       "button.wallet-adapter-button-trigger": {
       /* make the background transparent so our text‐gradient shows */
         borderRadius:    0,
-        height:          "35px",
-        width:           "150px",
+        height: { base: "45px", md: "35px" },
+        width: { base: "250px", md: "150px" },
         /* setup a gradient border */
         border:               "2px solid transparent",
         borderImageSlice:     1,
@@ -189,19 +187,19 @@ export default extendTheme({
         WebkitBackgroundClip: "text",
         backgroundImage:      "linear-gradient(to right, var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
         fontWeight: "normal",
-        fontSize: "1.4rem",
+        fontSize: { base: "1rempx", md: "1.2rem" },
         letterSpacing: "1px",
-        textStyle: "condensed",
+        textStyle: "narrow",
         textTransform: "uppercase",
         textAlign:     "center",
 
         /* hover & active can be tweaked as you like */
         _hover: {
         background:      "linear-gradient(to right,var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
-                fontWeight: "normal",
+        fontWeight: "normal",
         fontSize: "1.2rem",
         letterSpacing: "2.5px",
-        textStyle: "condensed",
+        textStyle: "narrow",
         textTransform: "uppercase",
         textAlign:     "center",
         color: "white",

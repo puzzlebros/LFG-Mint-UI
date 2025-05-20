@@ -1,4 +1,3 @@
-//components/Navbar.tsx
 import React, { useEffect, useState, useRef } from "react";
 import NextLink from "next/link";
 import {
@@ -9,208 +8,202 @@ import {
   Tooltip,
   Image as ChakraImage,
   Slide,
-  Menu,
-  MenuButton,
-  MenuList,
-  MenuItem,
   IconButton,
   useBreakpointValue,
 } from "@chakra-ui/react";
+import { HamburgerIcon } from "@chakra-ui/icons";
+import { motion, AnimatePresence } from "framer-motion";
 import LogoImage from "./LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { CustomWalletButton } from "./CustomWalletButton";
 
-function Navbar() {
+// Animated IconButton using framer-motion
+const MotionIconButton = motion(IconButton);
+
+export default function Navbar() {
+  // Leaderboard freeze state and countdown
   const { isFrozen, next, countdown } = useWeeklyCycle();
+  // Wallet connection status
+  const { connected } = useWallet();
+
+  // Controls slide-in navbar visibility (driven by Unity events)
   const [visible, setVisible] = useState(true);
+  // Toggle for mobile menu overlay
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Mounted flag for breakpoint detection
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => { setIsMounted(true); }, []);
+
+  // Ref for Unity iframe if present
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  const wantsMobile = useBreakpointValue({ base: true, md: false });
-  const isMobile = mounted && wantsMobile;
-
+  // Setup Unity message and visibility handlers
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === "gameSession") {
-        if (event.data.action === "start") {
-          setVisible(false);
-        }
-        if (event.data.action === "end") {
+    const checkIframe = () => {
+      iframeRef.current = document.querySelector("iframe[src*='UnityBuild']");
+    };
+    const observeUnload = () => {
+      if (!iframeRef.current) return;
+      iframeRef.current.addEventListener("load", () => {
+        iframeRef.current?.contentWindow?.addEventListener("unload", () => {
           setVisible(true);
-        }
+        });
+      });
+    };
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "gameSession") {
+        setVisible(e.data.action === "end");
       }
     };
-
-    const checkIframeExistence = () => {
-      const iframe = document.querySelector("iframe[src*='UnityBuild']");
-      iframeRef.current = iframe as HTMLIFrameElement | null;
-    };
-
     const handleVisibility = () => {
       if (
         document.visibilityState === "visible" &&
         !visible &&
         !document.querySelector("iframe[src*='UnityBuild']")
       ) {
-        console.warn("👁️ Unity iframe missing on tab focus — showing Navbar as fallback.");
         setVisible(true);
       }
     };
 
-    // Also listen for iframe unload directly (e.g. if iframe crashes)
-    const observeIframeUnload = () => {
-      if (!iframeRef.current) return;
-      iframeRef.current.addEventListener("load", () => {
-        iframeRef.current?.contentWindow?.addEventListener("unload", () => {
-          console.warn("🧩 Unity iframe unloaded — restoring Navbar.");
-          setVisible(true);
-        });
-      });
-    };
-
-    checkIframeExistence();
-    observeIframeUnload();
-
+    checkIframe();
+    observeUnload();
     window.addEventListener("message", handleMessage);
     document.addEventListener("visibilitychange", handleVisibility);
-
     return () => {
       window.removeEventListener("message", handleMessage);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [visible]);
 
-  return (
-    <Slide direction="top" in={visible} style={{ zIndex: 10 }}>
-      <Box bg="brand.White" boxShadow="0 3px 3px rgba(0,0,0,0.1)">
-        <Flex as="nav" align="center" justify="space-between" px={4} py={2}>
+  // Determine if mobile layout is active
+  const wantsMobile = useBreakpointValue({ base: true, md: false });
+  const isMobile = isMounted && !!wantsMobile;
 
-          {/* — Logo on the left — */}
-          <Flex align="center" gap={2}>
-            <NextLink href="/" passHref>
-              <Box cursor="pointer">
-                <LogoImage
-                  src="/images/LFG_Iso.png"
-                  alt="LFG Isotype"
-                  boxSize="40px"
-                />
-              </Box>
-            </NextLink>
-            <ChakraImage
-              src="/images/LFG_Logo.png"
-              alt="LFG Logotype"
-              h="40px"
-              objectFit="contain"
-              userSelect="none"
-              pointerEvents="none"
-            />
+  // Toggle mobile menu
+  const toggleMenu = () => setIsMenuOpen((prev) => !prev);
+
+  // Navigation handlers
+  const handlePlay = () => {
+    if (!isFrozen) {
+      setIsMenuOpen(false);
+      window.location.assign("/game");
+    }
+  };
+  const handleMint = () => {
+    setIsMenuOpen(false);
+    window.location.assign("/mint");
+  };
+
+  return (
+    <>
+      {/* Animated hamburger stays fixed top-right */}
+      {isMobile && (
+        <MotionIconButton
+          aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+          icon={<HamburgerIcon />}
+          variant="ghost"
+          size="lg"
+          w={10}
+          h={7}
+          onClick={toggleMenu}
+          // Closed: vertical (90deg), Open: horizontal (0deg)
+          animate={{ rotate: isMenuOpen ? 0 : 90 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          position="fixed"
+          top={4}
+          right={4}
+          zIndex={40}
+        />
+      )}
+
+      {/* Slide-in Navbar; unaffected by menu open state */}
+      <Slide direction="top" in={visible} style={{ zIndex: 30 }}>
+        <Box bg="brand.White" boxShadow="0 3px 3px rgba(0,0,0,0.1)">
+          <Flex as="nav" align="center" justify="space-between" px={4} py={2}>
+            {/* Logo section */}
+            <Flex align="center" gap={2}>
+              <NextLink href="/" passHref>
+                <Box cursor="pointer">
+                  <LogoImage src="/images/LFG_Iso.png" alt="LFG Isotype" boxSize="40px" />
+                </Box>
+              </NextLink>
+              <ChakraImage
+                src="/images/LFG_Logo.png"
+                alt="LFG Logotype"
+                h="40px"
+                userSelect="none"
+                pointerEvents="none"
+              />
+            </Flex>
+
+            <Spacer />
+
+            {/* Desktop menu items */}
+            {!isMobile && (
+              <Flex align="center" gap={7}>
+                <Tooltip
+                  label={isFrozen ? `Locked until ${next.toLocaleString()}` : `Next freeze in ${countdown}`}
+                >
+                  <Button size="nav" isDisabled={isFrozen} onClick={handlePlay}>
+                    PLAY
+                  </Button>
+                </Tooltip>
+                <NextLink href="/mint" passHref>
+                  <Button size="nav" variant="secondary" onClick={handleMint}>
+                    MINT
+                  </Button>
+                </NextLink>
+                <CustomWalletButton />
+              </Flex>
+            )}
           </Flex>
 
-          <Spacer />
-
-          {isMobile ? (
-            // ─── Mobile ───
-            <Box display="flex" alignItems="center">
-              <Menu>
-                <MenuButton
-                  as={IconButton}
-                  aria-label="Open menu"
-                  variant="ghost"
-                  width="40px"
-                  icon={
-                    <ChakraImage
-                      src="/images/LFG_Iso.png"
-                      alt="Menu"
-                      boxSize="24px"
-                    />
-                  }
-                />
-                <MenuList>
-                  {/* PLAY */}
-                  <MenuItem as="div" p={0}>
-                    <Tooltip
-                      label={
-                        isFrozen
-                          ? `Game locked until ${next.toLocaleString()}`
-                          : `Next freeze in ${countdown}`
-                      }
-                    >
-                      <Button
-                        size="nav"
-                        isDisabled={isFrozen}
-                        w="full"
-                        onClick={() => !isFrozen && window.location.assign("/game")}
-                      >
-                        PLAY
-                      </Button>
-                    </Tooltip>
-                  </MenuItem>
-
-                  {/* MINT */}
-                  <NextLink href="/mint" passHref>
-                    <MenuItem as="div" p={0}>
-                      <Button
-                        size="nav"
-                        w="full"
-                        onClick={() => window.location.assign("/mint")}
-                      >
-                        MINT
-                      </Button>
-                    </MenuItem>
-                  </NextLink>
-
-                  {/* LOG IN / Wallet */}
-                  <MenuItem as="div" p={0}> <CustomWalletButton/> </MenuItem>
-
-                </MenuList>
-              </Menu>
+          {/* Frozen banner below nav */}
+          {isFrozen && (
+            <Box bg="brand.Pink" color="white" textAlign="center" py={2}>
+              🎉 Leaderboard frozen until{' '}
+              <b>{next.toLocaleDateString()} {next.toLocaleTimeString()}</b>
             </Box>
-          ) : (
-            // — desktop: all three buttons inline —
-            <Box display="flex" alignItems="center" gap="7">
+          )}
+        </Box>
+      </Slide>
+
+      {/* Fullscreen mobile menu overlay beneath toggle, above content */}
+      <AnimatePresence>
+        {isMobile && isMenuOpen && (
+          <motion.div
+            key="menuOverlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 20 }}
+          >
+            <Flex direction="column" justify="center" align="center" h="100%" gap={10}>
               <Tooltip
-                label={
-                  isFrozen
-                    ? `Game locked until ${next.toLocaleString()}`
-                    : `Next freeze in ${countdown}`
-                }
+                label={isFrozen ? `Locked until ${next.toLocaleString()}` : `Next freeze in ${countdown}`}
+                shouldWrapChildren
               >
-                <Button
-                  size="nav"
-                  isDisabled={isFrozen}
-                  onClick={() => !isFrozen && window.location.assign("/game")}
-                >
+                <Button size="nav" variant="primary" isDisabled={isFrozen} onClick={handlePlay}>
                   PLAY
                 </Button>
               </Tooltip>
-
-              <NextLink href="/mint" passHref>
-                <Button size="nav" variant="secondary">MINT</Button>
-              </NextLink>
-              
-              <CustomWalletButton/>
-              
-            </Box>
-          )}
-        </Flex>
-        
-        {/* — frozen banner — */}
-        {isFrozen && (
-            <Box
-              bg="brand.Pink"
-              color="white"
-              textAlign="center"
-              py={2}
-            >
-              🎉 Leaderboard is frozen for winners to claim! It unlocks on{' '}
-              <b>{next.toLocaleDateString()} at {next.toLocaleTimeString()}</b>.
-            </Box>
-          )}
-      </Box>
-    </Slide>
+              <Button size="nav" variant="secondary" onClick={handleMint}>
+                MINT
+              </Button>
+              <Box
+                onClick={() => {
+                  if (!connected) setIsMenuOpen(false);
+                }}
+              >
+                <CustomWalletButton style={{ justifyContent: "center", paddingLeft: 0, paddingRight: 0 }} />
+              </Box>
+            </Flex>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
-
-export default Navbar;
