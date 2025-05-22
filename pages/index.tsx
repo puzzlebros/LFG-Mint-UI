@@ -123,7 +123,7 @@ const mintBgSize = useBreakpointValue({
   return (
     <Box
       w="100%"
-      h="100vh"
+      h="100svh"
       overflowY="auto"
       overflowX="hidden"
       scrollSnapType="y mandatory"

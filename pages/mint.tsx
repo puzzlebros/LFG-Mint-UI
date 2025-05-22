@@ -268,6 +268,27 @@ export default function MintPage() {
       setCheckEligibility(true);
     }
   }, [mintsCreated]);
+  
+  // after all other hooks, before return:
+  useEffect(() => {
+    // don’t run until a mint actually happens
+    if (!mintsCreated?.length) return
+
+    // grab the latest mint
+    const { offChainMetadata, mint } = mintsCreated[mintsCreated.length - 1]  
+    if (!offChainMetadata?.name || !offChainMetadata.image) return
+
+    // fire-and-forget: don’t await or block UI
+    axios.post('/api/postMint', {
+      name:        offChainMetadata.name,
+      imageUrl:    offChainMetadata.image,
+      mintAddress: mint.toString(),
+    }).catch(err => {
+      console.error('⚠️ postMint failed:', err)
+      // optionally show a toast, but don’t interrupt the user’s flow:
+      // toast({ title: 'Notification failed', status: 'warning', duration: 3000 })
+    })
+  }, [mintsCreated])
 
   const isMinting = guards.some(g => g.minting);
 
