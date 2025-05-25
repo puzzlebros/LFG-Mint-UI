@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Recreate __dirname in ESM:
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Automatically generate a unique build ID (timestamp) for each Next.js build
 const buildId = process.env.UNITY_BUILD_ID || Date.now().toString();
