@@ -55,6 +55,27 @@ const nextConfig = {
           { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
         ],
       },
+      // Unversioned .data.br — ensure correct encoding for initial fetch
+      {
+        source: '/UnityBuild/Build/:file*.data.br',
+        headers: [
+          { key: 'Content-Encoding', value: 'br'                                 },
+        ],
+      },
+      // Unversioned .js.br — ensure correct encoding for initial fetch
+      {
+        source: '/UnityBuild/Build/:file*.js.br',
+        headers: [
+          { key: 'Content-Encoding', value: 'br'                                 },
+        ],
+      },
+      // Unversioned .symbols.json.br — ensure correct encoding for initial fetch
+      {
+        source: '/UnityBuild/Build/:file*.symbols.json.br',
+        headers: [
+          { key: 'Content-Encoding', value: 'br'                                 },
+        ],
+      },
       // Versioned Brotli WebAssembly
       {
         source: `${base}/:file*.wasm.br`,
