@@ -1,7 +1,19 @@
 /** @type {import('next').NextConfig} */
+import fs from 'fs';
+import path from 'path';
 
-// Automatically generate a build ID (timestamp) for each Next.js build
+// Automatically generate a unique build ID (timestamp) for each Next.js build
 const buildId = process.env.UNITY_BUILD_ID || Date.now().toString();
+
+// Paths on disk for versioned Unity build
+const unityRoot = path.join(__dirname, 'public', 'UnityBuild');
+const versionedDir = path.join(unityRoot, buildId);
+
+// Copy UnityBuild output into versioned folder if not already present
+if (!fs.existsSync(versionedDir)) {
+  fs.mkdirSync(versionedDir, { recursive: true });
+  fs.cpSync(unityRoot, versionedDir, { recursive: true, errorOnExist: false });
+}
 
 const nextConfig = {
   // Use our custom buildId so each deploy uses a new folder
@@ -21,113 +33,101 @@ const nextConfig = {
 
   // Apply headers to each asset type under the versioned Build folder
   async headers() {
-    const base = `/UnityBuild/${buildId}/Build`;
+    const versionedBase = `/UnityBuild/${buildId}/Build`;
     return [
-      // Ensure any .wasm.br (versioned or not) has the correct MIME + encoding
+      // Unversioned .wasm.br: ensure correct MIME + encoding
       {
-        source: '/UnityBuild/:path*/Build/:file*.wasm.br',
+        source: '/UnityBuild/Build/:file*.wasm.br',
         headers: [
-          { key: 'Content-Type',     value: 'application/wasm' },
-          { key: 'Content-Encoding', value: 'br'               },
+          { key: 'Content-Type',     value: 'application/wasm'                   },
+          { key: 'Content-Encoding', value: 'br'                                 },
           { key: 'Cache-Control',    value: 'public, max-age=31536000, immutable' },
           { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
           { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
-
-      // Ensure original .br path sends encoding for initial fetch
+      // Versioned Brotli WebAssembly
       {
-        source: '/UnityBuild/Build/:file*.br',
+        source: `${versionedBase}/:file*.wasm.br`,
         headers: [
-          { key: 'Content-Encoding', value: 'br' },
-        ],
-      },
-
-      // Versioned Brotli-compressed WebAssembly
-      {
-        source: `${base}/:file*.wasm.br`,
-        headers: [
-          { key: 'Content-Type',                value: 'application/wasm'                   },
-          { key: 'Content-Encoding',            value: 'br'                                  },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',     value: 'application/wasm'                   },
+          { key: 'Content-Encoding', value: 'br'                                 },
+          { key: 'Cache-Control',    value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
       // Versioned uncompressed WebAssembly
       {
-        source: `${base}/:file*.wasm`,
+        source: `${versionedBase}/:file*.wasm`,
         headers: [
-          { key: 'Content-Type',                value: 'application/wasm'                   },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',  value: 'application/wasm'                   },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
-
-      // Versioned Brotli-compressed JS
+      // Versioned Brotli JS
       {
-        source: `${base}/:file*.js.br`,
+        source: `${versionedBase}/:file*.js.br`,
         headers: [
-          { key: 'Content-Type',                value: 'application/javascript'             },
-          { key: 'Content-Encoding',            value: 'br'                                  },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',     value: 'application/javascript'             },
+          { key: 'Content-Encoding', value: 'br'                                 },
+          { key: 'Cache-Control',    value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
       // Versioned uncompressed JS
       {
-        source: `${base}/:file*.js`,
+        source: `${versionedBase}/:file*.js`,
         headers: [
-          { key: 'Content-Type',                value: 'application/javascript'             },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',  value: 'application/javascript'             },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
-
-      // Versioned Brotli-compressed data blob
+      // Versioned Brotli data blob
       {
-        source: `${base}/:file*.data.br`,
+        source: `${versionedBase}/:file*.data.br`,
         headers: [
-          { key: 'Content-Type',                value: 'application/octet-stream'           },
-          { key: 'Content-Encoding',            value: 'br'                                  },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',     value: 'application/octet-stream'           },
+          { key: 'Content-Encoding', value: 'br'                                 },
+          { key: 'Cache-Control',    value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
       // Versioned uncompressed data blob
       {
-        source: `${base}/:file*.data`,
+        source: `${versionedBase}/:file*.data`,
         headers: [
-          { key: 'Content-Type',                value: 'application/octet-stream'           },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',  value: 'application/octet-stream'           },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
-
-      // Versioned Brotli-compressed symbols JSON
+      // Versioned Brotli symbols JSON
       {
-        source: `${base}/:file*.symbols.json.br`,
+        source: `${versionedBase}/:file*.symbols.json.br`,
         headers: [
-          { key: 'Content-Type',                value: 'application/json'                   },
-          { key: 'Content-Encoding',            value: 'br'                                  },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',     value: 'application/json'                   },
+          { key: 'Content-Encoding', value: 'br'                                 },
+          { key: 'Cache-Control',    value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
       // Versioned uncompressed symbols JSON
       {
-        source: `${base}/:file*.symbols.json`,
+        source: `${versionedBase}/:file*.symbols.json`,
         headers: [
-          { key: 'Content-Type',                value: 'application/json'                   },
-          { key: 'Cache-Control',               value: 'public, max-age=31536000, immutable' },
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'                         },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'                        },
+          { key: 'Content-Type',  value: 'application/json'                   },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin'   },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp'  },
         ],
       },
     ];

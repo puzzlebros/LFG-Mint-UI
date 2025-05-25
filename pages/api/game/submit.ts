@@ -14,6 +14,11 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data | string>
 ) {
+
+  console.log('🔥 /api/game/submit invoked');
+  console.log('Body:', JSON.stringify(req.body));
+  console.log('Global sessions:', Object.keys(global.sessions || {}));
+
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
   // Accept userName from client along with sessionId, finalScore, hmac
