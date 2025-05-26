@@ -79,15 +79,25 @@ export default function HomePage() {
 
   const traitSize = useBreakpointValue({ base: 330, md: 480 });
 
-  const mintBgText = useBreakpointValue({
-  base: `MI\nNT`,     // mobile: two lines
-  md:   "MINTMINT",   // tablet+ and up: repeated
-});
+  const mintHeroSize = useBreakpointValue({
+    base: "37rem",      // much larger on phones
+    md:   "48rem",
+  });
 
-const mintBgSize = useBreakpointValue({
-  base: "24rem",      // much larger on phones
-  md:   "22rem",      // your existing 22rem on desktop
-});
+  const mintBgText = useBreakpointValue({
+    base: `MI\nNT`,
+    md:   "MINTMINT",
+  });
+
+  const mintBgSize = useBreakpointValue({
+    base: "24rem",
+    md:   "22rem",
+  });
+
+  const mintButtonMargin = useBreakpointValue({
+    base: "22%",
+    md:   "10%",
+  });
 
   // when mount or resize, capture dimensions
   useEffect(() => {
@@ -144,12 +154,12 @@ const mintBgSize = useBreakpointValue({
         scrollSnapAlign="start"
         scrollSnapStop="always"
         position="relative"
-      bgGradient="linear(
-      to-b,
-      #93D2FF 0%,
-      #BDACFF 29%,
-      #FFBCD5 100%
-      )"
+        bgGradient="linear(
+        to-b,
+        #93D2FF 0%,
+        #BDACFF 29%,
+        #FFBCD5 100%
+        )"
         pt={4}      // space below navbar
         pb="100px"   // reserve space for the fixed scroller
         overflow="hidden"
@@ -174,7 +184,7 @@ const mintBgSize = useBreakpointValue({
         >
           <InteractiveHeading
             color="#FFF"
-            fontSize="48rem"
+            fontSize={mintHeroSize}
             fontWeight="normal"
             letterSpacing="0.01em"
             lineHeight="0.8"
@@ -440,7 +450,7 @@ const mintBgSize = useBreakpointValue({
         {/* Layer 3: Mint button */}
         <Box
           position="absolute"
-          bottom="10%"
+          bottom={mintButtonMargin}
           left="50%"
           transform="translateX(-50%)"
           zIndex={2}

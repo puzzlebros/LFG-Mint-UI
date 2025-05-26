@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# unity
+/public/UnityBuild/[0-9]*/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

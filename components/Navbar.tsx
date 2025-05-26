@@ -124,10 +124,10 @@ export default function Navbar() {
         <Box bg="brand.White" boxShadow="0 3px 3px rgba(0,0,0,0.1)">
           <Flex as="nav" align="center" justify="space-between" px={4} py={2}>
             {/* Logo section */}
-            <Flex align="center" gap={2}>
+            <Flex align="center" >
               <NextLink href="/" passHref>
                 <Box cursor="pointer">
-                  <LogoImage src="/images/LFG_Iso.png" alt="LFG Isotype" boxSize="40px" />
+                  <LogoImage src="/images/LFG_Iso.png" alt="LFG Isotype" boxSize="50px" />
                 </Box>
               </NextLink>
               <ChakraImage
