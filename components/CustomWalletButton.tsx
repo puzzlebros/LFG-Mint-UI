@@ -1,45 +1,51 @@
 // components/CustomWalletButton.tsx
-import React from "react";
-import dynamic from "next/dynamic";
+import React, { useMemo } from "react";
 import { Button, ButtonProps, Tooltip, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { getDappPublicKey } from "@/utils/leaderboard/phantom";
 import bs58 from "bs58";
 
-// Dynamically load the standard multi-wallet button for desktop and Android Chrome
-const WalletMultiButtonDynamic = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
-  { ssr: false }
-);
-
 export function CustomWalletButton(props: ButtonProps) {
-  const { connected, connect, disconnect, publicKey } = useWallet();
+  const { select, connected, connect, disconnect, publicKey } = useWallet();
+  const phantomName = useMemo(() => new PhantomWalletAdapter().name, []);
 
   const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
-  const isMobile = /Mobi|Android|iPhone|iPad|iPod/.test(ua);
+  const isMobile        = /Mobi|Android|iPhone|iPad|iPod/.test(ua);
   const isAndroidChrome = isMobile && /Android/.test(ua) && /Chrome/.test(ua);
   const isDeepLinkDevice = isMobile && !isAndroidChrome;
 
-  // Deep-link into Phantom on mobile non-Chrome
+  // Deep-link into Phantom on mobile non-Chrome, with version "1" (not "v1")
   const handleDeepLink = () => {
-    const dappP = bs58.encode(getDappPublicKey());
+    const dappP    = bs58.encode(getDappPublicKey());
     const redirect = encodeURIComponent(window.location.href);
-    const qs = new URLSearchParams({
+    const qs       = new URLSearchParams({
       dapp_encryption_public_key: dappP,
       redirect_link:              redirect,
       cluster:                    "mainnet-beta",
       app_url:                    window.location.origin,
     }).toString();
-    // Use universal link for most, custom scheme for iOS Chrome
-    const isIOS = /iPhone|iPad|iPod/.test(ua);
-    const isSafari = /Safari/.test(ua) && !/CriOS/.test(ua);
-    const deepLinkUrl = isIOS && !isSafari
-      ? `phantom://ul/v1/connect?${qs}`
-      : `https://phantom.app/ul/v1/connect?${qs}`;
-    window.location.href = deepLinkUrl;
+
+    // 1) Try custom-scheme
+    window.location.href = `phantom://1/connect?${qs}`;
+
+    // 2) Fallback to universal link after a moment
+    setTimeout(() => {
+      window.location.href = `https://phantom.app/ul/1/connect?${qs}`;
+    }, 500);
   };
 
-  // Not connected: show login UI
+  // Desktop/Android-Chrome login
+  const handleLogin = async () => {
+    try {
+      await select(phantomName);
+      await connect();
+    } catch (err) {
+      console.error("Connect error", err);
+    }
+  };
+
+  // Not connected → LOG IN
   if (!connected) {
     if (isDeepLinkDevice) {
       return (
@@ -53,23 +59,24 @@ export function CustomWalletButton(props: ButtonProps) {
         </Button>
       );
     }
-    // Desktop & Android Chrome: use built-in multi-wallet button
     return (
-      <WalletMultiButtonDynamic
+      <Button
         {...props}
         className="wallet-adapter-button-trigger"
         style={{ display: "flex", justifyContent: "center", alignItems: "center" }}
+        onClick={handleLogin}
       >
         LOG IN
-      </WalletMultiButtonDynamic>
+      </Button>
     );
   }
 
-  // Connected: truncate address and show logout
-  const logoutButton = (
+  // Connected → show truncated address + logout
+  const logoutBtn = (
     <Button
       {...props}
       className="wallet-adapter-button-trigger-secondary"
+      style={{ display: "flex", justifyContent: "center", alignItems: "center" }}
       onClick={() => disconnect()}
     >
       {publicKey?.toBase58().slice(0, 4)}…{publicKey?.toBase58().slice(-4)}
@@ -79,17 +86,12 @@ export function CustomWalletButton(props: ButtonProps) {
   if (isMobile) {
     return (
       <>
-        {logoutButton}
+        {logoutBtn}
         <Text fontSize="xs" color="gray.500" mt={1} textAlign="center">
           Tap to log out
         </Text>
       </>
     );
   }
-
-  return (
-    <Tooltip label="Click to log out" shouldWrapChildren>
-      {logoutButton}
-    </Tooltip>
-  );
+  return <Tooltip label="Click to log out">{logoutBtn}</Tooltip>;
 }
