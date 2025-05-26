@@ -1,4 +1,5 @@
 // components/CustomWalletButton.tsx
+// …other imports…
 import React, { useMemo } from "react";
 import { Button, ButtonProps, Tooltip, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -15,8 +16,7 @@ export function CustomWalletButton(props: ButtonProps) {
   const isAndroidChrome = isMobile && /Android/.test(ua) && /Chrome/.test(ua);
   const isDeepLinkDevice = isMobile && !isAndroidChrome;
 
-  // Deep-link into Phantom on mobile non-Chrome, with version "1" (not "v1")
-  const handleDeepLink = () => {
+  const buildPhantomLink = (useScheme: boolean) => {
     const dappP    = bs58.encode(getDappPublicKey());
     const redirect = encodeURIComponent(window.location.href);
     const qs       = new URLSearchParams({
@@ -26,16 +26,27 @@ export function CustomWalletButton(props: ButtonProps) {
       app_url:                    window.location.origin,
     }).toString();
 
-    // 1) Try custom-scheme
-    window.location.href = `phantom://1/connect?${qs}`;
-
-    // 2) Fallback to universal link after a moment
-    setTimeout(() => {
-      window.location.href = `https://phantom.app/ul/1/connect?${qs}`;
-    }, 500);
+    return useScheme
+      ? `phantom://1/connect?${qs}`
+      : `https://phantom.app/ul/1/connect?${qs}`;
   };
 
-  // Desktop/Android-Chrome login
+  const openLink = (url: string) => {
+    const a = document.createElement("a");
+    a.setAttribute("href", url);
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleDeepLink = () => {
+    // 1️⃣ Try the custom-scheme first (works in Chrome/Firefox on iOS)
+    openLink(buildPhantomLink(true));
+    // 2️⃣ Fallback to universal link shortly after (covers Safari & others)
+    setTimeout(() => openLink(buildPhantomLink(false)), 500);
+  };
+
   const handleLogin = async () => {
     try {
       await select(phantomName);
@@ -45,7 +56,7 @@ export function CustomWalletButton(props: ButtonProps) {
     }
   };
 
-  // Not connected → LOG IN
+  // — Not connected? LOG IN —
   if (!connected) {
     if (isDeepLinkDevice) {
       return (
@@ -71,7 +82,7 @@ export function CustomWalletButton(props: ButtonProps) {
     );
   }
 
-  // Connected → show truncated address + logout
+  // — Connected? Show address + log out —
   const logoutBtn = (
     <Button
       {...props}
