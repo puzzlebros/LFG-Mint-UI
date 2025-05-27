@@ -5,10 +5,10 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        {/* your existing fonts, meta tags, etc: */}
+        {/* your other fonts, meta tags, etc. */}
         <link rel="stylesheet" href="https://use.typekit.net/wul4mrm.css" />
 
-        {/* —————— Unity WebGL Preloads —————— */}
+        {/* ——— Unity WebGL Preloads (raw only) ——— */}
         <link
           rel="preload"
           href="/UnityBuild/Build/Jumper.loader.js"
@@ -16,24 +16,24 @@ export default function Document() {
         />
         <link
           rel="preload"
-          href="/UnityBuild/Build/Jumper.framework.js.br"
+          href="/UnityBuild/Build/Jumper.framework.js"
           as="script"
         />
         <link
           rel="preload"
-          href="/UnityBuild/Build/Jumper.wasm.br"
+          href="/UnityBuild/Build/Jumper.wasm"
           as="fetch"
           type="application/wasm"
           crossOrigin="anonymous"
         />
         <link
           rel="preload"
-          href="/UnityBuild/Build/Jumper.data.br"
+          href="/UnityBuild/Build/Jumper.data"
           as="fetch"
           type="application/octet-stream"
           crossOrigin="anonymous"
         />
-        {/* —————————— end Unity Preloads —————————— */}
+        {/* ————————————— end Unity Preloads ————————————— */}
       </Head>
       <body>
         <Main />
