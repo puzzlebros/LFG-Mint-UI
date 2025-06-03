@@ -48,9 +48,9 @@ if (!CM_PUBKEY) {
 const umi: Umi = createUmi(RPC_ENDPOINT).use(mplCoreCandyMachine());
 
 // Instead of reading from disk, parse the base64 JSON from env:
-const deployKeypairJsonBase64 = process.env.DEPLOY_KEYPAIR_JSON;
+const deployKeypairJsonBase64 = process.env.DEPLOY_KEYPAIR;
 if (!deployKeypairJsonBase64) {
-  console.error("❌ Missing DEPLOY_KEYPAIR_JSON");
+  console.error("❌ Missing DEPLOY_KEYPAIR");
   process.exit(1);
 }
 // Step 1: Decode base64 → UTF8 string → parse as JSON array of numbers
@@ -61,9 +61,9 @@ const deployKeypair = umi.eddsa.createKeypairFromSecretKey(deployKeypairBytes);
 umi.use(keypairIdentity(deployKeypair));
 
 // We’ll also parse TREASURY if you ever need it later:
-const treasuryKeypairJsonBase64 = process.env.TREASURY_KEYPAIR_JSON;
+const treasuryKeypairJsonBase64 = process.env.TREASURY_KEYPAIR;
 if (!treasuryKeypairJsonBase64) {
-  console.error("❌ Missing TREASURY_KEYPAIR_JSON");
+  console.error("❌ Missing TREASURY_KEYPAIR");
   process.exit(1);
 }
 const treasuryKeypairBytes = Uint8Array.from(

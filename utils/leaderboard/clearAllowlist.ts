@@ -40,7 +40,7 @@ if (!CM_PUBKEY) {
 const umi: Umi = createUmi(RPC_ENDPOINT).use(mplCoreCandyMachine());
 
 // Load DEPLOY keypair from base64 env (just like updateAllowlist)
-const deployKeypairJsonBase64 = process.env.DEPLOY_KEYPAIR_JSON!;
+const deployKeypairJsonBase64 = process.env.DEPLOY_KEYPAIR!;
 const deployKeypairBytes = Uint8Array.from(
   JSON.parse(Buffer.from(deployKeypairJsonBase64, "base64").toString("utf-8"))
 );
@@ -48,7 +48,7 @@ const deployKeypair = umi.eddsa.createKeypairFromSecretKey(deployKeypairBytes);
 umi.use(keypairIdentity(deployKeypair));
 
 // Load TREASURY if needed
-const treasuryKeypairJsonBase64 = process.env.TREASURY_KEYPAIR_JSON!;
+const treasuryKeypairJsonBase64 = process.env.TREASURY_KEYPAIR!;
 const treasuryKeypairBytes      = Uint8Array.from(
   JSON.parse(Buffer.from(treasuryKeypairJsonBase64, "base64").toString("utf-8"))
 );
