@@ -9,20 +9,20 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
-  // 1️⃣ Only allow GET or POST
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
+  // 1) Only accept GET
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // 2️⃣ Check Authorization header against ADMIN_PASSWORD
-  const authHeader = req.headers["authorization"];
+  // 2) Verify the “Authorization” header
+  const authHeader = req.headers["authorization"] || "";
   const expected   = `Bearer ${process.env.ADMIN_PASSWORD}`;
   if (authHeader !== expected) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // 3️⃣ Call the actual clearAllowlistGuard function
+  // 3) Run clearAllowlistGuard()
   try {
     console.log("🔔 [cron] Running clearAllowlistGuard…");
     await clearAllowlistGuard();
