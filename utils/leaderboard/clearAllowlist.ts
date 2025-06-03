@@ -1,8 +1,16 @@
+// utils/leaderboard/clearAllowlist.ts
+
+import "dotenv/config";
+import {
+  createClient,
+  SupabaseClient,
+} from "@supabase/supabase-js";
 import {
   publicKey,
   keypairIdentity,
   some,
   dateTime,
+  Umi,
 } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
@@ -12,50 +20,70 @@ import {
   updateCandyGuard,
   getMerkleRoot,
 } from "@metaplex-foundation/mpl-core-candy-machine";
-import fs from "fs";
 import { clearLeaderboard } from "./clearLeaderboard";
 
-// … (Supabase client setup omitted for brevity)
+// — Supabase admin client —
+const SUPABASE_URL         = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error("❌ Missing Supabase env vars");
+  process.exit(1);
+}
+const supabaseAdmin: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC!;
+// — UMI & Candy Machine setup — same as update
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC || "https://api.devnet.solana.com";
 const CM_PUBKEY    = process.env.NEXT_PUBLIC_CANDY_MACHINE_ID!;
-const umi = createUmi(RPC_ENDPOINT).use(mplCoreCandyMachine());
+if (!CM_PUBKEY) {
+  throw new Error("Missing NEXT_PUBLIC_CANDY_MACHINE_ID");
+}
+const umi: Umi = createUmi(RPC_ENDPOINT).use(mplCoreCandyMachine());
 
-// deploy authority
-const walletPath  = process.env.DEPLOY_KEYPAIR!;
-const walletBytes = JSON.parse(fs.readFileSync(walletPath, "utf-8")) as number[];
-const walletKP    = umi.eddsa.createKeypairFromSecretKey(new Uint8Array(walletBytes));
-umi.use(keypairIdentity(walletKP));
+// Load DEPLOY keypair from base64 env (just like updateAllowlist)
+const deployKeypairJsonBase64 = process.env.DEPLOY_KEYPAIR_JSON!;
+const deployKeypairBytes = Uint8Array.from(
+  JSON.parse(Buffer.from(deployKeypairJsonBase64, "base64").toString("utf-8"))
+);
+const deployKeypair = umi.eddsa.createKeypairFromSecretKey(deployKeypairBytes);
+umi.use(keypairIdentity(deployKeypair));
 
+// Load TREASURY if needed
+const treasuryKeypairJsonBase64 = process.env.TREASURY_KEYPAIR_JSON!;
+const treasuryKeypairBytes      = Uint8Array.from(
+  JSON.parse(Buffer.from(treasuryKeypairJsonBase64, "base64").toString("utf-8"))
+);
+const treasuryKeypair = umi.eddsa.createKeypairFromSecretKey(treasuryKeypairBytes);
+// (If you don’t use treasuryKeypair in this file, you can omit it.)
+
+/**
+ * clearAllowlistGuard:
+ *   1) Overwrite on-chain “LFG” group to an empty Merkle root (nobody can mint)
+ *   2) Set startDate = epoch, endDate = now → guard window expired
+ *   3) Clear Supabase “leaderboard” table
+ */
 export async function clearAllowlistGuard(): Promise<void> {
-  // 1) Fetch on‐chain Candy Machine & Candy Guard
+  console.log("🔍 [clear] Fetching Candy Machine & Candy Guard…");
   const cmData    = await fetchCandyMachine(umi, publicKey(CM_PUBKEY));
   const guardAddr = cmData.mintAuthority;
   const guardData = await fetchCandyGuard(umi, guardAddr);
 
-  // 2) Find the "LFG" group
-  const allowGroup = guardData.groups.find(g => g.label === "LFG");
-  if (!allowGroup) throw new Error('No "LFG" group on Candy Guard');
+  // Find the “LFG” group
+  const allowGroup = guardData.groups.find((g) => g.label === "LFG");
+  if (!allowGroup) {
+    throw new Error('No "LFG" group on Candy Guard');
+  }
 
-  // 3) Build an empty Merkle root (i.e. allowList = [])
+  // Build a Merkle root of an empty array
   const emptyRoot = getMerkleRoot([]);
 
-  // 4) Compute epoch & now for expiring the guard window
-  const epochISO = new Date(0).toISOString();    // 1970-01-01T00:00:00.000Z
-  const nowISO   = new Date().toISOString();     // right now
+  // Expire window: startDate=epoch, endDate=now
+  const epochISO = new Date(0).toISOString();
+  const nowISO   = new Date().toISOString();
+  console.log(`[clear] Expiring guard window ${epochISO} → ${nowISO}, clearing allowList`);
 
-  console.log(
-    `🔧 Clearing allowList and expiring window: ${epochISO} → ${nowISO}`
-  );
-
-  // 5) Call updateCandyGuard with BOTH “guards” and “groups”
   await updateCandyGuard(umi, {
     candyGuard: guardData.publicKey,
-
-    // If you do not want to change any of the top‐level (global) guards, pass an empty object:
     guards: {},
-
-    // Now override only the "LFG" group:
     groups: [
       {
         label: "LFG",
@@ -63,16 +91,17 @@ export async function clearAllowlistGuard(): Promise<void> {
           startDate: some({ date: dateTime(epochISO) }),
           endDate:   some({ date: dateTime(nowISO) }),
           allowList: some({ merkleRoot: emptyRoot }),
-          // If you also want to preserve mintLimit or botTax, you could re‐include them here:
+          // If you want to keep mintLimit or botTax, re‐apply it here.
           // mintLimit: some({ id: 1, limit: 1 }),
         },
       },
     ],
   }).sendAndConfirm(umi);
 
-  console.log("✅ On‐chain allowList cleared.");
+  console.log("✅ [clear] On-chain allowList cleared & expired");
 
-  // 6) Finally, clear your Supabase leaderboard rows
-  const deleted = await clearLeaderboard();
-  console.log(`✅ Supabase leaderboard cleared (${deleted} rows deleted).`);
+  // Now delete all rows from Supabase “leaderboard”
+  console.log("🗑 [clear] Deleting all rows from Supabase leaderboard…");
+  const deletedCount = await clearLeaderboard();
+  console.log(`✅ [clear] Supabase leaderboard cleared (${deletedCount} rows deleted)`);
 }
