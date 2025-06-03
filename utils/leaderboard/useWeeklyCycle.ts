@@ -28,7 +28,7 @@ export function useWeeklyCycle() {
 
       // —— your real Saturday‐freeze logic —— 
       // For example: freeze all day Saturday, unfreeze on Sunday 00:00.
-      const day = now.getUTCDay();          // 6 = Saturday
+      const day = now.getDay();          // 6 = Saturday
       const isSat = day === 6;
       setIsFrozen(isSat);
 
@@ -36,8 +36,8 @@ export function useWeeklyCycle() {
       const nextDate = new Date(now);
       if (isSat) {
         // unfreeze point: next Sunday 00:00 UTC
-        nextDate.setUTCDate(now.getUTCDate() + 1);
-        nextDate.setUTCHours(0, 0, 0, 0);
+        nextDate.setDate(now.getUTCDate() + 1);
+        nextDate.setHours(0, 0, 0, 0);
       } else {
         // freeze starts next Saturday 00:00 UTC
         const daysUntilSat = (6 - day + 7) % 7;

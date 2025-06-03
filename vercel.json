@@ -1,0 +1,14 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/update-allowlist",
+      "schedule": "0 3 * * 6",
+      "method": "GET"
+    },
+    {
+      "path": "/api/cron/clear-allowlist",
+      "schedule": "0 3 * * 0",
+      "method": "GET"
+    }
+  ]
+}
