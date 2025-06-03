@@ -20,7 +20,6 @@ import {
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import type { LeaderboardEntry } from "@/types/leaderboard";
 import { allowLists } from "../../allowlist";
-import { clearLeaderboard } from "./clearLeaderboard";
 
 // — Supabase clients —
 const SUPABASE_URL         = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -114,7 +113,4 @@ export async function updateAllowlistGuard(): Promise<void> {
     }],
   }).sendAndConfirm(umi);
   console.log("✅ Candy Guard window extended & root updated");
-
-  // only *now* clear the Supabase leaderboard
-  await clearLeaderboard();
 }
