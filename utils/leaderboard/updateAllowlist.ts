@@ -26,7 +26,7 @@ import type { LeaderboardEntry } from "@/types/leaderboard";
 import { allowLists } from "../../allowlist";
 
 // — Supabase clients —
-// We use ANON key for SELECT and SERVICE role for mutations (if needed)
+// We use anon key for reads and service key for deletes/edits
 const SUPABASE_URL         = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -38,42 +38,54 @@ const supabase:      SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_K
 const supabaseAdmin: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // — UMI & Candy Machine setup —
-// We will read our keypair JSON from a Base64‐encoded string in env.
+// RPC endpoint (Devnet or Mainnet depending on env)
 const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC || "https://api.devnet.solana.com";
 const CM_PUBKEY    = process.env.NEXT_PUBLIC_CANDY_MACHINE_ID!;
 if (!CM_PUBKEY) {
   throw new Error("Missing NEXT_PUBLIC_CANDY_MACHINE_ID");
 }
 
+// Initialize UMI with the Candy Machine plugin
 const umi: Umi = createUmi(RPC_ENDPOINT).use(mplCoreCandyMachine());
 
-// Instead of reading from disk, parse the base64 JSON from env:
-const deployKeypairJsonBase64 = process.env.DEPLOY_KEYPAIR;
-if (!deployKeypairJsonBase64) {
-  console.error("❌ Missing DEPLOY_KEYPAIR");
+// ── Load deploy keypair directly from JSON in env ──
+const rawDeploy = process.env.DEPLOY_KEYPAIR;
+if (!rawDeploy) {
+  console.error("❌ Missing DEPLOY_KEYPAIR environment variable");
   process.exit(1);
 }
-// Step 1: Decode base64 → UTF8 string → parse as JSON array of numbers
-const deployKeypairBytes = Uint8Array.from(
-  JSON.parse(Buffer.from(deployKeypairJsonBase64, "base64").toString("utf-8"))
-);
-const deployKeypair = umi.eddsa.createKeypairFromSecretKey(deployKeypairBytes);
+let deployBytes: Uint8Array;
+try {
+  // rawDeploy is a string like "[164,5,39,114,…]"
+  const arr: number[] = JSON.parse(rawDeploy);
+  deployBytes = new Uint8Array(arr);
+} catch (e) {
+  console.error("❌ DEPLOY_KEYPAIR is not valid JSON array:", e);
+  process.exit(1);
+}
+const deployKeypair = umi.eddsa.createKeypairFromSecretKey(deployBytes);
 umi.use(keypairIdentity(deployKeypair));
 
-// We’ll also parse TREASURY if you ever need it later:
-const treasuryKeypairJsonBase64 = process.env.TREASURY_KEYPAIR;
-if (!treasuryKeypairJsonBase64) {
-  console.error("❌ Missing TREASURY_KEYPAIR");
+// ── (Optional) Load treasury keypair from JSON in env ──
+const rawTreasury = process.env.TREASURY_KEYPAIR;
+if (!rawTreasury) {
+  console.error("❌ Missing TREASURY_KEYPAIR environment variable");
   process.exit(1);
 }
-const treasuryKeypairBytes = Uint8Array.from(
-  JSON.parse(Buffer.from(treasuryKeypairJsonBase64, "base64").toString("utf-8"))
-);
-const treasuryKeypair = umi.eddsa.createKeypairFromSecretKey(treasuryKeypairBytes);
-// (If you don’t actually use treasuryKeypair in this file, it’s fine to drop it; 
-//  it’s shown here for completeness.)
+let treasuryBytes: Uint8Array;
+try {
+  const arr: number[] = JSON.parse(rawTreasury);
+  treasuryBytes = new Uint8Array(arr);
+} catch (e) {
+  console.error("❌ TREASURY_KEYPAIR is not valid JSON array:", e);
+  process.exit(1);
+}
+const treasuryKeypair = umi.eddsa.createKeypairFromSecretKey(treasuryBytes);
+// (You can now use treasuryKeypair if needed; here we just load it so Umi has it available.)
 
-// — Fetch top 10 from Supabase leaderboard —
+/**
+ * Fetch the top 10 wallet addresses from Supabase “leaderboard” table.
+ */
 async function getTop10Wallets(): Promise<string[]> {
   const { data, error } = await supabase
     .from<"leaderboard", LeaderboardEntry>("leaderboard")
@@ -81,37 +93,45 @@ async function getTop10Wallets(): Promise<string[]> {
     .order("score", { ascending: false })
     .limit(10);
   if (error) throw error;
-  return data?.map(r => r.wallet_address) ?? [];
+  return data?.map((r) => r.wallet_address) ?? [];
 }
 
-// — Main function: merges top 10, updates on-chain Candy Guard —
+/**
+ * Main routine: 
+ *  1) Grab top 10 from Supabase
+ *  2) Merge into in-memory allowLists map
+ *  3) Compute Merkle root
+ *  4) Fetch on-chain Candy Guard, locate "LFG" group
+ *  5) Push a new Merkle root + updated dates (oldEnd → oldEnd + 7d)
+ */
 export async function updateAllowlistGuard(): Promise<void> {
   console.log("🔍 [update] Fetching top-10 from Supabase…");
   const top10 = await getTop10Wallets();
   console.log("   → top10:", top10);
 
-  // Merge into in-memory map (optional fallback)
+  // Merge into in-memory allowLists (optional local fallback)
   const existing = allowLists.get("allowlist") ?? [];
   const merged   = Array.from(new Set([...existing, ...top10]));
   allowLists.set("allowlist", merged);
   console.log("🔀 [update] merged allowList:", merged);
 
-  // Compute Merkle root
+  // Compute Merkle root of those addresses
   const merkleRoot = getMerkleRoot(merged);
   console.log("🌿 [update] Merkle root:", merkleRoot.toString());
 
-  // Fetch Candy Machine & Guard on Devnet
+  // Fetch on-chain Candy Machine & Candy Guard
   console.log("📡 [update] Fetching Candy Machine and Candy Guard…");
   const cmData    = await fetchCandyMachine(umi, publicKey(CM_PUBKEY));
   const guardAddr = cmData.mintAuthority;
   const guardData = await fetchCandyGuard(umi, guardAddr);
 
-  // Find “LFG” group
+  // Find the "LFG" group inside Candy Guard
   const allowGroup = guardData.groups.find((g) => g.label === "LFG");
   if (!allowGroup) {
-    throw new Error('No "LFG" group on Candy Guard');
+    throw new Error('No "LFG" group found on Candy Guard');
   }
 
+  // Ensure it has startDate and endDate
   const { startDate, endDate } = allowGroup.guards;
   if (!isSome(startDate) || !isSome(endDate)) {
     throw new Error("AllowList guard missing startDate or endDate");
@@ -121,9 +141,9 @@ export async function updateAllowlistGuard(): Promise<void> {
   const oldEnd   = new Date(Number(endDate.value.date) * 1_000);
   const newStart = oldEnd;
   const newEnd   = new Date(oldEnd.getTime() + 7 * 24 * 60 * 60 * 1_000);
-  console.log(`[update] Extending window: ${newStart.toISOString()} → ${newEnd.toISOString()}`);
+  console.log(`[update] Extending guard window: ${newStart.toISOString()} → ${newEnd.toISOString()}`);
 
-  // Update Candy Guard: preserve global guards (empty {}), override only the “LFG” group
+  // Finally, send the on-chain update: preserve global guards, override only "LFG" group
   await updateCandyGuard(umi, {
     candyGuard: guardData.publicKey,
     guards: {},
@@ -140,5 +160,5 @@ export async function updateAllowlistGuard(): Promise<void> {
     ],
   }).sendAndConfirm(umi);
 
-  console.log("✅ [update] Candy Guard window extended & Me rkle root updated");
+  console.log("✅ [update] Candy Guard window extended & Merkle root updated");
 }

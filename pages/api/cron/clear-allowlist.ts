@@ -1,4 +1,4 @@
-// File: pages/api/cron/clear-allowlist.ts
+// pages/api/cron/clear-allowlist.ts
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { clearAllowlistGuard } from "@/utils/leaderboard/clearAllowlist";
@@ -9,20 +9,19 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
-  // 1) Only accept GET
+  // Only GET
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // 2) Verify the “Authorization” header
+  // Verify Authorization header
   const authHeader = req.headers["authorization"] || "";
   const expected   = `Bearer ${process.env.ADMIN_PASSWORD}`;
   if (authHeader !== expected) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // 3) Run clearAllowlistGuard()
   try {
     console.log("🔔 [cron] Running clearAllowlistGuard…");
     await clearAllowlistGuard();

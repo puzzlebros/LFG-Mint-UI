@@ -1,4 +1,4 @@
-// File: pages/api/cron/update-allowlist.ts
+// pages/api/cron/update-allowlist.ts
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { updateAllowlistGuard } from "@/utils/leaderboard/updateAllowlist";
@@ -9,20 +9,19 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
-  // 1) Only accept GET (Vercel cron calls GET)
+  // Only GET (cron always invokes GET)
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // 2) Verify the “Authorization” header: Bearer <ADMIN_PASSWORD>
+  // Verify Authorization header
   const authHeader = req.headers["authorization"] || "";
   const expected   = `Bearer ${process.env.ADMIN_PASSWORD}`;
   if (authHeader !== expected) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // 3) Run updateAllowlistGuard()
   try {
     console.log("🔔 [cron] Running updateAllowlistGuard…");
     await updateAllowlistGuard();
