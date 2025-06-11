@@ -15,6 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { GuardButtonList, mintClick } from "../utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 
 // ———————— TIMER ————————
@@ -28,32 +29,54 @@ const Timer = ({
   setCheckEligibility: Dispatch<SetStateAction<boolean>>;
 }) => {
   const [remaining, setRemaining] = useState<bigint>(toTime - solanaTime);
+
+  // tick down once per second
   useEffect(() => {
     const iv = setInterval(() => setRemaining((r) => r - BigInt(1)), 1000);
     return () => clearInterval(iv);
   }, []);
-  const days = remaining / BigInt(86400),
-    hrs = (remaining % BigInt(86400)) / BigInt(3600),
-    mins = (remaining % BigInt(3600)) / BigInt(60),
-    secs = remaining % BigInt(60);
 
+  // notify parent exactly once when timer expires
+  useEffect(() => {
+    if (remaining <= BigInt(0)) {
+      setCheckEligibility(true);
+    }
+  }, [remaining, setCheckEligibility]);
+
+  // display 00m 00s once expired
   if (remaining <= BigInt(0)) {
-    setCheckEligibility(true);
     return <Text fontSize="sm" fontWeight="bold">00m 00s</Text>;
   }
+
+  const days = remaining / BigInt(86400);
+  const hrs  = (remaining % BigInt(86400)) / BigInt(3600);
+  const mins = (remaining % BigInt(3600)) / BigInt(60);
+  const secs = remaining % BigInt(60);
+
   const pad = (n: bigint) =>
     n.toLocaleString("en-US", { minimumIntegerDigits: 2, useGrouping: false });
-  if (days > BigInt(0))
-    return <Text fontSize="sm" fontWeight="bold">
-      {pad(days)}d {pad(hrs)}h {pad(mins)}m {pad(secs)}s
-    </Text>;
-  if (hrs > BigInt(0))
-    return <Text fontSize="sm" fontWeight="bold">
-      {pad(hrs)}h {pad(mins)}m {pad(secs)}s
-    </Text>;
-  return <Text fontSize="sm" fontWeight="bold">
-    {pad(mins)}m {pad(secs)}s
-  </Text>;
+
+  if (days > BigInt(0)) {
+    return (
+      <Text fontSize="sm" fontWeight="bold">
+        {pad(days)}d {pad(hrs)}h {pad(mins)}m {pad(secs)}s
+      </Text>
+    );
+  }
+
+  if (hrs > BigInt(0)) {
+    return (
+      <Text fontSize="sm" fontWeight="bold">
+        {pad(hrs)}h {pad(mins)}m {pad(secs)}s
+      </Text>
+    );
+  }
+
+  return (
+    <Text fontSize="sm" fontWeight="bold">
+      {pad(mins)}m {pad(secs)}s
+    </Text>
+  );
 };
 
 
@@ -91,6 +114,7 @@ export function ButtonList({
   buttonProps,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
+  const { publicKey: walletPublicKey } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -166,12 +190,12 @@ return (
               </>
             )}
 
-            <Tooltip label={btn.tooltip}>
+            <Tooltip label={!walletPublicKey ? "Log in to mint" : btn.tooltip}>
               <Button
                 size="default"
                 mt="3"
                 {...buttonProps}
-                isDisabled={!btn.allowed}
+                isDisabled={!walletPublicKey || !btn.allowed}
                 isLoading={guardList.find((g) => g.label === btn.label)?.minting}
                 loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
                 onClick={() => handleMint(btn)}

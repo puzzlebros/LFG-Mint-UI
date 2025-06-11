@@ -60,7 +60,8 @@
     "settings": "^0.1.1",
     "tweetnacl": "^1.0.3",
     "twitter-api-v2": "^1.23.2",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "vercel": "^42.3.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.9",

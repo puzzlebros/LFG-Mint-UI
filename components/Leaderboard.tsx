@@ -2,7 +2,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Box,
-  Spinner,
   Text,
   Table,
   Thead,
@@ -10,7 +9,7 @@ import {
   Tr,
   Th,
   Td,
-  Center,
+  Skeleton,
   useColorModeValue,
 } from '@chakra-ui/react';
 import axios from 'axios';
@@ -41,14 +40,12 @@ export default function Leaderboard({
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [mounted, setMounted]     = useState(false);
   const containerRef              = useRef<HTMLDivElement>(null);
   const { publicKey }             = useWallet();
   const myWallet                  = publicKey?.toString();
 
-  useEffect(() => { setMounted(true); }, []);
+  // lazy‐load trigger
   useEffect(() => {
-    if (!containerRef.current || hasLoaded) return;
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -58,10 +55,11 @@ export default function Leaderboard({
       },
       { threshold: 0.3 }
     );
-    obs.observe(containerRef.current);
+    if (containerRef.current) obs.observe(containerRef.current);
     return () => obs.disconnect();
-  }, [hasLoaded]);
+  }, []);
 
+  // fetch data
   useEffect(() => {
     if (!loading || hasLoaded) return;
     axios
@@ -74,15 +72,17 @@ export default function Leaderboard({
       .finally(() => setLoading(false));
   }, [loading, hasLoaded]);
 
+  // report top‐10 status
   useEffect(() => {
     if (hasLoaded && onTopStatus) {
       onTopStatus(entries.some(e => e.wallet_address === myWallet));
     }
   }, [hasLoaded, entries, myWallet, onTopStatus]);
 
+  // prepare 10 rows
   const rows = Array.from({ length: 10 }).map((_, i) => {
     const e    = entries[i];
-    const isMe = mounted && !!e && e.wallet_address === myWallet;
+    const isMe = !!e && e.wallet_address === myWallet;
     return {
       key:      e?.wallet_address ?? `empty-${i}`,
       isMe,
@@ -114,12 +114,53 @@ export default function Leaderboard({
         </Text>
       )}
 
-      {!hasLoaded && !error && (
-        <Center h="100%">
-          <Spinner size="lg" />
-        </Center>
+      {/* loading skeleton table */}
+      {loading && !error && (
+        <Table
+          variant={withBorders ? 'simple' : 'unstyled'}
+          size="sm"
+          w="max-content"
+          sx={{
+            tableLayout:   'fixed',
+            borderCollapse:'separate',
+            borderSpacing: '3px',
+          }}
+        >
+          <Thead>
+            <Tr>
+              <Th width={columnWidths.position ?? '51px'}>#</Th>
+              <Th width={columnWidths.user}>User</Th>
+              <Th width={columnWidths.score}>Score</Th>
+              <Th display={{ base: 'none', md: 'table-cell' }} width={columnWidths.wallet}>
+                Wallet
+              </Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {rows.map(({ key, isMe }, idx) => (
+              <Tr key={`skeleton-${idx}`}>
+                <Td width={columnWidths.position ?? '51px'}>
+                  <Skeleton h="20px" />
+                </Td>
+                <Td width={columnWidths.user}>
+                  <Skeleton h="20px" />
+                </Td>
+                <Td width={columnWidths.score}>
+                  <Skeleton h="20px" />
+                </Td>
+                <Td
+                  display={{ base: 'none', md: 'table-cell' }}
+                  width={columnWidths.wallet}
+                >
+                  <Skeleton h="20px" />
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
       )}
 
+      {/* real table */}
       {hasLoaded && !error && (
         <Table
           variant={withBorders ? 'simple' : 'unstyled'}
@@ -133,36 +174,11 @@ export default function Leaderboard({
         >
           <Thead>
             <Tr>
-              <Th
-                textStyle="normal"
-                fontWeight="normal"
-                textAlign="center"
-                width={columnWidths.position ?? '51px'}
-              >
-                #
-              </Th>
-              <Th
-                textStyle="normal"
-                fontWeight="normal"
-                textAlign="center"
-                width={columnWidths.user}
-              >
-                User
-              </Th>
-              <Th
-                textStyle="normal"
-                fontWeight="normal"
-                textAlign="center"
-                width={columnWidths.score}
-              >
-                Score
-              </Th>
-              {/* Hide on mobile (base), show at md+ */}
+              <Th width={columnWidths.position ?? '51px'}>#</Th>
+              <Th width={columnWidths.user}>User</Th>
+              <Th width={columnWidths.score}>Score</Th>
               <Th
                 display={{ base: 'none', md: 'table-cell' }}
-                textStyle="normal"
-                fontWeight="normal"
-                textAlign="center"
                 width={columnWidths.wallet}
               >
                 Wallet
@@ -176,55 +192,41 @@ export default function Leaderboard({
                   textStyle="ranking"
                   fontWeight="black"
                   textAlign="center"
-                  verticalAlign="middle"
-                  width={columnWidths.position ?? '51px'}
                   bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
                   color={isMe ? 'white' : 'brand.DarkPurple'}
-                  px={4}
-                  py={2}
-                  whiteSpace="nowrap"
+                  width={columnWidths.position ?? '51px'}
+                  px={4} py={2}
                 >
                   {position}
                 </Td>
                 <Td
                   textStyle="ranking"
                   textAlign="center"
-                  verticalAlign="middle"
-                  width={columnWidths.user}
                   bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
                   color={isMe ? 'white' : 'brand.DarkPurple'}
-                  px={4}
-                  py={2}
-                  whiteSpace="nowrap"
+                  width={columnWidths.user}
+                  px={4} py={2}
                 >
                   {user}
                 </Td>
                 <Td
                   textStyle="ranking"
                   textAlign="center"
-                  verticalAlign="middle"
-                  width={columnWidths.score}
                   bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
                   color={isMe ? 'white' : 'brand.DarkPurple'}
-                  px={4}
-                  py={2}
-                  whiteSpace="nowrap"
+                  width={columnWidths.score}
+                  px={4} py={2}
                 >
                   {score}
                 </Td>
-                {/* Hide on mobile (base), show at md+ */}
                 <Td
                   display={{ base: 'none', md: 'table-cell' }}
                   textStyle="ranking"
                   textAlign="center"
-                  verticalAlign="middle"
-                  width={columnWidths.wallet}
                   bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
                   color={isMe ? 'white' : 'brand.DarkPurple'}
-                  px={4}
-                  py={2}
-                  opacity={isMe ? 1 : 0.7}
-                  whiteSpace="nowrap"
+                  width={columnWidths.wallet}
+                  px={4} py={2} opacity={isMe ? 1 : 0.7}
                 >
                   {wallet}
                 </Td>

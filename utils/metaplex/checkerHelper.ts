@@ -342,18 +342,32 @@ export const ownedCoreAssetChecker = async (
 export const allowlistChecker = (
   allowLists: Map<string, string[]>,
   umi: Umi,
-  guardlabel: string
-) => {
-  if (!allowLists.has(guardlabel)) {
-    console.error(`Guard ${guardlabel}; allowlist missing from allowlist.tsx`);
+  guardLabel: string
+): boolean => {
+  // 1) Do we even have a list for this guard?
+  if (!allowLists.has(guardLabel)) {
+    console.warn(`⚠️ allowlistChecker: no list found for guard "${guardLabel}"`);
     return false;
   }
-  if (
-    !allowLists.get(guardlabel)?.includes(publicKey(umi.identity.publicKey))
-  ) {
-    return false;
+
+  const list = allowLists.get(guardLabel)!;
+  const walletStr = umi.identity.publicKey.toString();
+
+  // 2) Is the user's wallet in that list?
+  const allowed = list.includes(walletStr);
+
+  if (!allowed) {
+    console.info(
+      `🚫 allowlistChecker: wallet ${walletStr} is NOT in ${guardLabel} allowlist`,
+      list
+    );
+  } else {
+    console.log(
+      `✅ allowlistChecker: wallet ${walletStr} IS in ${guardLabel} allowlist`
+    );
   }
-  return true;
+
+  return allowed;
 };
 
 export const getSolanaTime = async (umi: Umi): Promise<bigint> => {
