@@ -15,12 +15,13 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // Accept either your Bearer secret (for local testing)...
+  // Local‐test Bearer secret
   const authHeader = req.headers["authorization"] || "";
   const expected   = `Bearer ${process.env.ADMIN_PASSWORD}`;
 
-  // ...or Vercel's built-in cron header (set to "true")
-  const isVercelCron = req.headers["x-vercel-cron"] === "true";
+  // Any invocation by Vercel Cron (scheduled or "Run Now") sets an x-vercel-cron header.
+  // We now accept *any* value, as long as the header is present:
+  const isVercelCron = typeof req.headers["x-vercel-cron"] !== "undefined";
 
   if (authHeader !== expected && !isVercelCron) {
     return res.status(401).json({ error: "Unauthorized" });
