@@ -9,7 +9,6 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
-  // Only GET
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method Not Allowed" });
@@ -19,8 +18,12 @@ export default async function handler(
   const authHeader   = req.headers["authorization"] || "";
   const expected     = `Bearer ${process.env.ADMIN_PASSWORD}`;
 
-  // Treat any presence of the x-vercel-cron header as trusted
-  const isVercelCron = typeof req.headers["x-vercel-cron"] !== "undefined";
+  // Vercel cron (scheduled) always gets x-vercel-cron, but
+  // Run Now only comes with a User-Agent of "vercel-cron/1.0"
+  const ua            = (req.headers["user-agent"] || "").toString();
+  const isVercelCron  =
+    req.headers["x-vercel-cron"] === "true" ||
+    ua.startsWith("vercel-cron/");
 
   if (authHeader !== expected && !isVercelCron) {
     return res.status(401).json({ error: "Unauthorized" });

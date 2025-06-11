@@ -9,19 +9,17 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
-  // Only GET
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // Local‐test Bearer secret
-  const authHeader = req.headers["authorization"] || "";
-  const expected   = `Bearer ${process.env.ADMIN_PASSWORD}`;
-
-  // Any invocation by Vercel Cron (scheduled or "Run Now") sets an x-vercel-cron header.
-  // We now accept *any* value, as long as the header is present:
-  const isVercelCron = typeof req.headers["x-vercel-cron"] !== "undefined";
+  const authHeader   = req.headers["authorization"] || "";
+  const expected     = `Bearer ${process.env.ADMIN_PASSWORD}`;
+  const ua            = (req.headers["user-agent"] || "").toString();
+  const isVercelCron  =
+    req.headers["x-vercel-cron"] === "true" ||
+    ua.startsWith("vercel-cron/");
 
   if (authHeader !== expected && !isVercelCron) {
     return res.status(401).json({ error: "Unauthorized" });
