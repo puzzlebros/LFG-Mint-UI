@@ -17,6 +17,11 @@ import {
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { guardChecker } from "../utils/metaplex/checkAllowed";
 import {
+  Accordion,
+  AccordionItem,
+  AccordionButton,
+  AccordionPanel,
+  AccordionIcon,
   useToast,
   Skeleton,
   useDisclosure,
@@ -46,6 +51,7 @@ import type { LeaderboardEntry } from "@/types/leaderboard";
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
 import { allowLists } from "../allowlist";
+import { faqs } from "../public/data/faqs";
 
 
 const pulse = keyframes`
@@ -484,6 +490,30 @@ export default function MintPage() {
       >
         <Box width="full" maxWidth={{ base: "100%", md: "1000px" }} px={{ base: 4, md: 8 }}>
           <PageContent />
+
+          <Box mt={12} px={4}>
+  <Text fontSize="2xl" fontWeight="semibold" mb={4}>
+    Frequently Asked Questions
+  </Text>
+
+  <Accordion allowMultiple>
+    {faqs.map(({ question, answer }, idx) => (
+      <AccordionItem key={idx} borderColor="gray.200">
+        <h2>
+          <AccordionButton>
+            <Box flex="1" textAlign="left">
+              {question}
+            </Box>
+            <AccordionIcon />
+          </AccordionButton>
+        </h2>
+        <AccordionPanel pb={4}>
+          <Text>{answer}</Text>
+        </AccordionPanel>
+      </AccordionItem>
+    ))}
+  </Accordion>
+</Box>
         </Box>
 
     {/* Show minted NFT */}
