@@ -50,9 +50,7 @@ import axios from "axios";
 import type { LeaderboardEntry } from "@/types/leaderboard";
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
-import { allowLists } from "../allowlist";
-import { faqs } from "../public/data/faqs";
-
+import { faqs } from "../public/data/faq";
 
 const pulse = keyframes`
   0%, 100% { transform: scale(1); }
@@ -86,88 +84,38 @@ const hatch = keyframes`
   }
 `;
 
-const useCandyMachine = (
-  umi: Umi,
-  candyMachineId: string,
-  checkEligibility: boolean,
-  setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  firstRun: boolean,
-  setFirstRun: Dispatch<SetStateAction<boolean>>
-) => {
-  const [candyMachine, setCandyMachine] = useState<CandyMachine>();
-  const [candyGuard, setCandyGuard] = useState<CandyGuard | undefined>(undefined);
-  const toast = useToast();
-
-  useEffect(() => {
-    // Only run the effect when eligibility is checked and we haven't fetched data yet
-    if (!checkEligibility) return;
-
-    const fetchData = async () => {
-      try {
-        console.log("💠 Fetching Candy Machine and Guard...");
-        const fetchedCandyMachine = await fetchCandyMachine(umi, publicKey(candyMachineId));
-        setCandyMachine(fetchedCandyMachine);
-
-        if (fetchedCandyMachine) {
-          const fetchedCandyGuard = await safeFetchCandyGuard(umi, fetchedCandyMachine.mintAuthority);
-          setCandyGuard(fetchedCandyGuard ?? undefined);
-          if (firstRun) setFirstRun(false);
-        }
-      } catch (e) {
-        console.error("💠 Error fetching Candy Machine/Guard:", e);
-        toast({
-          title: "Failed to load candy machine/guard",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-        });
-      }
-    };
-
-    fetchData();
-  }, [umi, candyMachineId, checkEligibility, firstRun]);
-
-  return { candyMachine, candyGuard, setCandyMachine };
-};
-
 export default function MintPage() {
   const umi = useUmi();
   const toast = useToast();
   const { publicKey: walletPublicKey, connected } = useWallet();
 
-// — UI state —
+  // — UI state —
   const [allowlistLoaded, setAllowlistLoaded] = useState(false);
-  const [inTop10, setInTop10]                 = useState(false);
-  const [loading, setLoading]                 = useState(true);
-  const [guards, setGuards]                   = useState<GuardReturn[]>([]);
-  const [isAllowed, setIsAllowed]             = useState(false);
-  const [mintsCreated, setMintsCreated] = useState<
-    { mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined
-  >(undefined);
-  const [ownedTokens, setOwnedTokens]         = useState<DigitalAssetWithToken[]>();
+  const [inTop10, setInTop10] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [guards, setGuards] = useState<GuardReturn[]>([]);
+  const [isAllowed, setIsAllowed] = useState(false);
+  const [mintsCreated, setMintsCreated] = useState<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[]>();
+  const [ownedTokens, setOwnedTokens] = useState<DigitalAssetWithToken[]>();
   const [ownedCoreAssets, setOwnedCoreAssets] = useState<DasApiAssetAndAssetMintLimit[]>();
   const [checkEligibility, setCheckEligibility] = useState<boolean>(false);
-  
+
+  // CandyMachine & Guard
+  const candyMachineId = useMemo(() => {
+    if (!process.env.NEXT_PUBLIC_CANDY_MACHINE_ID) {
+      toast({ title: "No Candy Machine ID in .env", status: "error" });
+      // fallback dummy
+      return publicKey("11111111111111111111111111111111");
+    }
+    return publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID);
+  }, [toast]);
+
+  const [candyMachine, setCandyMachine] = useState<CandyMachine>();
+  const [candyGuard, setCandyGuard] = useState<CandyGuard>();
 
   // — Modals —
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
-
-  // 1️⃣ Load allowlist once
-  useEffect(() => {
-    if (allowlistLoaded) return;            // << only once
-    console.log("⏳ Loading allowlist…");
-    axios.get<string[]>("/api/allowlist")
-      .then(({ data }) => {
-        allowLists.set("LFG", data);
-        console.log("🚀 allowLists['LFG'] loaded:", data);
-      })
-      .catch((err) => {
-        console.error("❌ Failed to fetch allowlist:", err);
-        toast({ title: "Could not load allowlist", status: "error" });
-      })
-      .finally(() => setAllowlistLoaded(true));
-  }, [toast, allowlistLoaded]);
 
   // 2️⃣ Clear on wallet disconnect
   useEffect(() => {
@@ -176,115 +124,162 @@ export default function MintPage() {
       setGuards([]);
       setIsAllowed(false);
       setLoading(false);
+      setCandyMachine(undefined);
+      setCandyGuard(undefined);
     }
   }, [walletPublicKey]);
 
   // 3️⃣ Leaderboard Top-10
   useEffect(() => {
-    if (!walletPublicKey) return setInTop10(false);
+    if (!walletPublicKey) {
+      setInTop10(false);
+      return;
+    }
     axios.get<LeaderboardEntry[]>("/api/leaderboard")
       .then(({ data }) => {
-        setInTop10(data.map((e) => e.wallet_address).includes(walletPublicKey.toString()));
+        setInTop10(data.map(e => e.wallet_address).includes(walletPublicKey.toString()));
       })
-      .catch((err) => console.error("❌ leaderboard fetch failed:", err));
+      .catch(err => console.error("❌ leaderboard fetch failed:", err));
   }, [walletPublicKey]);
 
-  // 4️⃣ CandyMachine & Guard
-  const candyMachineId = useMemo(
-    () => publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID!),
-    []
-  );
-  const [candyMachine, setCandyMachine] = useState<CandyMachine>();
-  const [candyGuard, setCandyGuard]     = useState<CandyGuard>();
-
+  // ➋ Fetch CandyMachine & Guard ONCE, when wallet connects
   useEffect(() => {
-    if (!walletPublicKey || candyMachine) return; // << only if not already loaded
+    if (!walletPublicKey || candyMachine) return;
     console.log("💠 Fetching Candy Machine & Guard…");
+    setLoading(true);
+
     (async () => {
       try {
         const cm = await fetchCandyMachine(umi, candyMachineId);
-        setCandyMachine(cm);
         const cg = await safeFetchCandyGuard(umi, cm.mintAuthority);
-        setCandyGuard(cg!);
-      } catch (e) {
-        console.error("💠 CM/Guard load error:", e);
-        toast({ title: "Error loading Candy Machine", status: "error" });
-      }
-    })();
-  }, [umi, candyMachineId, walletPublicKey, candyMachine, toast]);
-
-  // 5️⃣ Initial guard check on connect
-  useEffect(() => {
-    if (!walletPublicKey || !allowlistLoaded || !candyMachine || !candyGuard) {
-      return;
-    }
-    console.log("🔍 initial guardChecker…");
-    setLoading(true);
-    (async () => {
-      const now = BigInt(Math.floor(Date.now() / 1000));
-      try {
-        const { guardReturn, ownedTokens, ownedCoreAssets } =
-          await guardChecker(umi, candyGuard, candyMachine, now);
-        console.log("✅ initial guardReturn:", guardReturn);
-        setGuards(guardReturn);
-        setOwnedTokens(ownedTokens);
-        setOwnedCoreAssets(ownedCoreAssets);
-        setIsAllowed(guardReturn.some((g) => g.allowed));
+        if (!cg) throw new Error("No Candy Guard found");
+        setCandyMachine(cm);
+        setCandyGuard(cg);
       } catch (err) {
-        console.error("🚨 guardChecker error:", err);
+        console.error(err);
+        toast({ title: "Error loading Candy Machine", status: "error" });
       } finally {
         setLoading(false);
+        // kick off one guard check now that CM+guard are loaded
+        if (walletPublicKey) setCheckEligibility(true);
       }
     })();
-  }, [walletPublicKey, allowlistLoaded, candyMachine, candyGuard, umi]);
+  }, [walletPublicKey, candyMachine, candyMachineId, umi, toast]);
 
-    useEffect(() => {
-  // only run when mintsCreated is defined and non‐empty
-  if (!mintsCreated || mintsCreated.length === 0) {
-    return;
-  }
-    setCheckEligibility(true);
-  }, [mintsCreated]);
-
-  // 6️⃣ Re-run guard check after mint
+  // ➌ guardChecker effect: only runs when checkEligibility flips true,
+  // and NEVER during the hatch animation (isMinting).
+  const isMinting = guards.some((g) => g.minting);
   useEffect(() => {
-    // don’t run until a mint actually happens
-    if (!mintsCreated || mintsCreated.length === 0) return;
+    if (!checkEligibility || isMinting) return;
+    if (!walletPublicKey || !candyMachine || !candyGuard) {
+      setCheckEligibility(false);
+      return;
+    }
 
-    // grab the latest mint
+    console.log("🔍 Running guardChecker…");
+    setLoading(true);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        const { guardReturn, ownedTokens: ot, ownedCoreAssets: oca } =
+          await guardChecker(umi, candyGuard, candyMachine, now);
+
+        if (!cancelled) {
+          console.log("✅ guardReturn:", guardReturn);
+          setGuards(guardReturn);
+          setOwnedTokens(ot);
+          setOwnedCoreAssets(oca);
+          setIsAllowed(guardReturn.some((g) => g.allowed));
+        }
+      } catch (err) {
+        console.error(err);
+        toast({ title: "Error checking eligibility", status: "error" });
+        if (!cancelled) setIsAllowed(false);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setCheckEligibility(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    checkEligibility,
+    walletPublicKey,
+    candyMachine,
+    candyGuard,
+    umi,
+    toast,
+    isMinting,
+  ]);
+
+  // ➍ After mint completes, wait for user to close the NFT-popup before
+  //     re-fetching both on-chain supply *and* re-running guardChecker.
+  const onNftModalClose = () => {
+    // (1) close the popup
+    onShowNftClose();
+
+    // (2) pull fresh CM data so `itemsRedeemed` / `itemsAvailable` updates
+    console.log("🔄 Re-fetching Candy Machine supply…");
+    setLoading(true);
+    fetchCandyMachine(umi, candyMachineId)
+      .then((cm) => setCandyMachine(cm))
+      .catch((err) => {
+        console.error(err);
+        toast({ title: "Error updating supply", status: "error" });
+      })
+      .finally(() => {
+        // (3) now that supply is updated, re-run guardChecker exactly once
+        setCheckEligibility(true);
+        setLoading(false);
+      });
+  };
+
+  // Also the existing ShowNft modal uses isShowNftOpen & onShowNftClose; we replace onShowNftClose with onNftModalClose in JSX.
+
+  // 8️⃣ Post-fetch NFT API call
+  useEffect(() => {
+    if (!mintsCreated || mintsCreated.length === 0) return;
     const { offChainMetadata, mint } = mintsCreated[mintsCreated.length - 1];
     if (!offChainMetadata?.name || !offChainMetadata.image) return;
-
-    // fire-and-forget: don’t await or block UI
     axios.post('/api/postMint', {
-      name:        offChainMetadata.name,
-      imageUrl:    offChainMetadata.image,
+      name: offChainMetadata.name,
+      imageUrl: offChainMetadata.image,
       mintAddress: mint.toString(),
-    }).catch((err) => {
-      console.error("⚠️ postMint failed:", err);
-    });
+    }).catch(err => console.error("⚠️ postMint failed:", err));
+    // Note: we do NOT trigger guardChecker here; we wait until the user closes the modal.
   }, [mintsCreated]);
 
-  // ▶️ isMinting for your hatch animation
-  const isMinting = guards.some((g) => g.minting);
+  // 9️⃣ Refresh on window focus
+  useEffect(() => {
+    const onFocus = () => {
+      if (walletPublicKey && !isMinting) {
+        console.log("Window focus → refresh guard");
+        setCheckEligibility(true);
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [walletPublicKey, isMinting]);
 
-  // Page content as a separate component
+  // Page content component
   const PageContent = () => {
-
-    // Find the allow‐list group label
+    // Find allow-list group label
     const allowListLabel = candyGuard
-      ?.groups.find((g) => g.guards.allowList.__option === 'Some')
+      ?.groups.find(g => g.guards.allowList.__option === 'Some')
       ?.label;
+    const allowGuard = guards.find(g => g.label === allowListLabel);
 
-    // Find the corresponding guardReturn entry
-    const allowGuard = guards.find((g) => g.label === allowListLabel);
-
-    // Booleans for which UI to show
+    // Show states
     const showLogin = !connected;
     const showClaim = Boolean(
       walletPublicKey &&
-      inTop10 &&
-      allowGuard &&
+      allowGuard?.allowed &&
       allowGuard.maxAmount > 0
     );
     const showMint = Boolean(
@@ -293,22 +288,16 @@ export default function MintPage() {
       isAllowed
     );
 
-    // Claim button only uses the one allow‐list guard
-    const claimGuardList = useMemo(
-      () => (allowGuard ? [allowGuard] : []),
-      [allowGuard]
-    );
+    // Claim uses only allowGuard
+    const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);
 
-    // Pay/mint buttons use every other guard…
-    // but if there’s more than one, drop the "default" placeholder
+    // Pay/mint uses other allowed guards; drop 'default' if multiple
     const payGuardList = useMemo(() => {
-      const list = guards.filter((g) => g.label !== allowListLabel);
-      return list.length > 1
-        ? list.filter((g) => g.label !== 'default')
-        : list;
+      const arr = guards.filter(g => g.label !== allowListLabel && g.allowed);
+      return arr.length > 1 ? arr.filter(g => g.label !== 'default') : arr;
     }, [guards, allowListLabel]);
 
-    // How many items remain
+    // items available
     const availableCount = candyMachine
       ? Number(candyMachine.data.itemsAvailable) - Number(candyMachine.itemsRedeemed)
       : 0;
@@ -319,18 +308,12 @@ export default function MintPage() {
         align="center"
         justify="center"
         flex="1"
-        gap={6}        // 🆕 extra gutter
+        gap={6}
         px={2}
         mt="20"
       >
-        {/* ─── LEFT ─── */}
-        <VStack
-          align="center"
-          spacing={6}
-          flex={1}
-          h="100%"
-          justify="center"
-        >
+        {/* LEFT */}
+        <VStack align="center" spacing={6} flex={1} h="100%" justify="center">
           <Heading
             fontSize="5.8rem"
             fontWeight="normal"
@@ -343,44 +326,30 @@ export default function MintPage() {
 
           {showLogin && (
             <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
-              <Text as="span" fontWeight="bold">
-                Log in to join the flock.
-              </Text>
-              <br />
+              <Text as="span" fontWeight="bold">Log in to join the flock.</Text><br/>
               Play to win or mint right away!
             </Text>
           )}
           {showClaim && (
             <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
-              <Text as="span" fontWeight="bold">
-                You are a top 10 winner.
-              </Text>
-              <br />
+              <Text as="span" fontWeight="bold">You are a top 10 winner.</Text><br/>
               Claim your Flamingo FREE!
             </Text>
           )}
           {showMint && (
             <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
-              <Text as="span" fontWeight="bold">
-                Support the project.
-              </Text>
-              <br />
-              You can mint your Flamingo
-              <br />
-              and join the flock.
+              <Text as="span" fontWeight="bold">Support the project.</Text><br/>
+              Mint your Flamingo<br/>and join the flock.
             </Text>
           )}
 
           {walletPublicKey ? (
-            // Wallet is connected: show either Skeleton (while loading/fetching) or ButtonList
             (!candyMachine || !candyGuard || loading) ? (
-              <Center w="full">
-                <Skeleton h="48px" w="200px" />
-              </Center>
+              <Center w="full"><Skeleton h="48px" w="200px" /></Center>
             ) : (
               <Center w="full">
                 <ButtonList
-                  guardList={showClaim ? claimGuardList : payGuardList}
+                  guardList={ showClaim ? claimGuardList : payGuardList }
                   candyMachine={candyMachine}
                   candyGuard={candyGuard}
                   umi={umi}
@@ -391,37 +360,24 @@ export default function MintPage() {
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
                   {...(showClaim
-                    ? {
-                        buttonProps: {
-                          animation: `${pulse} 1.2s ease-in-out infinite`,
-                          colorScheme: "pink",
-                        },
-                      }
+                    ? { buttonProps: { animation: `${pulse} 1.2s ease-in-out infinite`, colorScheme: "pink" } }
                     : {})}
                 />
               </Center>
             )
           ) : (
-            // Wallet not connected: show the same "Mint" label but disabled
-            <Center w="full">
-              <Button size="default" isDisabled>
-                Mint
-              </Button>
-            </Center>
+            <Center w="full"><Button size="default" isDisabled>Mint</Button></Center>
           )}
 
-          {/* ─── ADMIN BUTTON (in-column) ─── */}
+          {/* ADMIN */}
           {umi.identity.publicKey === candyMachine?.authority && (
-            <Button size="default" mt={6} onClick={onInitializerOpen}>
-              ADMIN
-            </Button>
+            <Button size="default" mt={6} onClick={onInitializerOpen}>ADMIN</Button>
           )}
         </VStack>
 
-        {/* ─── RIGHT ─── */}
+        {/* RIGHT */}
         <VStack align="center" spacing={2} flex={1}>
           {walletPublicKey ? (
-            // Wallet connected: show Skeleton while loading or candyMachine missing, else show image + count
             (!candyMachine || loading) ? (
               <Skeleton
                 w={{ base: "200px", md: "375px" }}
@@ -446,16 +402,12 @@ export default function MintPage() {
                   />
                 </Box>
                 <Text fontStyle="copy" fontWeight="bold" color="brand.DarkPink">
-                  LFGs remaining: {Number(candyMachine!.data.itemsAvailable) - Number(candyMachine!.itemsRedeemed)}
+                  LFGs remaining: {availableCount}
                 </Text>
               </>
             )
           ) : (
-            // Wallet not connected: show artwork without loading skeleton
-            <Box
-              w="100%"
-              maxW={{ base: "100%", md: "800px" }}
-            >
+            <Box w="100%" maxW={{ base: "100%", md: "800px" }}>
               <Image
                 src={image}
                 alt="Project artwork"
@@ -472,7 +424,7 @@ export default function MintPage() {
     );
   };
 
-  // Return the main layout
+  // Main return
   return (
     <Flex
       direction="column"
@@ -485,68 +437,38 @@ export default function MintPage() {
         align="center"
         justify="center"
         overflowY="auto"
-        minH="0"              // <-- allow Flex child to shrink correctly
+        minH="0"
         px={{ base: 4, md: 8 }}
       >
         <Box width="full" maxWidth={{ base: "100%", md: "1000px" }} px={{ base: 4, md: 8 }}>
           <PageContent />
-
-          <Box mt={12} px={4}>
-  <Text fontSize="2xl" fontWeight="semibold" mb={4}>
-    Frequently Asked Questions
-  </Text>
-
-  <Accordion allowMultiple>
-    {faqs.map(({ question, answer }, idx) => (
-      <AccordionItem key={idx} borderColor="gray.200">
-        <h2>
-          <AccordionButton>
-            <Box flex="1" textAlign="left">
-              {question}
-            </Box>
-            <AccordionIcon />
-          </AccordionButton>
-        </h2>
-        <AccordionPanel pb={4}>
-          <Text>{answer}</Text>
-        </AccordionPanel>
-      </AccordionItem>
-    ))}
-  </Accordion>
-</Box>
         </Box>
 
-    {/* Show minted NFT */}
-      <Modal isOpen={isShowNftOpen} onClose={onShowNftClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>A NEW FLAMINGO HAS BORN...</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <ShowNft nfts={mintsCreated} />
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+        {/* Show minted NFT */}
+        <Modal isOpen={isShowNftOpen} onClose={onNftModalClose}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>A NEW FLAMINGO HAS BORN...</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <ShowNft nfts={mintsCreated} />
+            </ModalBody>
+          </ModalContent>
+        </Modal>
 
-      {/* InitializeModal */}
-      <Modal isOpen={isInitializerOpen} onClose={onInitializerClose}>
-        <ModalOverlay />
-        <ModalContent maxW="600px">
-          <ModalHeader>Initializer</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <InitializeModal
-              umi={umi}
-              candyMachine={candyMachine!}
-              candyGuard={candyGuard!}
-            />
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-          
+        {/* InitializeModal */}
+        <Modal isOpen={isInitializerOpen} onClose={onInitializerClose}>
+          <ModalOverlay />
+          <ModalContent maxW="600px">
+            <ModalHeader>Initializer</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <InitializeModal umi={umi} candyMachine={candyMachine!} candyGuard={candyGuard!}/>
+            </ModalBody>
+          </ModalContent>
+        </Modal>
       </Flex>
-    <Footer />
-  </Flex>
-
+      <Footer/>
+    </Flex>
   );
 }

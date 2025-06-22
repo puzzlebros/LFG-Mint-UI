@@ -177,7 +177,8 @@ return (
         const timerTarget = isClaim ? btn.endTime : btn.startTime;
         return (
           <VStack key={idx} spacing={1} align="center" w="full">
-            {isClaim && (
+            {/* only show the claim countdown if it’s actually configured */}
+            {isClaim && timerTarget > BigInt(0) && (
               <>
                 <Text fontSize="sm" fontWeight="bold">
                   Claim available until

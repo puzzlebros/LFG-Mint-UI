@@ -9,19 +9,31 @@ import {
   Heading,
   Text,
   Button,
-  Tooltip
+  Tooltip,
+  Image as ChakraImage
 } from '@chakra-ui/react';
 import { useBreakpointValue } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { keyframes } from '@emotion/react'
 
 import HorizontalScroller, { ScrollerItem } from '../components/HorizontalScroller';
 import Leaderboard                              from '../components/Leaderboard';
 import TraitDresser                             from '../components/TraitDresser';
 import InteractiveHeading                       from '@/components/InteractiveHeading';
 import Cloud from "../components/Cloud";
+import Balloon from '../components/Balloon'
 import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 import { Footer } from '../components/Footer'
+import { ChevronDownIcon } from '@chakra-ui/icons'
+
+// define a simple float animation
+const floatKeyframes = `
+@keyframes float {
+  0%,100%   { transform: translateY(0px); }
+  50%       { transform: translateY(-20px); }
+}
+`
 
 // ParallaxImage runs only on the client
 const ParallaxImage = dynamic(() => import('../components/ParallaxImage'), { ssr: false });
@@ -38,6 +50,26 @@ export default function HomePage() {
   // ref to measure container size
   const welcomeRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
+  const gameRef = useRef<HTMLDivElement>(null)
+  const [gameDims, setGameDims] = useState({ w: 0, h: 0 })
+
+  const now    = new Date()
+  const diffMs = next.getTime() - now.getTime()
+  const hrs    = Math.floor(diffMs / 3_600_000)
+  const mins   = Math.floor((diffMs % 3_600_000) / 60_000)
+  const timeLeft = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`
+
+  useEffect(() => {
+  function updateGame() {
+    if (gameRef.current) {
+      const { width, height } = gameRef.current.getBoundingClientRect()
+      setGameDims({ w: width, h: height })
+    }
+  }
+  updateGame()
+  window.addEventListener('resize', updateGame)
+  return () => window.removeEventListener('resize', updateGame)
+}, [])
 
   const welcomeScroller: ScrollerItem[] = [
     { text: 'PLAY',
@@ -61,7 +93,7 @@ export default function HomePage() {
 
   const rankingScroller: ScrollerItem[] = [
     { //iconSrc: '/images/logo-nav.png',
-      text: 'RANKING',
+      text: 'WINNERS',
       textStyle: "condensed",           // pulls your theme’s `textStyles.condensed`
       textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
     },
@@ -71,7 +103,7 @@ export default function HomePage() {
       textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
     },
     { //iconSrc: '/images/logo-nav.png', 
-      text: 'RANKING',
+      text: 'TOP 10',
       textStyle: "narrow",           // pulls your theme’s `textStyles.condensed`
       textProps: { color: "brand.DarkPurple", fontSize: "3rem" } // plus any other TextProps
     },
@@ -120,7 +152,26 @@ export default function HomePage() {
     "/images/clouds/Cloud_5.png",
     "/images/clouds/Cloud_6.png",
     "/images/clouds/Cloud_7.png",
+    "/images/clouds/Cloud_8.png",
   ];
+
+  const balloonUrls = [
+  '/images/balloons/Balloon_1.png',
+  '/images/balloons/Balloon_2.png',
+  '/images/balloons/Balloon_3.png',
+  ];
+
+  const FloatingIslands = [
+    { src: "/images/islands/Island_1.png", top: "25%", left: "12%", size: "100px", delay: "0s" },
+    { src: "/images/islands/Island_2.png", top: "32%", left: "75%", size: "160px", delay: "0.7s" },
+    { src: "/images/islands/Island_3.png", top: "57%", left: "20%", size: "220px", delay: "1.3s" },
+    { src: "/images/islands/Island_4.png", top: "75%", left: "65%", size: "80px", delay: "2s" },
+  ];
+
+  const floatAnim = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-20px); }
+`
 
   // listen to game ranking button
   useEffect(() => {
@@ -198,8 +249,23 @@ export default function HomePage() {
           >
             LFG
           </InteractiveHeading>
-        </Flex>
 
+        </Flex>
+        <Box
+          as="style"
+          dangerouslySetInnerHTML={{ __html: floatKeyframes }}
+        />
+        <Center position="absolute" bottom="50px" w="100%" zIndex={3}>
+          <ChevronDownIcon
+            boxSize="45px"
+            animation="float 2s ease-in-out infinite"
+            color="brand.Lavender"
+            cursor="pointer"
+            onClick={() => {
+              document.getElementById('game')?.scrollIntoView({ behavior: 'smooth' })
+            }}
+          />
+        </Center>
         {/* fixed scroller at bottom */}
         <HorizontalScroller
           items={welcomeScroller}
@@ -213,6 +279,8 @@ export default function HomePage() {
 
       {/** ——— Game Section ——— **/}
       <Box
+        ref={gameRef}
+        id="game"
         as="section"
         flex="none"
         w="100%"
@@ -220,104 +288,158 @@ export default function HomePage() {
         scrollSnapAlign="start"
         scrollSnapStop="always"
         position="relative"
-        // bgImage="url('/images/game-bg.png')"
         bgSize="cover"
         bgPosition="center"
+        overflow="visible"
       >
+        {/* inject both keyframes */}
+        <Box as="style" dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes float {
+              0%,100% { transform: translateY(0); }
+              50%     { transform: translateY(-20px); }
+            }
+            @keyframes vibrate {
+              0%   { transform: translate(0); }
+              25%  { transform: translate(-1px,1px); }
+              50%  { transform: translate(1px,-1px); }
+              75%  { transform: translate(-1px,-1px); }
+              100% { transform: translate(1px,1px); }
+            }
+          `
+        }} />
+
+        {/* side-floating islands */}
+       {gameDims.h > 0 &&
+          FloatingIslands.map(({ src, top, left, size, delay }, idx) => (
+            <Box
+            key={idx}
+            position="absolute"
+            top={top}
+            left={left}
+            pointerEvents="none"
+            zIndex={0}
+            animation={`${floatAnim} 4s ease-in-out ${delay} infinite`}
+            >
+              <ChakraImage
+                src={src}
+                boxSize={size}
+                objectFit="contain"
+                alt={`island-${idx}`}
+              />
+            </Box>
+          ))
+        }
+
+        {/* rising balloons */}
+{gameDims.h > 0 &&
+  balloonUrls.map((src, i) => (
+    <Balloon
+      key={i}
+      src={src}
+      minScale={0.7}
+      maxScale={3.5}
+      // here we say: anything scaled above 1.3 floats on top:
+      highScaleThreshold={2.7}
+      // and big balloons get zIndex: 5
+      highScaleZIndex={5}
+    />
+  ))
+}
+
         <Center h="100%">
-          <Stack
-          spacing={2}
-          textAlign="center"
-          align="center"
-          w="full"           // let it grow to the viewport…
-          maxW="420px"       // …but no wider than 600px
-          mx="auto"          // center it horizontally
-          >
+          <Stack spacing={2} textAlign="center" align="center" w="full" maxW="420px" mx="auto">
             {isFrozen ? (
-                    <>
-                      <Heading
-                        as="h1"
-                        fontSize="7rem"
-                        textStyle="condensed"
-                        color="brand.DarkPurple"
-                        lineHeight="6rem"
-                      >
-                        RANKING PAUSED
-                      </Heading>
-                      <Text
-                        textStyle="copy"
-                        fontSize="1.3rem"
-                        whiteSpace="normal"
-                        wordBreak="break-word"
-                        mt="7"
-                        mr="5"
-                        ml="5"
-                      >
-                        The leaderboard is currently frozen until{" "}
-                        <Text as="span" fontWeight="bold">
-                          {next.toLocaleString()}
-                        </Text>
-                        . Come back then to see the latest standings!
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Heading
-                        as="h1"
-                        fontSize="7rem"
-                        textStyle="condensed"
-                        lineHeight="6rem"
-                      >
-                        LET&apos;S JUMP!
-                      </Heading>
-                      <Text
-                        textStyle="copy"
-                        fontSize="1.3rem"
-                        whiteSpace="normal"
-                        wordBreak="break-word"
-                        mt="7"
-                        mr="5"
-                        ml="5"
-                      >
-                        <Text as="span" fontWeight="bold">
-                          Jump into the action and climb your way up to the ranking.
-                        </Text>
-                        <br />
-                        If you manage to get into the top 10, you will be able to claim
-                        a FREE mint from the collection.
-                      </Text>
-                    </>
-                  )}
+              <>
+                <Heading
+                  as="h1"
+                  fontSize="8rem"
+                  textStyle="condensed"
+                  color="brand.DarkPurple"
+                  lineHeight="6rem"
+                >
+                  MINT DAY!
+                </Heading>
+
+                <Text
+                  textStyle="copy"
+                  fontSize="1.3rem"
+                  whiteSpace="normal"
+                  wordBreak="break-word"
+                  mt="7"
+                  mr="5"
+                  ml="5"
+                >
+                  <Text as="span" fontWeight="bold">
+                    Made it into the top 10?
+                    <br />
+                    Claim your FREE LFG NFT
+                    <br />
+                    within the next{' '}
+                    <Text
+                      as="span"
+                      color="brand.Pink"
+                      fontWeight="bold"
+                      animation="vibrate 0.3s linear infinite"
+                    >
+                      {timeLeft}
+                    </Text>.
+                  </Text>
+                  <br />
+                  If not, go touch some grass
+                  <br />
+                  and come back later!
+                </Text>
+              </>
+            ) : (
+              <>
+                <Heading
+                  as="h1"
+                  fontSize="7rem"
+                  textStyle="condensed"
+                  lineHeight="6rem"
+                >
+                  WEN MOON?
+                </Heading>
+                <Text
+                  textStyle="copy"
+                  fontSize="1.3rem"
+                  whiteSpace="normal"
+                  wordBreak="break-word"
+                  mt="5"
+                  mr="5"
+                  ml="5"
+                >
+                  <Text as="span" fontWeight="bold">
+                    Right now! Play and reach the highest score you can.
+                  </Text>
+                  <br />
+                  Get into the top 10 and claim a FREE mint from the collection.
+                </Text>
+              </>
+            )}
 
             <Tooltip
-            label={
-              isFrozen
-                ? `Leaderboard frozen until ${next.toLocaleString()}`
-                : `Next freeze in ${countdown}`
-            }
-          >
-            <Button
-              mt="10"
-              size="default"
-              isDisabled={isFrozen}
-              onClick={() => !isFrozen && window.location.assign("/game")}
+              label={
+                isFrozen
+                  ? `New leaderboard starting in ${timeLeft}`
+                  : `Next claim in ${countdown}`
+              }
             >
-              PLAY
-            </Button>
-          </Tooltip>
-
+              <Button
+                mt="8"
+                size="default"
+                isDisabled={isFrozen}
+                onClick={() => !isFrozen && window.location.assign("/game")}
+              >
+                PLAY
+              </Button>
+            </Tooltip>
           </Stack>
         </Center>
-
-        {/* <Box position="absolute" top="50%" left="5%" transform="translateY(-50%)" zIndex={0}>
-          <ParallaxImage
-            src="/images/game-floating.png"
-            alt="Game Floating"
-            width="300px"
-          />
-        </Box> */}
-
       </Box>
+
+
 
       {/** ——— Ranking Section ——— **/}
       <Box
@@ -329,27 +451,53 @@ export default function HomePage() {
         scrollSnapAlign="start"
         scrollSnapStop="always"
         position="relative"
-        bg="brand.White"
+        bg={isFrozen ? 'brand.Lavender' : 'brand.White'}
       >
         <Center h="100%" mt="-3">
           <Stack spacing={2} textAlign="center" align="center" maxW="600px" w="100%">
-
-            <Heading 
-            size="xl"
-            fontSize="7rem"
-            textStyle="condensed"
-            mt="2"
+            <Heading
+              size="xl"
+              fontSize="4.5rem"
+              textStyle="condensed"
+              lineHeight="4.2rem"
+              mt="3"
             >
-              TOP 10</Heading>
+              {isFrozen
+                ? 'WEEKLY WINNERS'
+                : (
+                  'HIGH SCORES'
+                )
+              }
+            </Heading>
 
-            {/* <Text textStyle="copy" color="brand.DarkPurple">
-              See where you stand in the community!
-            </Text> */}
+            <Text
+              textStyle="copy"
+              fontSize="1.2rem"
+              textAlign="center"
+              mb={4}
+            >
+              {isFrozen ? (
+                <>
+                  Claim your LFG within the next {' '}
+                  <Text as="span" color="brand.Purple" fontWeight="bold">
+                    {timeLeft}
+                  </Text> before the ranking resets.
+                </>
+              ) : (
+                <>
+                  Rank to win a FREE MINT in {' '}
+                  <Text as="span" color="brand.Purple" fontWeight="bold">
+                    {timeLeft}
+                  </Text>.
+                </>
+              )}
+            </Text>
 
             <Center w="100%" mt="-4">
               <Leaderboard
                 onTopStatus={setIsInTop10}
                 withBorders
+                bgColor="transparent"
                 columnWidths={{
                   position: "45px",
                   user:     "150px",
@@ -440,9 +588,10 @@ export default function HomePage() {
             skinSrc="/images/skins/1.png"
             skinSize={traitSize}
             traitPaths={{
+              clothes: ['/images/traits/clothes/1.png','/images/traits/clothes/2.png','/images/traits/clothes/3.png'],
+              beak:    ['/images/traits/beak/1.png'],
               eyes:    ['/images/traits/eyes/1.png','/images/traits/eyes/2.png','/images/traits/eyes/3.png'],
               head:    ['/images/traits/head/1.png','/images/traits/head/2.png','/images/traits/head/3.png'],
-              clothes: ['/images/traits/clothes/1.png','/images/traits/clothes/2.png','/images/traits/clothes/3.png'],
             }}
           />
         </Box>
@@ -462,11 +611,9 @@ export default function HomePage() {
             MINT
           </Button>
         </Box>
-
         <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
          <Footer />
        </Box>
-       
       </Box>
     </Box>
   );

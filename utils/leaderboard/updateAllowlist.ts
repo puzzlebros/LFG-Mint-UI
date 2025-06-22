@@ -32,7 +32,9 @@ const umi: Umi = createUmi(process.env.NEXT_PUBLIC_RPC!).use(
 
 // Load deploy keypair from raw JSON in env…
 if (!process.env.DEPLOY_KEYPAIR) throw new Error("Missing DEPLOY_KEYPAIR");
-const deployBytes = new Uint8Array(JSON.parse(process.env.DEPLOY_KEYPAIR) as number[]);
+const deployBytes = new Uint8Array(
+  JSON.parse(process.env.DEPLOY_KEYPAIR) as number[]
+);
 const deployKP = umi.eddsa.createKeypairFromSecretKey(deployBytes);
 umi.use(keypairIdentity(deployKP));
 
@@ -52,7 +54,7 @@ export async function updateAllowlistGuard(): Promise<void> {
   const top10 = await getTop10Wallets();
   console.log("   → top10:", top10);
 
-  // 2) On-chain: fetch CM & guard
+  // 2) On-chain: fetch Candy Machine & its guard
   const cm = await fetchCandyMachine(
     umi,
     publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID!)
@@ -63,31 +65,28 @@ export async function updateAllowlistGuard(): Promise<void> {
   // 3) Find the "LFG" group
   const label = "LFG";
   const existingGroup = guardData.groups.find((g) => g.label === label);
-  if (!existingGroup) throw new Error('No "LFG" group on Candy Guard');
+  if (!existingGroup) {
+    throw new Error('No "LFG" group on Candy Guard');
+  }
 
-  // 4) Merge top10 into in-memory allowLists
-  const merged = Array.from(
-    new Set([...(allowLists.get(label) || []), ...top10])
-  );
+  // 4) Build new allowlist: use exactly the current top-10 (not union with past)
+  const merged = top10;
   allowLists.set(label, merged);
-  console.log(`🔀 [update] allowLists["${label}"] =`, merged);
+  console.log(`🔀 [update] allowLists["${label}"] set to current top-10:`, merged);
 
   // 5) Compute new Merkle root
   const merkleRoot = getMerkleRoot(merged);
   console.log(
-    "🌿 [update] Merkle root (base64):",
+    "🌿 [update] New Merkle root (base64):",
     Buffer.from(merkleRoot).toString("base64")
   );
 
-  // 6) Build a new groups array: replace only LFG, keep everyone else intact
+  // 6) Build updated groups array: replace only the LFG group, keep others intact
   const newGroups = guardData.groups.map((g) =>
     g.label === label
       ? {
           label,
           guards: {
-            // preserve existing guard types if you have them:
-            // startDate: existingGroup.guards.startDate,
-            // endDate:   existingGroup.guards.endDate,
             allowList: some({ merkleRoot }),
             mintLimit: some({ id: 1, limit: 1 }),
           },
@@ -96,11 +95,18 @@ export async function updateAllowlistGuard(): Promise<void> {
   );
 
   // 7) Send the on-chain update
+  console.log("🔔 [update] Sending updated Candy Guard groups on-chain...");
   await updateCandyGuard(umi, {
     candyGuard: guardData.publicKey,
-    guards: {},     // leave any global guards untouched
+    guards: {}, // leave global guards unchanged
     groups: newGroups,
-  }).sendAndConfirm(umi);
-
-  console.log("✅ [update] on-chain allowList & mintLimit updated");
+  })
+    .sendAndConfirm(umi)
+    .then(() => {
+      console.log("✅ On-chain allowList & mintLimit updated");
+    })
+    .catch((err) => {
+      console.error("❌ Failed to update Candy Guard on-chain:", err);
+      throw err;
+    });
 }

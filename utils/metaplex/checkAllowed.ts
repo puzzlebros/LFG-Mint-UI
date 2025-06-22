@@ -23,6 +23,8 @@ import {
   TokenGate,
   TokenPayment,
   getMerkleRoot,
+  safeFetchAllowListProofFromSeeds,
+  AllowList,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import {
   SolAmount,
@@ -199,18 +201,28 @@ export const guardChecker = async (
     }
 
     if (singleGuard.allowList.__option === "Some") {
-      if (!allowlistChecker(allowLists, umi, eachGuard.label)) {
+      // tell TS that this is really a Some<AllowList>:
+      const allowListGuard = singleGuard.allowList as Some<AllowList>;
+      const merkleRoot = allowListGuard.value.merkleRoot;
+
+      const proof = await safeFetchAllowListProofFromSeeds(umi, {
+        candyGuard:        candyMachine.mintAuthority,
+        candyMachine:      candyMachine.publicKey,
+        merkleRoot,        // now TS knows this exists
+        user:              umi.identity.publicKey,
+      });
+
+      if (proof === null) {
         guardReturn.push({
-          label: eachGuard.label,
-          allowed: false,
-          reason: "Wallet not allowlisted",
+          label:    eachGuard.label,
+          allowed:  false,
+          reason:   "Wallet not in on-chain allowlist",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label} wallet not allowlisted!`);
         continue;
       }
     }
-
+    
     if (singleGuard.assetBurn.__option === "Some") {
       const assetBurn = singleGuard.assetBurn as Some<AssetBurn>;
       const payableAmount = await ownedCoreAssetChecker(

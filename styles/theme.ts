@@ -56,7 +56,6 @@ export default extendTheme({
     },
     copy: {
       fontFamily: `"Noto Sans", sans-serif`,
-      fontSize:   "18px",
       fontWeight: 400,
       lineHeight: "normal",
       textAlign:  "center",
@@ -174,8 +173,8 @@ export default extendTheme({
       "button.wallet-adapter-button-trigger": {
       /* make the background transparent so our text‐gradient shows */
         borderRadius:    0,
-        height: { base: "45px", md: "35px" },
-        width: { base: "250px", md: "180px" },
+        height: { base: "40px", md: "35px" },
+        width: { base: "275px", md: "180px" },
         /* setup a gradient border */
         border:               "2px solid transparent",
         borderImageSlice:     1,

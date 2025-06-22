@@ -3,11 +3,8 @@ import { Box, Image as ChakraImage } from '@chakra-ui/react';
 import { v4 as uuid } from 'uuid';
 
 interface TraitDresserProps {
-  /** URL of the base skin image */
   skinSrc: string;
-  /** Width and height of the skin & all overlays in px */
   skinSize?: number;
-  /** Mapping of category → array of full-canvas PNG URLs */
   traitPaths: Record<string, string[]>;
 }
 
@@ -18,29 +15,39 @@ interface Overlay {
   visible: boolean;
 }
 
-export default function TraitDresser({ skinSrc, skinSize = 300, traitPaths }: TraitDresserProps) {
+export default function TraitDresser({
+  skinSrc,
+  skinSize = 300,
+  traitPaths,
+}: TraitDresserProps) {
   const THRESHOLD = 50;
 
-  // Track mobile/desktop breakpoint on client
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    function check() {
-      setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768);
-    }
+    const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Prepare overlays
-  const categories = Object.keys(traitPaths);
-  const [overlays, setOverlays] = useState<Overlay[]>(() =>
-    categories.map((cat) => ({ id: uuid(), category: cat, src: '', visible: false }))
-  );
-  const overlaysRef = useRef<Overlay[]>(overlays);
-  useEffect(() => { overlaysRef.current = overlays; }, [overlays]);
+  // Static beak
+  const beakSrc = traitPaths.beak[0];
 
-  // Animation state
+  // Dynamic categories excluding beak
+  const dynamicCats = Object.keys(traitPaths).filter((c) => c !== 'beak');
+  const [overlays, setOverlays] = useState<Overlay[]>(() =>
+    dynamicCats.map((cat) => ({
+      id: uuid(),
+      category: cat,
+      src: '',
+      visible: false,
+    }))
+  );
+  const overlaysRef = useRef(overlays);
+  useEffect(() => {
+    overlaysRef.current = overlays;
+  }, [overlays]);
+
   const animating = useRef(false);
   const queued = useRef(false);
   const inView = useRef(false);
@@ -48,22 +55,21 @@ export default function TraitDresser({ skinSrc, skinSize = 300, traitPaths }: Tr
   const touchStartY = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Visibility observer
+  // Intersection observer
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(
-      ([entry]) => { inView.current = entry.isIntersecting; },
+      ([entry]) => (inView.current = entry.isIntersecting),
       { threshold: 0.3 }
     );
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
 
-  // Preload DOM images
+  // Preload
   useEffect(() => {
     Object.values(traitPaths).flat().forEach((url) => {
-      // use DOM Image, not ChakraImage
       const img = new window.Image();
       img.src = url;
     });
@@ -78,55 +84,82 @@ export default function TraitDresser({ skinSrc, skinSize = 300, traitPaths }: Tr
   function cycleTrait() {
     animating.current = true;
     queued.current = false;
+
     const current = overlaysRef.current;
     const idx = Math.floor(Math.random() * current.length);
     const { category } = current[idx];
     const variants = traitPaths[category];
     const lastSrc = current[idx].src;
-    const choices = lastSrc ? variants.filter((u) => u !== lastSrc) : variants;
+    const choices = lastSrc
+      ? variants.filter((u) => u !== lastSrc)
+      : variants;
     const nextSrc = choices.length
       ? choices[Math.floor(Math.random() * choices.length)]
       : variants[Math.floor(Math.random() * variants.length)];
 
     // fade out
-    setOverlays((prev) => prev.map((o, i) => (i === idx ? { ...o, visible: false } : o)));
-    // swap while hidden
+    setOverlays((prev) =>
+      prev.map((o, i) =>
+        i === idx ? { ...o, visible: false } : o
+      )
+    );
+    // swap & fade in
     setTimeout(() => {
-      setOverlays((prev) => prev.map((o, i) => (i === idx ? { ...o, src: nextSrc } : o)));
-      // fade in
+      setOverlays((prev) =>
+        prev.map((o, i) =>
+          i === idx ? { ...o, src: nextSrc } : o
+        )
+      );
       setTimeout(() => {
-        setOverlays((prev) => prev.map((o, i) => (i === idx ? { ...o, visible: true } : o)));
+        setOverlays((prev) =>
+          prev.map((o, i) =>
+            i === idx ? { ...o, visible: true } : o
+          )
+        );
       }, 50);
     }, 300);
-    // complete
+
+    // finish
     setTimeout(() => {
       animating.current = false;
       if (queued.current) cycleTrait();
     }, 650);
   }
 
-  // Handlers
+  // Wheel
   useEffect(() => {
     function onWheel(e: WheelEvent) {
       if (isMobile || !inView.current) return;
-      if (e.deltaY <= 0) { wheelAccum.current = 0; return; }
+      if (e.deltaY <= 0) {
+        wheelAccum.current = 0;
+        return;
+      }
       wheelAccum.current += e.deltaY;
       if (wheelAccum.current < THRESHOLD) return;
       wheelAccum.current = 0;
       e.preventDefault();
       requestCycle();
     }
-    window.addEventListener('wheel', onWheel as any, { passive: false });
-    return () => window.removeEventListener('wheel', onWheel as any);
+    window.addEventListener('wheel', onWheel as any, {
+      passive: false,
+    });
+    return () =>
+      window.removeEventListener('wheel', onWheel as any);
   }, [isMobile]);
 
+  // Touch
   useEffect(() => {
     function onTouchStart(e: TouchEvent) {
       if (isMobile) return;
       touchStartY.current = e.touches[0].clientY;
     }
     function onTouchMove(e: TouchEvent) {
-      if (isMobile || touchStartY.current === null || !inView.current) return;
+      if (
+        isMobile ||
+        touchStartY.current === null ||
+        !inView.current
+      )
+        return;
       const currentY = e.touches[0].clientY;
       const deltaY = touchStartY.current - currentY;
       if (deltaY > THRESHOLD) {
@@ -135,14 +168,19 @@ export default function TraitDresser({ skinSrc, skinSize = 300, traitPaths }: Tr
         requestCycle();
       }
     }
-    window.addEventListener('touchstart', onTouchStart, { passive: false });
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchstart', onTouchStart, {
+      passive: false,
+    });
+    window.addEventListener('touchmove', onTouchMove, {
+      passive: false,
+    });
     return () => {
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
     };
   }, [isMobile]);
 
+  // Click (mobile)
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (!isMobile || !inView.current) return;
@@ -166,28 +204,68 @@ export default function TraitDresser({ skinSrc, skinSize = 300, traitPaths }: Tr
       mb={4}
       cursor={isMobile ? 'pointer' : undefined}
     >
+      {/* Base skin */}
       <ChakraImage
         src={skinSrc}
         boxSize={skinSize}
         objectFit="cover"
         position="relative"
         zIndex={1}
+        alt="base skin"
       />
-      {overlays.map(({ id, src, visible }) => (
-        <ChakraImage
-          key={id}
-          src={src}
-          position="absolute"
-          top={0}
-          left={0}
-          boxSize={skinSize}
-          objectFit="cover"
-          zIndex={2}
-          opacity={visible ? 1 : 0}
-          transition="opacity 0.3s ease"
-          pointerEvents="none"
-        />
-      ))}
+
+      {/* Clothes (behind beak) */}
+      {overlays
+        .filter((o) => o.category === 'clothes')
+        .map(({ id, src, visible }) => (
+          <ChakraImage
+            key={id}
+            src={src}
+            alt="clothes trait"
+            position="absolute"
+            top={0}
+            left={0}
+            boxSize={skinSize}
+            objectFit="cover"
+            zIndex={2}
+            opacity={visible ? 1 : 0}
+            transition="opacity 0.3s ease"
+            pointerEvents="none"
+          />
+        ))}
+
+      {/* Beak (static mid-layer) */}
+      <ChakraImage
+        src={beakSrc}
+        alt="beak trait"
+        position="absolute"
+        top={0}
+        left={0}
+        boxSize={skinSize}
+        objectFit="cover"
+        zIndex={3}
+        pointerEvents="none"
+      />
+
+      {/* All other traits (above beak) */}
+      {overlays
+        .filter((o) => o.category !== 'clothes')
+        .map(({ id, category, src, visible }) => (
+          <ChakraImage
+            key={id}
+            src={src}
+            alt={`${category} trait`}
+            position="absolute"
+            top={0}
+            left={0}
+            boxSize={skinSize}
+            objectFit="cover"
+            zIndex={4}
+            opacity={visible ? 1 : 0}
+            transition="opacity 0.3s ease"
+            pointerEvents="none"
+          />
+        ))}
     </Box>
   );
 }

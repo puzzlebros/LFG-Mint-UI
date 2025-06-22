@@ -28,6 +28,8 @@ type Props = {
   withBorders?: boolean;
   height?: string | number;
   columnWidths?: ColumnWidths;
+  /** override the container background (e.g. "transparent") */
+  bgColor?: string;
 };
 
 export default function Leaderboard({
@@ -35,6 +37,7 @@ export default function Leaderboard({
   withBorders = false,
   height,
   columnWidths = {},
+  bgColor,
 }: Props) {
   const [entries, setEntries]     = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading]     = useState(false);
@@ -44,7 +47,7 @@ export default function Leaderboard({
   const { publicKey }             = useWallet();
   const myWallet                  = publicKey?.toString();
 
-  // lazy‐load trigger
+  // Lazy‐load trigger
   useEffect(() => {
     const obs = new IntersectionObserver(
       ([entry]) => {
@@ -59,7 +62,7 @@ export default function Leaderboard({
     return () => obs.disconnect();
   }, []);
 
-  // fetch data
+  // Fetch data
   useEffect(() => {
     if (!loading || hasLoaded) return;
     axios
@@ -72,14 +75,14 @@ export default function Leaderboard({
       .finally(() => setLoading(false));
   }, [loading, hasLoaded]);
 
-  // report top‐10 status
+  // Report top‐10 status
   useEffect(() => {
     if (hasLoaded && onTopStatus) {
       onTopStatus(entries.some(e => e.wallet_address === myWallet));
     }
   }, [hasLoaded, entries, myWallet, onTopStatus]);
 
-  // prepare 10 rows
+  // Prepare 10 rows
   const rows = Array.from({ length: 10 }).map((_, i) => {
     const e    = entries[i];
     const isMe = !!e && e.wallet_address === myWallet;
@@ -93,7 +96,8 @@ export default function Leaderboard({
     };
   });
 
-  const bg = useColorModeValue('white', 'gray.700');
+  // If bgColor is provided use it, otherwise fall back to light/dark default
+  const bg = bgColor ?? useColorModeValue('white', 'gray.700');
 
   return (
     <Box
@@ -114,7 +118,7 @@ export default function Leaderboard({
         </Text>
       )}
 
-      {/* loading skeleton table */}
+      {/* loading skeleton */}
       {loading && !error && (
         <Table
           variant={withBorders ? 'simple' : 'unstyled'}
@@ -137,21 +141,12 @@ export default function Leaderboard({
             </Tr>
           </Thead>
           <Tbody>
-            {rows.map(({ key, isMe }, idx) => (
+            {rows.map((_, idx) => (
               <Tr key={`skeleton-${idx}`}>
-                <Td width={columnWidths.position ?? '51px'}>
-                  <Skeleton h="20px" />
-                </Td>
-                <Td width={columnWidths.user}>
-                  <Skeleton h="20px" />
-                </Td>
-                <Td width={columnWidths.score}>
-                  <Skeleton h="20px" />
-                </Td>
-                <Td
-                  display={{ base: 'none', md: 'table-cell' }}
-                  width={columnWidths.wallet}
-                >
+                <Td width={columnWidths.position ?? '51px'}><Skeleton h="20px" /></Td>
+                <Td width={columnWidths.user}><Skeleton h="20px" /></Td>
+                <Td width={columnWidths.score}><Skeleton h="20px" /></Td>
+                <Td display={{ base: 'none', md: 'table-cell' }} width={columnWidths.wallet}>
                   <Skeleton h="20px" />
                 </Td>
               </Tr>
@@ -177,10 +172,7 @@ export default function Leaderboard({
               <Th width={columnWidths.position ?? '51px'}>#</Th>
               <Th width={columnWidths.user}>User</Th>
               <Th width={columnWidths.score}>Score</Th>
-              <Th
-                display={{ base: 'none', md: 'table-cell' }}
-                width={columnWidths.wallet}
-              >
+              <Th display={{ base: 'none', md: 'table-cell' }} width={columnWidths.wallet}>
                 Wallet
               </Th>
             </Tr>
@@ -226,7 +218,8 @@ export default function Leaderboard({
                   bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
                   color={isMe ? 'white' : 'brand.DarkPurple'}
                   width={columnWidths.wallet}
-                  px={4} py={2} opacity={isMe ? 1 : 0.7}
+                  px={4} py={2}
+                  opacity={isMe ? 1 : 0.7}
                 >
                   {wallet}
                 </Td>

@@ -10,6 +10,7 @@ import {
   Slide,
   IconButton,
   useBreakpointValue,
+  Text,
 } from "@chakra-ui/react";
 import { HamburgerIcon, CloseIcon } from "@chakra-ui/icons";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,6 +28,7 @@ const iconVariants = {
 export default function Navbar() {
   const { isFrozen, next, countdown } = useWeeklyCycle();
   const { connected } = useWallet();
+  const [showFreezeBanner, setShowFreezeBanner] = useState(true)
 
   const [visible, setVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -36,7 +38,9 @@ export default function Navbar() {
   // Mount + Unity iframe visibility logic
   useEffect(() => {
     setIsMounted(true);
-    const checkIframe = () => { iframeRef.current = document.querySelector("iframe[src*='UnityBuild']"); };
+    const checkIframe = () => {
+      iframeRef.current = document.querySelector("iframe[src*='UnityBuild']");
+    };
     const observeUnload = () => {
       if (!iframeRef.current) return;
       iframeRef.current.addEventListener("load", () => {
@@ -52,9 +56,11 @@ export default function Navbar() {
         document.visibilityState === "visible" &&
         !visible &&
         !document.querySelector("iframe[src*='UnityBuild']")
-      ) setVisible(true);
+      )
+        setVisible(true);
     };
-    checkIframe(); observeUnload();
+    checkIframe();
+    observeUnload();
     window.addEventListener("message", handleMessage);
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
@@ -68,67 +74,33 @@ export default function Navbar() {
   const isMobile = isMounted && !!wantsMobile;
 
   // Menu toggle
-  const toggleMenu = () => setIsMenuOpen(prev => !prev);
-  const handlePlay = () => { if (!isFrozen) { setIsMenuOpen(false); window.location.assign("/game"); } };
-  const handleMint = () => { setIsMenuOpen(false); window.location.assign("/mint"); };
+  const toggleMenu = () => setIsMenuOpen((prev) => !prev);
+  const handlePlay = () => {
+    if (!isFrozen) {
+      setIsMenuOpen(false);
+      window.location.assign("/game");
+    }
+  };
+  const handleMint = () => {
+    setIsMenuOpen(false);
+    window.location.assign("/mint");
+  };
+  const handleFaq = () => {
+  setIsMenuOpen(false);
+  window.location.assign("/faq");
+  };
+
+  const now = new Date();
+  const diffMs = next.getTime() - now.getTime();
+  const hours = Math.floor(diffMs / 3_600_000);
+  const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
+  const timeLeft = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
   return (
     <>
-      {/* Icon toggle - fade between hamburger and cross */}
-      {isMobile && (
-        <Box position="fixed" top={4} right={4} zIndex={40}>
-          <AnimatePresence mode="wait">
-            {isMenuOpen ? (
-              <motion.div
-                key="close"
-                initial="hidden"
-                animate="visible"
-                exit="hidden"
-                variants={iconVariants}
-                transition={{ duration: 0.3 }}
-              >
-                <IconButton
-                  aria-label="Close menu"
-                  icon={<CloseIcon />}
-                  variant="ghost"
-                  size="lg"
-                  w={10}
-                  h={9}
-                  color="brand.Purple"
-                  fontSize="17px"
-                  onClick={toggleMenu}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="open"
-                initial="hidden"
-                animate="visible"
-                exit="hidden"
-                variants={iconVariants}
-                transition={{ duration: 0.2 }}
-              >
-                <IconButton
-                  aria-label="Open menu"
-                  icon={<HamburgerIcon />}
-                  variant="ghost"
-                  size="lg"
-                  w={10}
-                  h={9}
-                  fontSize="22px"
-                  color="brand.Purple"
-                  onClick={toggleMenu}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Box>
-      )}
-
-      {/* Slide-in Navbar */}
       <Slide direction="top" in={visible} style={{ zIndex: 30 }}>
         <Box bg="brand.White" boxShadow="0 3px 3px rgba(0,0,0,0.1)">
-          <Flex as="nav" align="center" justify="space-between" px={4} py={2}>
+          <Flex as="nav" align="center" justify="space-between" px={4} py={2} position="relative">
             <Flex align="center">
               <NextLink href="/" passHref>
                 <Box cursor="pointer">
@@ -144,31 +116,141 @@ export default function Navbar() {
               />
             </Flex>
             <Spacer />
+            {/* Desktop: show LOG IN then burger */}
             {!isMobile && (
-              <Flex align="center" gap={7}>
-                <Tooltip
-                  label={isFrozen ? `Locked until ${next.toLocaleString()}` : `Next freeze in ${countdown}`}
-                >
-                  <Button size="nav" isDisabled={isFrozen} onClick={handlePlay}>PLAY</Button>
-                </Tooltip>
-                <NextLink href="/mint" passHref>
-                  <Button size="nav" variant="secondary" onClick={handleMint}>MINT</Button>
-                </NextLink>
+              <Flex align="center" gap={4}>
                 <CustomWalletButton />
+                <AnimatePresence mode="wait">
+                  {isMenuOpen ? (
+                    <motion.div
+                      key="close"
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      variants={iconVariants}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <IconButton
+                        aria-label="Close menu"
+                        icon={<CloseIcon />}
+                        variant="ghost"
+                        size="lg"
+                        w={10}
+                        h={9}
+                        color="brand.Purple"
+                        fontSize="17px"
+                        onClick={toggleMenu}
+                      />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="open"
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      variants={iconVariants}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <IconButton
+                        aria-label="Open menu"
+                        icon={<HamburgerIcon />}
+                        variant="ghost"
+                        size="lg"
+                        w={10}
+                        h={9}
+                        fontSize="22px"
+                        color="brand.Purple"
+                        onClick={toggleMenu}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </Flex>
             )}
+            {/* Mobile: show burger fixed */}
+            {isMobile && (
+              <Box position="absolute" right={4}>
+                <AnimatePresence mode="wait">
+                  {isMenuOpen ? (
+                    <motion.div
+                      key="close_m"
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      variants={iconVariants}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <IconButton
+                        aria-label="Close menu"
+                        icon={<CloseIcon />}
+                        variant="ghost"
+                        size="lg"
+                        w={10}
+                        h={9}
+                        color="brand.Purple"
+                        fontSize="17px"
+                        onClick={toggleMenu}
+                      />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="open_m"
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      variants={iconVariants}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <IconButton
+                        aria-label="Open menu"
+                        icon={<HamburgerIcon />}
+                        variant="ghost"
+                        size="lg"
+                        w={10}
+                        h={9}
+                        fontSize="22px"
+                        color="brand.Purple"
+                        onClick={toggleMenu}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Box>
+            )}
           </Flex>
-          {isFrozen && (
-            <Box bg="brand.Pink" color="white" textAlign="center" py={2}>
-              🎉 Leaderboard frozen until{' '}<b>{next.toLocaleDateString()} {next.toLocaleTimeString()}</b>
+          {isFrozen && showFreezeBanner && (
+            <Box bg="brand.Pink" color="white" position="relative">
+              <Flex align="center" justify="center" px={4} py={2}>
+                <Text textAlign="center">
+                  🎉 Congratulations to the winners! The game will resume in{" "}
+                  <Text as="span" fontWeight="bold">
+                    {timeLeft}
+                  </Text>
+                  .
+                </Text>
+                <IconButton
+                  aria-label="Dismiss"
+                  icon={<CloseIcon />}
+                  variant="ghost"
+                  size="xs"
+                  color="white"
+                  fontSize="10px"
+                  position="absolute"
+                  top="50%"
+                  right={2}
+                  transform="translateY(-50%)"
+                  _hover={{ bg: "rgba(255, 255, 255, 0)" }}
+                  onClick={() => setShowFreezeBanner(false)}
+                />
+              </Flex>
             </Box>
           )}
         </Box>
       </Slide>
 
-      {/* Mobile full-screen menu overlay */}
+      {/* Full-screen menu overlay */}
       <AnimatePresence mode="wait">
-        {isMobile && isMenuOpen && (
+        {isMenuOpen && (
           <motion.div
             key="menuOverlay"
             initial={{ opacity: 0 }}
@@ -178,17 +260,34 @@ export default function Navbar() {
           >
             <Flex direction="column" justify="center" align="center" h="100%" gap={10}>
               <Tooltip
-                label={isFrozen ? `Locked until ${next.toLocaleString()}` : `Next freeze in ${countdown}`}
-                shouldWrapChildren
+                label={
+                  isFrozen
+                    ? `New ranking in ${timeLeft}`
+                    : `Next claim in ${countdown}`
+                }
               >
-                <Button size="nav" variant="primary" isDisabled={isFrozen} onClick={handlePlay}>PLAY</Button>
+                <Button size="default" variant="primary" isDisabled={isFrozen} onClick={handlePlay}>
+                  PLAY
+                </Button>
               </Tooltip>
-              <Button size="nav" variant="secondary" onClick={handleMint}>MINT</Button>
-              <Box
-                onClick={() => { if (!connected) setIsMenuOpen(false); }}
-              >
-                <CustomWalletButton style={{ justifyContent: "center", paddingLeft: 0, paddingRight: 0 }} />
-              </Box>
+              <Button size="default" variant="primary" onClick={handleMint}>
+                MINT
+              </Button>
+                <Button size="default" variant="secondary" onClick={handleFaq}>
+                  ABOUT
+                </Button>
+ {isMobile && (
+          <Box w="90%" maxW="300px">
+            <CustomWalletButton
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                paddingLeft: 0,
+                paddingRight: 0,
+              }}
+            />
+          </Box>
+        )}
             </Flex>
           </motion.div>
         )}

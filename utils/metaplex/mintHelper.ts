@@ -448,7 +448,7 @@ export const mintClick = async (
       setGuardList(reset);
     }
 
-    setCheckEligibility(true);
+    // setCheckEligibility(true);
     updateLoadingText(undefined, guardList, guardToUse.label, setGuardList);
   }
 };
