@@ -10,25 +10,18 @@ import {
   Th,
   Td,
   Skeleton,
-  useColorModeValue,
+  useColorModeValue,    // ← hook import
 } from '@chakra-ui/react';
 import axios from 'axios';
 import { useWallet } from '@solana/wallet-adapter-react';
 import type { LeaderboardEntry } from '@/types/leaderboard';
 
-type ColumnWidths = {
-  position?: string;
-  user?: string;
-  score?: string;
-  wallet?: string;
-};
-
+type ColumnWidths = { position?: string; user?: string; score?: string; wallet?: string; };
 type Props = {
   onTopStatus?: (inTop: boolean) => void;
   withBorders?: boolean;
   height?: string | number;
   columnWidths?: ColumnWidths;
-  /** override the container background (e.g. "transparent") */
   bgColor?: string;
 };
 
@@ -39,6 +32,9 @@ export default function Leaderboard({
   columnWidths = {},
   bgColor,
 }: Props) {
+  // ─── Call hooks unconditionally ─────────────────────────────────────────────
+  const defaultBg = useColorModeValue('white', 'gray.700');
+
   const [entries, setEntries]     = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -47,7 +43,7 @@ export default function Leaderboard({
   const { publicKey }             = useWallet();
   const myWallet                  = publicKey?.toString();
 
-  // Lazy‐load trigger
+  // ─── Lazy‐load trigger ───────────────────────────────────────────────────────
   useEffect(() => {
     const obs = new IntersectionObserver(
       ([entry]) => {
@@ -62,7 +58,7 @@ export default function Leaderboard({
     return () => obs.disconnect();
   }, []);
 
-  // Fetch data
+  // ─── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!loading || hasLoaded) return;
     axios
@@ -75,14 +71,14 @@ export default function Leaderboard({
       .finally(() => setLoading(false));
   }, [loading, hasLoaded]);
 
-  // Report top‐10 status
+  // ─── Report top‐10 status ───────────────────────────────────────────────────
   useEffect(() => {
     if (hasLoaded && onTopStatus) {
       onTopStatus(entries.some(e => e.wallet_address === myWallet));
     }
   }, [hasLoaded, entries, myWallet, onTopStatus]);
 
-  // Prepare 10 rows
+  // ─── Prepare 10 rows ────────────────────────────────────────────────────────
   const rows = Array.from({ length: 10 }).map((_, i) => {
     const e    = entries[i];
     const isMe = !!e && e.wallet_address === myWallet;
@@ -96,8 +92,8 @@ export default function Leaderboard({
     };
   });
 
-  // If bgColor is provided use it, otherwise fall back to light/dark default
-  const bg = bgColor ?? useColorModeValue('white', 'gray.700');
+  // ─── Decide background: use passed‐in bgColor or the hook value ────────────
+  const bg = bgColor ?? defaultBg;
 
   return (
     <Box
@@ -125,9 +121,9 @@ export default function Leaderboard({
           size="sm"
           w="max-content"
           sx={{
-            tableLayout:   'fixed',
-            borderCollapse:'separate',
-            borderSpacing: '3px',
+            tableLayout:    'fixed',
+            borderCollapse: 'separate',
+            borderSpacing:  '3px',
           }}
         >
           <Thead>
@@ -162,9 +158,9 @@ export default function Leaderboard({
           size="sm"
           w="max-content"
           sx={{
-            tableLayout:   'fixed',
-            borderCollapse:'separate',
-            borderSpacing: '3px',
+            tableLayout:    'fixed',
+            borderCollapse: 'separate',
+            borderSpacing:  '3px',
           }}
         >
           <Thead>
