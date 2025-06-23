@@ -7,49 +7,38 @@ export interface Faq {
 
 export const faqs: Faq[] = [
   {
-    question: "What is this mint?",
+    question: "What is Let's Flamingo?",
     answer:
-      "This is a SPL‐token NFT mint built on Metaplex Candy Machine v3, guarded by configurable rules (allowlists, start/end dates, etc.).",
+      "It is a game and NFT collection. Anyone can play it and collect it.",
   },
   {
-    question: "How many can I mint?",
+    question: "How are they related?",
     answer:
-      "Your maximum per‐wallet depends on the guard group you’re in—check the buttons’ tooltips to see your allowance.",
+      "The game has a ranking. Every weekend, the top 10 can claim a free NFT from the collection.",
   },
   {
-    question: "When does the mint start and end?",
+    question: "How does the ranking work?",
     answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
+      "The ranking freezes each Saturday. During that day, the top 10 players can claim their NFT. The ranking resets after that and starts all over again.",
+  },
+  {
+    question: "How do I know if I won?",
+    answer:
+      "If you show up in the ranking while it is frozen, you will see the CLAIM button. Once you claim it, you are not eligible for a free NFT anymore.",
+  },
+  {
+    question: "How many NFT of the collection can I have?",
+    answer:
+      "You can win only 1 NFT per wallet by playing the game. Then you can mint any amount you like at 0.1 fixed price per item.",
+  },
+  {
+    question: "What is Solana?",
+    answer:
+      "Solana is one of the most recognized blockchains in the world. It is lightweight and has the strongest community.",
   },
     {
-    question: "When does the mint start and end?",
+    question: "How do I collect it?",
     answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
+      "To mint means that you become the rightful owner of an item of the collection. You need a tiny bit of sol to cover for the network cost associated to that transaction that makes that possible.",
   },
-    {
-    question: "When does the mint start and end?",
-    answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
-  },
-    {
-    question: "When does the mint start and end?",
-    answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
-  },
-    {
-    question: "When does the mint start and end?",
-    answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
-  },
-    {
-    question: "When does the mint start and end?",
-    answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
-  },
-    {
-    question: "When does the mint start and end?",
-    answer:
-      "There are two groups: “LFG” (starts Apr 21, ends May 30) and “OG” (always live). Only wallets on the LFG allowlist can mint during the LFG window.",
-  },
-  // …add as many Q&A pairs as you like
 ];
