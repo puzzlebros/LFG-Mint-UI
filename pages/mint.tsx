@@ -50,7 +50,6 @@ import axios from "axios";
 import type { LeaderboardEntry } from "@/types/leaderboard";
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
-import { faqs } from "../public/data/faq";
 
 const pulse = keyframes`
   0%, 100% { transform: scale(1); }

@@ -26,6 +26,7 @@ import Balloon from '../components/Balloon'
 import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 import { Footer } from '../components/Footer'
 import { ChevronDownIcon } from '@chakra-ui/icons'
+import { formatRemaining } from '../utils/leaderboard/formatRemaining';
 
 // define a simple float animation
 const floatKeyframes = `
@@ -55,9 +56,8 @@ export default function HomePage() {
 
   const now    = new Date()
   const diffMs = next.getTime() - now.getTime()
-  const hrs    = Math.floor(diffMs / 3_600_000)
-  const mins   = Math.floor((diffMs % 3_600_000) / 60_000)
-  const timeLeft = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`
+  const timeLeft = formatRemaining(diffMs);
+
 
   useEffect(() => {
   function updateGame() {
@@ -112,7 +112,7 @@ export default function HomePage() {
   const traitSize = useBreakpointValue({ base: 330, md: 480 });
 
   const mintHeroSize = useBreakpointValue({
-    base: "37rem",      // much larger on phones
+    base: "30rem",
     md:   "48rem",
   });
 
@@ -126,9 +126,25 @@ export default function HomePage() {
     md:   "22rem",
   });
 
+  const rankingHeadingSize = useBreakpointValue({
+  base: "4rem",
+  md:   "4.5rem",
+  });
+
+  const rankingCopySize = useBreakpointValue({
+  base: "1rem",
+  md:   "1.3rem",
+  });
+
+
+  const rankingHeadingMargin = useBreakpointValue({
+  base: "35px",
+  md:   "15px",
+  });
+
   const mintButtonMargin = useBreakpointValue({
-    base: "22%",
-    md:   "10%",
+    base: "7%",
+    md:   "7%",
   });
 
   // when mount or resize, capture dimensions
@@ -161,12 +177,18 @@ export default function HomePage() {
   '/images/balloons/Balloon_3.png',
   ];
 
-  const FloatingIslands = [
+  // define desktop positions
+  const islandsDesktop = [
     { src: "/images/islands/Island_1.png", top: "25%", left: "12%", size: "100px", delay: "0s" },
     { src: "/images/islands/Island_2.png", top: "32%", left: "75%", size: "160px", delay: "0.7s" },
     { src: "/images/islands/Island_3.png", top: "57%", left: "20%", size: "220px", delay: "1.3s" },
-    { src: "/images/islands/Island_4.png", top: "75%", left: "65%", size: "80px", delay: "2s" },
+    { src: "/images/islands/Island_4.png", top: "75%", left: "65%", size: "80px",  delay: "2s" },
   ];
+
+  const FloatingIslands = useBreakpointValue({
+    base: [],              // no islands on mobile
+    md:   islandsDesktop,  // only desktop islands
+  })!;
 
   const floatAnim = keyframes`
   0%, 100% { transform: translateY(0); }
@@ -239,10 +261,16 @@ export default function HomePage() {
             fontWeight="normal"
             letterSpacing="0.01em"
             lineHeight="0.8"
+            /* desktop tilt range */
             minWidth={25}
             maxWidth={115}
             minSlant={-30}
             maxSlant={20}
+            /* mobile-specific tilt range */
+            minWidthMobile={15}
+            maxWidthMobile={50}
+            minSlantMobile={-30}
+            maxSlantMobile={20}
             previewWidth={0}
             previewSlant={0}
             transitionDuration={0.2}
@@ -250,48 +278,48 @@ export default function HomePage() {
             LFG
           </InteractiveHeading>
 
-        </Flex>
-        <Box
-          as="style"
-          dangerouslySetInnerHTML={{ __html: floatKeyframes }}
-        />
-        <Center position="absolute" bottom="50px" w="100%" zIndex={3}>
-          <ChevronDownIcon
-            boxSize="45px"
-            animation="float 2s ease-in-out infinite"
-            color="brand.Lavender"
-            cursor="pointer"
-            onClick={() => {
-              document.getElementById('game')?.scrollIntoView({ behavior: 'smooth' })
-            }}
+          </Flex>
+          <Box
+            as="style"
+            dangerouslySetInnerHTML={{ __html: floatKeyframes }}
           />
-        </Center>
-        {/* fixed scroller at bottom */}
-        <HorizontalScroller
-          items={welcomeScroller}
-          speed={5}
-          height="50px"
-          bgColor="brand.DarkPurple"
-          zIndex={2}
-          align="bottom"
-        />
-      </Box>
+          <Center position="absolute" bottom="50px" w="100%" zIndex={3}>
+            <ChevronDownIcon
+              boxSize="45px"
+              animation="float 2s ease-in-out infinite"
+              color="brand.Lavender"
+              cursor="pointer"
+              onClick={() => {
+                document.getElementById('game')?.scrollIntoView({ behavior: 'smooth' })
+              }}
+            />
+          </Center>
+          {/* fixed scroller at bottom */}
+          <HorizontalScroller
+            items={welcomeScroller}
+            speed={5}
+            height="50px"
+            bgColor="brand.DarkPurple"
+            zIndex={2}
+            align="bottom"
+          />
+        </Box>
 
-      {/** ——— Game Section ——— **/}
-      <Box
-        ref={gameRef}
-        id="game"
-        as="section"
-        flex="none"
-        w="100%"
-        h="100%"
-        scrollSnapAlign="start"
-        scrollSnapStop="always"
-        position="relative"
-        bgSize="cover"
-        bgPosition="center"
-        overflow="visible"
-      >
+        {/** ——— Game Section ——— **/}
+        <Box
+          ref={gameRef}
+          id="game"
+          as="section"
+          flex="none"
+          w="100%"
+          h="100%"
+          scrollSnapAlign="start"
+          scrollSnapStop="always"
+          position="relative"
+          bgSize="cover"
+          bgPosition="center"
+          overflow="visible"
+        >
         {/* inject both keyframes */}
         <Box as="style" dangerouslySetInnerHTML={{
           __html: `
@@ -310,7 +338,7 @@ export default function HomePage() {
         }} />
 
         {/* side-floating islands */}
-       {gameDims.h > 0 &&
+        {gameDims.h > 0 &&
           FloatingIslands.map(({ src, top, left, size, delay }, idx) => (
             <Box
             key={idx}
@@ -332,20 +360,20 @@ export default function HomePage() {
         }
 
         {/* rising balloons */}
-{gameDims.h > 0 &&
-  balloonUrls.map((src, i) => (
-    <Balloon
-      key={i}
-      src={src}
-      minScale={0.7}
-      maxScale={3.5}
-      // here we say: anything scaled above 1.3 floats on top:
-      highScaleThreshold={2.7}
-      // and big balloons get zIndex: 5
-      highScaleZIndex={5}
-    />
-  ))
-}
+        {gameDims.h > 0 &&
+          balloonUrls.map((src, i) => (
+            <Balloon
+              key={i}
+              src={src}
+              minScale={0.7}
+              maxScale={3.5}
+              // here we say: anything scaled above 1.3 floats on top:
+              highScaleThreshold={2.7}
+              // and big balloons get zIndex: 5
+              highScaleZIndex={5}
+            />
+          ))
+        }
 
         <Center h="100%">
           <Stack spacing={2} textAlign="center" align="center" w="full" maxW="420px" mx="auto">
@@ -358,7 +386,7 @@ export default function HomePage() {
                   color="brand.DarkPurple"
                   lineHeight="6rem"
                 >
-                  MINT DAY!
+                  CLAIM DAY!
                 </Heading>
 
                 <Text
@@ -423,7 +451,7 @@ export default function HomePage() {
               label={
                 isFrozen
                   ? `New leaderboard starting in ${timeLeft}`
-                  : `Next claim in ${countdown}`
+                  : `Next claim in ${timeLeft}`
               }
             >
               <Button
@@ -457,10 +485,10 @@ export default function HomePage() {
           <Stack spacing={2} textAlign="center" align="center" maxW="600px" w="100%">
             <Heading
               size="xl"
-              fontSize="4.5rem"
+              fontSize={rankingHeadingSize}
               textStyle="condensed"
               lineHeight="4.2rem"
-              mt="3"
+              mt={rankingHeadingMargin}
             >
               {isFrozen
                 ? 'WEEKLY WINNERS'
@@ -472,16 +500,18 @@ export default function HomePage() {
 
             <Text
               textStyle="copy"
-              fontSize="1.2rem"
+              fontSize={rankingCopySize}
               textAlign="center"
               mb={4}
+              mr={10}
+              ml={10}
             >
               {isFrozen ? (
                 <>
                   Claim your LFG within the next {' '}
                   <Text as="span" color="brand.Purple" fontWeight="bold">
                     {timeLeft}
-                  </Text> before the ranking resets.
+                  </Text> before the ranking resets!
                 </>
               ) : (
                 <>
@@ -530,91 +560,97 @@ export default function HomePage() {
         />
       </Box>
 
-      {/** ——— Mint + Trait-Dresser Section ——— **/}
-      <Box
-        as="section"
-        flex="none"
-        w="100%"
-        h="100vh"
-        scrollSnapAlign="start"
-        scrollSnapStop="always"
-        position="relative"
-        overflow="hidden"
-        overscrollBehaviorY="contain"
-        // bgImage="url('/images/mint-bg.png')"
-        // bgSize="cover"
-        // bgPosition="center"
+{/** ——— Mint + Trait-Dresser Section ——— **/}
+<Box
+  as="section"
+  flex="none"
+  w="100%"
+  h="100vh"
+  scrollSnapAlign="start"
+  scrollSnapStop="always"
+  position="relative"
+  overflow="hidden"
+  overscrollBehaviorY="contain"
+>
+  {/* Layer 1: background heading */}
+  <Box
+    position="absolute"
+    inset="0"
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    zIndex={0}
+    pointerEvents="none"
+    mt="-30"
+  >
+    <InteractiveHeading
+      minWidth={45}
+      maxWidth={85}
+      minSlant={-10}
+      maxSlant={30}
+      previewWidth={80}
+      previewSlant={0}
+      transitionDuration={0.2}
+      fontSize={mintBgSize}
+      fontWeight="normal"
+      letterSpacing="0.01em"
+      lineHeight=".75"
+      color="brand.Pink"
+      whiteSpace="pre"
+    >
+      {mintBgText}
+    </InteractiveHeading>
+  </Box>
+
+  {/* Layer 2: centered TraitDresser with button positioned relative */}
+  <Box
+    position="absolute"
+    inset="0"
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    zIndex={1}
+  >
+    {/* Inner wrapper keeps dresser vertically centered, button spaced below */}
+    <Box display="flex" flexDirection="column" alignItems="center" mt="10vh">
+      <TraitDresser
+        skinSrc="/images/skins/1.png"
+        skinSize={traitSize}
+        traitPaths={{
+          clothes: [
+            '/images/traits/clothes/1.png',
+            '/images/traits/clothes/2.png',
+            '/images/traits/clothes/3.png',
+          ],
+          beak: ['/images/traits/beak/1.png'],
+          eyes: [
+            '/images/traits/eyes/1.png',
+            '/images/traits/eyes/2.png',
+            '/images/traits/eyes/3.png',
+          ],
+          head: [
+            '/images/traits/head/1.png',
+            '/images/traits/head/2.png',
+            '/images/traits/head/3.png',
+          ],
+        }}
+      />
+      <Button
+        mt={mintButtonMargin}
+        size="default"
+        onClick={() => (window.location.href = '/mint')}
       >
-        {/* Layer 1: background heading */}
-        <Box
-          position="absolute"
-          inset="0"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          zIndex={0}
-          pointerEvents="none"
-          mt="-30"
-        >
-          <InteractiveHeading
-            minWidth={45}
-            maxWidth={85}
-            minSlant={-10}
-            maxSlant={30}
-            previewWidth={80}
-            previewSlant={0}
-            transitionDuration={0.2}
-            fontSize={mintBgSize}
-            fontWeight="normal"
-            letterSpacing="0.01em"
-            lineHeight=".75"
-            color="brand.Pink"
-            whiteSpace="pre"
-          >
-            {mintBgText}
-          </InteractiveHeading>
-        </Box>
+        MINT
+      </Button>
+    </Box>
+  </Box>
 
-        {/* Layer 2: centered TraitDresser */}
-        <Box
-          position="absolute"
-          inset="0"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          zIndex={1}
-        >
-          <TraitDresser
-            skinSrc="/images/skins/1.png"
-            skinSize={traitSize}
-            traitPaths={{
-              clothes: ['/images/traits/clothes/1.png','/images/traits/clothes/2.png','/images/traits/clothes/3.png'],
-              beak:    ['/images/traits/beak/1.png'],
-              eyes:    ['/images/traits/eyes/1.png','/images/traits/eyes/2.png','/images/traits/eyes/3.png'],
-              head:    ['/images/traits/head/1.png','/images/traits/head/2.png','/images/traits/head/3.png'],
-            }}
-          />
-        </Box>
+  {/* Layer 3: footer */}
+  <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
+    <Footer />
+  </Box>
+</Box>
 
-        {/* Layer 3: Mint button */}
-        <Box
-          position="absolute"
-          bottom={mintButtonMargin}
-          left="50%"
-          transform="translateX(-50%)"
-          zIndex={2}
-        >
-          <Button
-            size="default"
-            onClick={() => (window.location.href = '/mint')}
-          >
-            MINT
-          </Button>
-        </Box>
-        <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
-         <Footer />
-       </Box>
-      </Box>
     </Box>
   );
 }

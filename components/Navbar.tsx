@@ -16,8 +16,9 @@ import { HamburgerIcon, CloseIcon } from "@chakra-ui/icons";
 import { motion, AnimatePresence } from "framer-motion";
 import LogoImage from "./LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
-import { useWallet } from "@solana/wallet-adapter-react";
 import { CustomWalletButton } from "./CustomWalletButton";
+import { formatRemaining } from '../utils/leaderboard/formatRemaining';
+
 
 // Variants for fade in/out
 const iconVariants = {
@@ -26,8 +27,7 @@ const iconVariants = {
 };
 
 export default function Navbar() {
-  const { isFrozen, next, countdown } = useWeeklyCycle();
-  const { connected } = useWallet();
+  const { isFrozen, next } = useWeeklyCycle();
   const [showFreezeBanner, setShowFreezeBanner] = useState(true)
 
   const [visible, setVisible] = useState(true);
@@ -92,9 +92,7 @@ export default function Navbar() {
 
   const now = new Date();
   const diffMs = next.getTime() - now.getTime();
-  const hours = Math.floor(diffMs / 3_600_000);
-  const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
-  const timeLeft = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const timeLeft = formatRemaining(diffMs);
 
   return (
     <>
@@ -103,7 +101,10 @@ export default function Navbar() {
           <Flex as="nav" align="center" justify="space-between" px={4} py={2} position="relative">
             <Flex align="center">
               <NextLink href="/" passHref>
-                <Box cursor="pointer">
+                <Box
+                cursor="pointer"
+                onClick={() => setIsMenuOpen(false)}
+                >
                   <LogoImage src="/images/LFG_Iso.png" alt="LFG Isotype" boxSize="50px" />
                 </Box>
               </NextLink>
@@ -263,7 +264,7 @@ export default function Navbar() {
                 label={
                   isFrozen
                     ? `New ranking in ${timeLeft}`
-                    : `Next claim in ${countdown}`
+                    : `Next claim in ${timeLeft}`
                 }
               >
                 <Button size="default" variant="primary" isDisabled={isFrozen} onClick={handlePlay}>
@@ -276,18 +277,16 @@ export default function Navbar() {
                 <Button size="default" variant="secondary" onClick={handleFaq}>
                   ABOUT
                 </Button>
- {isMobile && (
-          <Box w="90%" maxW="300px">
-            <CustomWalletButton
-              style={{
-                width: "100%",
-                justifyContent: "center",
-                paddingLeft: 0,
-                paddingRight: 0,
-              }}
-            />
-          </Box>
-        )}
+              {isMobile && (
+              <CustomWalletButton
+                style={{
+                  width: "100%",
+                  justifyContent: "center",
+                  paddingLeft: 0,
+                  paddingRight: 0,
+                }}
+              />
+              )}
             </Flex>
           </motion.div>
         )}

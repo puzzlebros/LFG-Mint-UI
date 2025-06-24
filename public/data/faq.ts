@@ -36,9 +36,14 @@ export const faqs: Faq[] = [
     answer:
       "Solana is one of the most recognized blockchains in the world. It is lightweight and has the strongest community.",
   },
-    {
+  {
     question: "How do I collect it?",
     answer:
       "To mint means that you become the rightful owner of an item of the collection. You need a tiny bit of sol to cover for the network cost associated to that transaction that makes that possible.",
+  },
+    {
+    question: "What else can I know about the collection?",
+    answer:
+      "The collection is a Metaplex Core NFT Standard, which ensures world class security and efficiency recognized by the biggest marketplaces such as Magic Eden and Tensor.",
   },
 ];

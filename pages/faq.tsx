@@ -11,6 +11,7 @@ import {
   Text,
   Image,
   Icon,
+  useBreakpointValue
 } from "@chakra-ui/react";
 import { AddIcon } from "@chakra-ui/icons";
 import { keyframes } from "@emotion/react";
@@ -25,16 +26,30 @@ const floatAnim = keyframes`
   50%     { transform: translateY(-20px); }
 `;
 
-const Islands = [
-  { src: "/images/islands/Island_1.png", top: "25%", left: "7%",  delay: "0s",   size: "100px" },
-  { src: "/images/islands/Island_2.png", top: "35%", left: "80%", delay: "1s",   size: "120px" },
-  { src: "/images/islands/Island_3.png", top: "55%", left: "10%", delay: "0.5s", size: "180px" },
-  { src: "/images/islands/Island_4.png", top: "60%", left: "85%", delay: "1.5s", size: "75px"  },
+// desktop positions + sizes
+const islandsDesktop = [
+  { src: "/images/islands/Island_1.png", top: "25%", left: "7%",  delay: "0s",  size: "100px" },
+  { src: "/images/islands/Island_2.png", top: "35%", left: "80%", delay: "1s",  size: "120px" },
+  { src: "/images/islands/Island_3.png", top: "55%", left: "10%", delay: "0.5s",size: "180px" },
+  { src: "/images/islands/Island_4.png", top: "60%", left: "85%", delay: "1.5s",size: "75px"  },
+];
+
+// mobile‐friendly positions + smaller scales
+const islandsMobile = [
+  { src: "/images/islands/Island_1.png", top: "20%", left: "5%",  delay: "0s",  size: " 0" },
+  { src: "/images/islands/Island_2.png", top: "30%", left: "75%", delay: "1s",  size: "0" },
+  { src: "/images/islands/Island_3.png", top: "50%", left: " 8%", delay: "0.5s",size: "0" },
+  { src: "/images/islands/Island_4.png", top: "70%", left: "80%", delay: "1.5s",size: "0" },
 ];
 
 const FAQPage: NextPage = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
+  // inside your component:
+const FloatingIslands = useBreakpointValue({
+  base: islandsMobile, // < md
+  md:   islandsDesktop // ≥ md
+})!;
 
   useEffect(() => {
     const update = () => {
@@ -60,7 +75,7 @@ const FAQPage: NextPage = () => {
     >
       {/* Floating islands behind */}
       {dims.h > 0 &&
-        Islands.map(({ src, top, left, delay, size }, i) => (
+        FloatingIslands.map(({ src, top, left, delay, size }, i) => (
           <Box
             key={i}
             position="absolute"
@@ -97,9 +112,10 @@ const FAQPage: NextPage = () => {
           <Heading
             as="h1"
             size="xl"
-            mt="45px"
-            mb="55px"
+            mt="35px"
+            mb="45px"
             fontSize="3rem"
+            lineHeight="2.7rem"
             textStyle="condensed"
             textAlign="center"
           >

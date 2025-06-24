@@ -1,6 +1,5 @@
-// components/InteractiveHeading.tsx
-import { Heading, HeadingProps, useToast } from "@chakra-ui/react";
-import { useRef, useEffect, useState, MouseEvent } from "react";
+import { Heading, HeadingProps, useBreakpointValue } from "@chakra-ui/react";
+import { useRef, useEffect, useState } from "react";
 
 /** clamp a number to [min,max] */
 function clamp(value: number, min: number, max: number) {
@@ -14,6 +13,11 @@ export interface InteractiveHeadingProps
   maxWidth?: number;
   minSlant?: number;
   maxSlant?: number;
+  /** mobile-specific overrides */
+  minWidthMobile?: number;
+  maxWidthMobile?: number;
+  minSlantMobile?: number;
+  maxSlantMobile?: number;
   previewWidth?: number;
   previewSlant?: number;
   transitionDuration?: number;
@@ -24,27 +28,34 @@ export interface InteractiveHeadingProps
 
 export default function InteractiveHeading({
   children,
-  minWidth            = 26,
-  maxWidth            = 146,
+  minWidth           = 26,
+  maxWidth           = 146,
   minSlant           = -15,
-  maxSlant            = 15,
-  previewWidth        = (26 + 146) / 2,
-  previewSlant        = 0,
-  transitionDuration  = 0.3,
-  enableTilt          = true,
-  permissionTimeout   = 5000,         // ← default 5s
+  maxSlant           = 15,
+  minWidthMobile    = minWidth,
+  maxWidthMobile    = maxWidth,
+  minSlantMobile    = minSlant,
+  maxSlantMobile    = maxSlant,
+  previewWidth       = (26 + 146) / 2,
+  previewSlant       = 0,
+  transitionDuration = 0.3,
+  enableTilt         = true,
+  permissionTimeout  = 5000,
 
-  fontSize       = "6xl",
-  letterSpacing  = "0.2em",
-  lineHeight     = "1.1",
+  fontSize      = "6xl",
+  letterSpacing = "0.2em",
+  lineHeight    = "1.1",
   ...rest
 }: InteractiveHeadingProps) {
   const ref = useRef<HTMLHeadingElement>(null);
-  const toast = useToast();
-
-  // track if tilt was ever allowed or denied
-  const [tiltAllowed, setTiltAllowed]         = useState(false);
+  const [tiltAllowed, setTiltAllowed]           = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // determine responsive axis limits
+  const effectiveMinWidth = useBreakpointValue({ base: minWidthMobile, md: minWidth })!;
+  const effectiveMaxWidth = useBreakpointValue({ base: maxWidthMobile, md: maxWidth })!;
+  const effectiveMinSlant = useBreakpointValue({ base: minSlantMobile, md: minSlant })!;
+  const effectiveMaxSlant = useBreakpointValue({ base: maxSlantMobile, md: maxSlant })!;
 
   // 1) Core: pointer + deviceorientation (if allowed)
   useEffect(() => {
@@ -52,17 +63,19 @@ export default function InteractiveHeading({
     if (!el) return;
 
     const updateAxes = (xNorm: number, yNorm: number) => {
-      const wd = minWidth + xNorm * (maxWidth - minWidth);
-      const sl = minSlant + yNorm * (maxSlant - minSlant);
-      el.style.fontVariationSettings = 
+      const wd = effectiveMinWidth + xNorm * (effectiveMaxWidth - effectiveMinWidth);
+      const sl = effectiveMinSlant + yNorm * (effectiveMaxSlant - effectiveMinSlant);
+      el.style.fontVariationSettings =
         `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
     };
 
-    const onPointerMove = (e: PointerEvent) => {
-      updateAxes(clamp(e.clientX / window.innerWidth, 0, 1),
-                 clamp(e.clientY / window.innerHeight,0, 1));
+    const onPointerMove = (e: globalThis.PointerEvent) => {
+      updateAxes(
+        clamp(e.clientX / window.innerWidth, 0, 1),
+        clamp(e.clientY / window.innerHeight, 0, 1)
+      );
     };
-    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointermove", onPointerMove as EventListener);
 
     let onDeviceOrientation: ((e: DeviceOrientationEvent) => void) | null = null;
     if (enableTilt && tiltAllowed) {
@@ -78,86 +91,68 @@ export default function InteractiveHeading({
     }
 
     return () => {
-      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointermove", onPointerMove as EventListener);
       if (onDeviceOrientation) {
         window.removeEventListener("deviceorientation", onDeviceOrientation);
       }
     };
-  }, [minWidth, maxWidth, minSlant, maxSlant, enableTilt, tiltAllowed]);
+  }, [effectiveMinWidth, effectiveMaxWidth, effectiveMinSlant, effectiveMaxSlant, enableTilt, tiltAllowed]);
 
   // 2) Prompt for permission on first tap (iOS)
   useEffect(() => {
-    const el = ref.current;
     const devOrient = (DeviceOrientationEvent as any);
-
     if (enableTilt && typeof devOrient?.requestPermission === "function") {
-      const handleTap = (e: MouseEvent) => {
-        devOrient.requestPermission()
-          .then((perm: string) => {
-            if (perm === "granted") {
-              setTiltAllowed(true);
-              toast({ title:"Tilt enabled", status:"success", duration:2000 });
-            } else {
-              setPermissionDenied(true);
-              toast({ title:"Tilt denied", status:"warning", duration:2000 });
-            }
-          })
-          .catch(() => {
+      const el = ref.current;
+      const handleTap = async () => {
+        try {
+          const perm: string = await devOrient.requestPermission();
+          if (perm === "granted") {
+            setTiltAllowed(true);
+          } else {
             setPermissionDenied(true);
-            toast({ title:"Tilt error", status:"error", duration:2000 });
-          });
-        el?.removeEventListener("pointerdown", handleTap as any);
+          }
+        } catch {
+          setPermissionDenied(true);
+        }
+        if (el) el.removeEventListener("pointerdown", handleTap as EventListener);
       };
-
-      toast({ title:"Tap heading to enable tilt", status:"info", duration:3000 });
-      el?.addEventListener("pointerdown", handleTap as any);
+      el?.addEventListener("pointerdown", handleTap as EventListener);
     } else {
-      // not iOS 13+ or no API → treat as allowed
       setTiltAllowed(true);
     }
-  }, [enableTilt, toast]);
+  }, [enableTilt]);
 
-  // 3) Fallback on explicit denial OR on no response within timeout
+  // 3) Fallback on denial or timeout
   useEffect(() => {
     if (!enableTilt) return;
-
-    let timer: NodeJS.Timeout|number;
-    // start timeout if we haven't got a grant/deny yet
+    let timer: NodeJS.Timeout;
     if (!tiltAllowed && !permissionDenied) {
-      timer = setTimeout(() => {
-        setPermissionDenied(true);
-        toast({ title:"Auto-animating heading", status:"info", duration:2000 });
-      }, permissionTimeout);
+      timer = setTimeout(() => setPermissionDenied(true), permissionTimeout);
     }
+    return () => clearTimeout(timer as any);
+  }, [enableTilt, tiltAllowed, permissionDenied, permissionTimeout]);
 
-    return () => {
-      clearTimeout(timer as any);
-    };
-  }, [enableTilt, tiltAllowed, permissionDenied, permissionTimeout, toast]);
-
-  // 4) Auto-animate when permissionDenied === true
+  // 4) Auto-animate on deny
   useEffect(() => {
     if (!(enableTilt && permissionDenied)) return;
     let rafId: number;
     let startTs = 0;
-
     const animate = (ts: number) => {
       if (!startTs) startTs = ts;
       const t = (ts - startTs) / 1000;
       const xNorm = (Math.sin(t) + 1) / 2;
       const yNorm = (Math.cos(t) + 1) / 2;
       if (ref.current) {
-        const wd = minWidth + xNorm * (maxWidth - minWidth);
-        const sl = minSlant + yNorm * (maxSlant - minSlant);
-        ref.current.style.fontVariationSettings = 
+        const wd = effectiveMinWidth + xNorm * (effectiveMaxWidth - effectiveMinWidth);
+        const sl = effectiveMinSlant + yNorm * (effectiveMaxSlant - effectiveMinSlant);
+        ref.current.style.fontVariationSettings =
           `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
       }
       rafId = requestAnimationFrame(animate);
     };
-
     rafId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafId);
-  }, [enableTilt, permissionDenied, minWidth, maxWidth, minSlant, maxSlant]);
+  }, [enableTilt, permissionDenied, effectiveMinWidth, effectiveMaxWidth, effectiveMinSlant, effectiveMaxSlant]);
 
   // initial preview
   const initial = `"wdth" ${previewWidth}, "slnt" ${previewSlant}`;
@@ -172,7 +167,7 @@ export default function InteractiveHeading({
       lineHeight={lineHeight}
       sx={{
         fontVariationSettings: initial,
-        transition:            `font-variation-settings ${transitionDuration}s ease`,
+        transition: `font-variation-settings ${transitionDuration}s ease`,
       }}
       {...rest}
     >
