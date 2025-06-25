@@ -1,14 +1,7 @@
 // utils/leaderboard/updateAllowlist.ts
-
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import {
-  publicKey,
-  keypairIdentity,
-  some,
-  none,
-  Umi,
-} from "@metaplex-foundation/umi";
+import { publicKey, keypairIdentity, some, Umi } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   mplCandyMachine as mplCoreCandyMachine,
@@ -21,26 +14,23 @@ import {
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import type { LeaderboardEntry } from "@/types/leaderboard";
 
-// — Supabase client
+// — Supabase client —
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// — UMI + Candy Machine plugin
+// — UMI + mpl-CandyMachine plugin —
 const umi: Umi = createUmi(process.env.NEXT_PUBLIC_RPC!).use(
   mplCoreCandyMachine()
 );
 
-// load your deploy keypair
+// Load deploy keypair from JSON
 if (!process.env.DEPLOY_KEYPAIR) throw new Error("Missing DEPLOY_KEYPAIR");
-const deployBytes = new Uint8Array(
-  JSON.parse(process.env.DEPLOY_KEYPAIR) as number[]
-);
-const deployKP = umi.eddsa.createKeypairFromSecretKey(deployBytes);
-umi.use(keypairIdentity(deployKP));
+const deployBytes = new Uint8Array(JSON.parse(process.env.DEPLOY_KEYPAIR) as number[]);
+umi.use(keypairIdentity(umi.eddsa.createKeypairFromSecretKey(deployBytes)));
 
-// 1) pull top-10 wallets from leaderboard
+// 1) Fetch top-10 wallets
 async function getTop10Wallets(): Promise<string[]> {
   const { data, error } = await supabase
     .from<"leaderboard", LeaderboardEntry>("leaderboard")
@@ -56,75 +46,72 @@ export async function updateAllowlistGuard(): Promise<void> {
   const top10 = await getTop10Wallets();
   console.log("   → top10:", top10);
 
-  // 2) fetch on‐chain candy machine + guard PDA
+  // 2) Fetch on-chain candy machine & guard
   const cm = await fetchCandyMachine(
     umi,
-    publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID!)
+    publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID!),
   );
   const guardAddr = cm.mintAuthority;
   const guardData = await fetchCandyGuard(umi, guardAddr);
 
-  // 3) verify your “LFG” group exists
+  // 3) Ensure “LFG” group exists
   const label = "LFG";
-  if (!guardData.groups.some((g) => g.label === label)) {
-    throw new Error('No "LFG" group found on Candy Guard');
+  if (!guardData.groups.find((g) => g.label === label)) {
+    throw new Error(`Missing required group label "${label}"`);
   }
 
-  // 4) **build your PublicKey[] once** and use it for both root & proofs
-  const keys = top10.map((addr) => publicKey(addr));
+  // 4) Build sorted array of PublicKeys, compute Merkle root
+  const keys = top10
+    .map((addr) => publicKey(addr))
+    .sort((a, b) => a.toString().localeCompare(b.toString()));
+  console.log("▶︎ Sorted leaves:", keys.map((k) => k.toString()));
+
   const merkleRoot = getMerkleRoot(keys);
   console.log(
     "🌿 [update] New Merkle root (base64):",
-    Buffer.from(merkleRoot).toString("base64")
+    Buffer.from(merkleRoot).toString("base64"),
   );
 
-  // 5) only patch the LFG entry, leave all other groups untouched
+  // 5) Replace only the LFG group
   const newGroups = guardData.groups.map((g) =>
     g.label === label
       ? {
           label,
           guards: {
-            // two guards: allowList + single-claim
             allowList: some({ merkleRoot }),
             mintLimit: some({ id: 1, limit: 1 }),
           },
         }
-      : g
+      : g,
   );
 
-  // 6) write the new merkleRoot on-chain
-  console.log("🔔 [update] Sending updated Candy Guard groups on-chain…");
+  // 6) Send updated groups on-chain
+  console.log("🔔 [update] Sending updated Candy Guard groups…");
   await updateCandyGuard(umi, {
     candyGuard: guardData.publicKey,
-    guards: {},       // leave global/default guards alone
-    groups: newGroups // full array
+    guards: {}, // leave default/global untouched
+    groups: newGroups,
   })
-    .sendAndConfirm(umi)
-    .then(() => console.log("✅ Candy Guard groups updated"));
+    .sendAndConfirm(umi);
+  console.log("✅ Candy Guard groups updated");
 
-  // 7) now seed one PDA‐proof per top-10 wallet *under the LFG group*
-  console.log("🌱 [cron] Seeding allowList proofs on-chain…");
+  // 7) Seed each PDA proof with the same sorted array
+  console.log("🌱 [cron] Seeding allowList PDA proofs…");
   for (const userPk of keys) {
     const merkleProof = getMerkleProof(keys, userPk);
-
     await route(umi, {
       guard:        "allowList",
       candyMachine: cm.publicKey,
       candyGuard:   guardAddr,
-      group:        some(label),    // <-- must match your LFG group
-      routeArgs:    {
+      group:        some(label),
+      routeArgs: {
         path:        "proof",
         merkleRoot,
         merkleProof,
       },
     })
-      .sendAndConfirm(umi)
-      .then(() => console.log(`  • proof seeded for ${userPk.toString()}`))
-      .catch((err) => {
-        console.error(`  ✗ failed seeding proof for ${userPk.toString()}`, err);
-        throw err;
-      });
+      .sendAndConfirm(umi);
+    console.log(`  • Proof seeded for ${userPk.toString()}`);
   }
-
-  console.log("✅ All allowList PDAs seeded");
+  console.log("✅ All allowList PDA proofs seeded");
 }
