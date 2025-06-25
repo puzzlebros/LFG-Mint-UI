@@ -6,7 +6,6 @@ import {
   CandyMachine,
   GuardSet,
   MintLimit,
-  NftMintCounter,
   NftMintLimit,
   fetchAssetMintCounter,
   fetchNftMintCounter,
@@ -29,7 +28,6 @@ import {
 } from "@metaplex-foundation/umi";
 import { DigitalAssetWithToken } from "@metaplex-foundation/mpl-token-metadata";
 import { createStandaloneToast } from "@chakra-ui/react";
-import { isTemplateExpression } from "typescript";
 import { DasApiAsset } from "@metaplex-foundation/digital-asset-standard-api";
 
 export interface GuardReturn {
