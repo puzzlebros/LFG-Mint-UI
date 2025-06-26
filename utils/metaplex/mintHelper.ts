@@ -37,7 +37,6 @@ import { Connection } from "@solana/web3.js";
 import { setComputeUnitPrice, setComputeUnitLimit, fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 import { toWeb3JsTransaction } from "@metaplex-foundation/umi-web3js-adapters";
 import { Dispatch, SetStateAction, } from "react";
-import axios from 'axios';
 
 export interface GuardButtonList extends GuardReturn {
   header: string;
@@ -67,16 +66,21 @@ export const mintArgsBuilder = (
   for (let i = 0; i < amount; i++) {
     const args: Partial<DefaultGuardSetMintArgs> = {};
 
+    // Handling mintLimit guard
     if (guards.mintLimit.__option === 'Some') {
       args.mintLimit = some({ id: guards.mintLimit.value.id });
     }
+    
+    // Handling solPayment guard
     if (guards.solPayment.__option === 'Some') {
       args.solPayment = some({ destination: guards.solPayment.value.destination });
     }
+
     array.push(args);
   }
   return array;
 };
+
 
 export const routeBuilder = async (
   umi: Umi,
@@ -85,18 +89,19 @@ export const routeBuilder = async (
 ): Promise<TransactionBuilder> => {
   let tx = transactionBuilder();
 
-  // If the guard uses an allowlist, fetch the top 10 wallets
+  // Check if the guard requires an allowlist
   if (guardToUse.guards.allowList.__option === 'Some') {
-    // Fetch the top 10 wallets from the leaderboard API
-    const response = await axios.get<string[]>('/api/leaderboard');
-    const top10Wallets = response.data;
+    // Fetch the top-10 wallets from the leaderboard dynamically
+    const top10WalletsResponse = await fetch('/api/leaderboard');
+    const top10Wallets = await top10WalletsResponse.json();
 
     if (!top10Wallets || top10Wallets.length === 0) {
       throw new Error("No top-10 wallets found in the leaderboard");
     }
 
     // Ensure the current wallet is in the allowlist (top 10)
-    const isInAllowlist = top10Wallets.includes(umi.identity.publicKey.toString());
+    const isInAllowlist = top10Wallets.some((entry: { wallet_address: string }) => entry.wallet_address === umi.identity.publicKey.toString());
+    console.log("Is wallet in the allowlist?", isInAllowlist);
 
     if (!isInAllowlist) {
       throw new Error("Your wallet is not in the allowlist");
@@ -106,7 +111,7 @@ export const routeBuilder = async (
     const proof = await safeFetchAllowListProofFromSeeds(umi, {
       candyGuard: candyMachine.mintAuthority,
       candyMachine: candyMachine.publicKey,
-      merkleRoot: getMerkleRoot(top10Wallets),
+      merkleRoot: getMerkleRoot(top10Wallets.map((entry: { wallet_address: string }) => entry.wallet_address)),
       user: publicKey(umi.identity),
     });
 
@@ -114,7 +119,7 @@ export const routeBuilder = async (
       throw new Error("Failed to fetch proof for allowlist");
     }
 
-    // Build the transaction with the Merkle proof
+    // Add the proof to the transaction
     tx = tx.add(
       route(umi, {
         guard: 'allowList',
@@ -123,8 +128,8 @@ export const routeBuilder = async (
         group: guardToUse.label === 'default' ? none() : some(guardToUse.label),
         routeArgs: {
           path: 'proof',
-          merkleRoot: getMerkleRoot(top10Wallets),
-          merkleProof: getMerkleProof(top10Wallets, publicKey(umi.identity)),
+          merkleRoot: getMerkleRoot(top10Wallets.map((entry: { wallet_address: string }) => entry.wallet_address)),
+          merkleProof: getMerkleProof(top10Wallets.map((entry: { wallet_address: string }) => entry.wallet_address), publicKey(umi.identity)),
         },
       })
     );
@@ -163,7 +168,6 @@ export const buildTx = (
   luts: AddressLookupTableInput[],
   latestBlockhash: BlockhashWithExpiryBlockHeight,
   units: number,
-  buyBeer: boolean
 ): Transaction => {
   let tx = transactionBuilder().add(
     mintV1(umi, {
@@ -317,6 +321,8 @@ export const mintClick = async (
 
     // — allowlist proof
     let routeBuild = await routeBuilder(umi, guardToUse, candyMachine);
+    console.log("Route built with allowlist proof:", routeBuild);
+
     if (routeBuild && routeBuild.items.length > 0) {
       createStandaloneToast().toast({
         title: "Allowlist detected. Please sign to be approved to mint.",
@@ -324,7 +330,7 @@ export const mintClick = async (
         duration: 900,
         isClosable: true,
       });
-
+      console.log("Adding Merkle proof to the mint transaction...");
       const price = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
       const latestBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "finalized" });
 
@@ -338,6 +344,8 @@ export const mintClick = async (
         preflightCommitment: "finalized",
         commitment: "finalized",
       });
+      } else {
+     console.error("Failed to build route for minting with proof.");
     }
 
     // fetch LUT

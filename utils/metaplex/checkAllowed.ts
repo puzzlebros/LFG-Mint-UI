@@ -193,22 +193,23 @@ export const guardChecker = async (
     }
 
     if (singleGuard.allowList.__option === "Some") {
-      // tell TS that this is really a Some<AllowList>:
-      const allowListGuard = singleGuard.allowList as Some<AllowList>;
-      const merkleRoot = allowListGuard.value.merkleRoot;
+        const allowListGuard = singleGuard.allowList as Some<AllowList>;
+        const merkleRoot = allowListGuard.value.merkleRoot;
+        console.log("Allowlist merkle root: " + merkleRoot);
 
       const proof = await safeFetchAllowListProofFromSeeds(umi, {
-        candyGuard:        candyMachine.mintAuthority,
-        candyMachine:      candyMachine.publicKey,
-        merkleRoot,        // now TS knows this exists
-        user:              umi.identity.publicKey,
+        candyGuard: candyMachine.mintAuthority,
+        candyMachine: candyMachine.publicKey,
+        merkleRoot, 
+        user: umi.identity.publicKey,
       });
 
-      if (proof === null) {
+      // Handle proof generation failure for placeholder wallet
+      if (proof === null || umi.identity.publicKey.toString() === '11111111111111111111111111111111') {
         guardReturn.push({
-          label:    eachGuard.label,
-          allowed:  false,
-          reason:   "Wallet not in on-chain allowlist",
+          label: eachGuard.label,
+          allowed: false,
+          reason: "Wallet not in on-chain allowlist",
           maxAmount: 0,
         });
         continue;

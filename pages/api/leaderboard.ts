@@ -26,5 +26,15 @@ export default async function handler(
     return res.status(500).json({ error: "Database query error" });
   }
 
+  // Ensure there are exactly 10 wallets (pad with placeholders if needed)
+  if (data!.length < 10) {
+    const missingCount = 10 - data!.length;
+    const placeholderWallet = '11111111111111111111111111111111';  // Dummy wallet address
+    const placeholders = Array(missingCount).fill({ wallet_address: placeholderWallet });
+
+    // Combine actual leaderboard data with placeholder wallets
+    data!.push(...placeholders);
+  }
+
   return res.status(200).json(data!);
 }

@@ -111,6 +111,7 @@ export default function MintPage() {
     }
     axios.get<LeaderboardEntry[]>("/api/leaderboard")
       .then(({ data }) => {
+        console.log("Fetched top-10 leaderboard wallets:", data);  // Log the fetched leaderboard data
         setInTop10(data.map(e => e.wallet_address).includes(walletPublicKey.toString()));
       })
       .catch(err => console.error("❌ leaderboard fetch failed:", err));
@@ -261,6 +262,8 @@ export default function MintPage() {
       !showClaim &&
       isAllowed
     );
+    console.log("Claim eligibility:", showClaim, "Wallet in top-10:", inTop10);  // Log the claim eligibility
+
 
     // Claim uses only allowGuard
     const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);

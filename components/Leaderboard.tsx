@@ -39,7 +39,6 @@ export default function Leaderboard({
   bgColor,
 }: Props) {
   const defaultBg = useColorModeValue('white', 'gray.700');
-
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
