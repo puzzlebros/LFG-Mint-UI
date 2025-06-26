@@ -57,6 +57,97 @@ async function getTop10Wallets(): Promise<string[]> {
   return data!.map((r) => r.wallet_address);
 }
 
+export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
+  const [recentSlot, setRecentSlot] = useState<number>(0);
+  const [amount, setAmount] = useState<string>("5");
+  console.log(`modal ${candyMachine}`);
+  console.log(`candyGuard ${candyGuard}`);
+  console.log(`umi ${umi}`);
+  useEffect(() => {
+    (async () => {
+      setRecentSlot(await umi.rpc.getSlot());
+    })();
+  }, [umi]);
+
+  if (!candyGuard) {
+    console.error("no guard defined!");
+    return     <>
+      <HStack>
+        <Button onClick={createTestCm(umi)}>create test cm</Button>
+          <Text>
+            Creates a test CM. Logs CM address and Collection Address in the
+            developer console.
+          </Text>
+        </HStack>
+    </>;
+  }
+
+// Fetch the top-10 wallets dynamically from the leaderboard
+const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
+
+useEffect(() => {
+  (async () => {
+    // Fetch the top-10 wallets from the leaderboard
+    const wallets = await getTop10Wallets();
+    setTop10Wallets(wallets);
+  })();
+}, []);
+
+// Compute Merkle root from the leaderboard wallets
+const roots = new Map<string, string>();
+
+if (top10Wallets.length > 0) {
+  // Assuming 'LFG' is the label for your allowlist group
+  const merkleRoot = getMerkleRoot(top10Wallets); // generate Merkle root from the leaderboard wallets
+  
+  // Ensure merkleRoot is properly converted to hex string if it's a Buffer
+  roots.set("LFG", Buffer.from(merkleRoot).toString("hex"));
+}
+
+// If there are any Merkle roots, display them
+const rootElements = Array.from(roots).map(([key, value]) => (
+  <Box key={key}>
+    <Text fontWeight={"semibold"}>{key}:</Text>
+    <Text>{value}</Text>
+  </Box>
+));
+  return (
+    <>
+      <VStack>
+        <HStack>
+          <Button
+            onClick={createLut(umi, candyMachine, candyGuard, recentSlot)}
+          >
+            Create LUT
+          </Button>
+          <Text>Reduces transaction size errors</Text>
+        </HStack>
+        <HStack>
+          <Button onClick={createTestCm(umi)}>create test cm</Button>
+          <Text>
+            Creates a test CM. Logs CM address and Collection Address in the
+            developer console.
+          </Text>
+        </HStack>
+        <HStack>
+          <Button onClick={initializeGuards(umi, candyMachine, candyGuard)}>
+            Initialize Guards
+          </Button>
+          <Text>Required for some guards</Text>
+        </HStack>
+        <HStack>
+          <BuyABeerInput value={amount} setValue={setAmount} />
+          <Button onClick={buyABeer(umi, amount)}>Buy me a Beer 🍻</Button>
+        </HStack>
+        {rootElements.length > 0 && (
+          <Text fontWeight={"bold"}>Merkle trees for your allowlist.tsx:</Text>
+        )}
+        {rootElements.length > 0 && rootElements}
+      </VStack>
+    </>
+  );
+};
+
 // new function createLUT that is called when the button is clicked and which calls createLutForCandyMachineAndGuard and returns a success toast
 const createLut =
   (
@@ -348,93 +439,3 @@ const createTestCm = (umi: Umi) => async () => {
   });
 };
 
-export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
-  const [recentSlot, setRecentSlot] = useState<number>(0);
-  const [amount, setAmount] = useState<string>("5");
-  console.log(`modal ${candyMachine}`);
-  console.log(`candyGuard ${candyGuard}`);
-  console.log(`umi ${umi}`);
-  useEffect(() => {
-    (async () => {
-      setRecentSlot(await umi.rpc.getSlot());
-    })();
-  }, [umi]);
-
-  if (!candyGuard) {
-    console.error("no guard defined!");
-    return     <>
-      <HStack>
-        <Button onClick={createTestCm(umi)}>create test cm</Button>
-          <Text>
-            Creates a test CM. Logs CM address and Collection Address in the
-            developer console.
-          </Text>
-        </HStack>
-    </>;
-  }
-
-// Fetch the top-10 wallets dynamically from the leaderboard
-const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
-
-useEffect(() => {
-  (async () => {
-    // Fetch the top-10 wallets from the leaderboard
-    const wallets = await getTop10Wallets();
-    setTop10Wallets(wallets);
-  })();
-}, []);
-
-// Compute Merkle root from the leaderboard wallets
-const roots = new Map<string, string>();
-
-if (top10Wallets.length > 0) {
-  // Assuming 'LFG' is the label for your allowlist group
-  const merkleRoot = getMerkleRoot(top10Wallets); // generate Merkle root from the leaderboard wallets
-  
-  // Ensure merkleRoot is properly converted to hex string if it's a Buffer
-  roots.set("LFG", Buffer.from(merkleRoot).toString("hex"));
-}
-
-// If there are any Merkle roots, display them
-const rootElements = Array.from(roots).map(([key, value]) => (
-  <Box key={key}>
-    <Text fontWeight={"semibold"}>{key}:</Text>
-    <Text>{value}</Text>
-  </Box>
-));
-  return (
-    <>
-      <VStack>
-        <HStack>
-          <Button
-            onClick={createLut(umi, candyMachine, candyGuard, recentSlot)}
-          >
-            Create LUT
-          </Button>
-          <Text>Reduces transaction size errors</Text>
-        </HStack>
-        <HStack>
-          <Button onClick={createTestCm(umi)}>create test cm</Button>
-          <Text>
-            Creates a test CM. Logs CM address and Collection Address in the
-            developer console.
-          </Text>
-        </HStack>
-        <HStack>
-          <Button onClick={initializeGuards(umi, candyMachine, candyGuard)}>
-            Initialize Guards
-          </Button>
-          <Text>Required for some guards</Text>
-        </HStack>
-        <HStack>
-          <BuyABeerInput value={amount} setValue={setAmount} />
-          <Button onClick={buyABeer(umi, amount)}>Buy me a Beer 🍻</Button>
-        </HStack>
-        {rootElements.length > 0 && (
-          <Text fontWeight={"bold"}>Merkle trees for your allowlist.tsx:</Text>
-        )}
-        {rootElements.length > 0 && rootElements}
-      </VStack>
-    </>
-  );
-};
