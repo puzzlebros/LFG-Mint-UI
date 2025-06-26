@@ -60,6 +60,8 @@ async function getTop10Wallets(): Promise<string[]> {
 export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
   const [recentSlot, setRecentSlot] = useState<number>(0);
   const [amount, setAmount] = useState<string>("5");
+  // Fetch the top-10 wallets dynamically from the leaderboard
+  const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
   console.log(`modal ${candyMachine}`);
   console.log(`candyGuard ${candyGuard}`);
   console.log(`umi ${umi}`);
@@ -81,9 +83,6 @@ export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
         </HStack>
     </>;
   }
-
-// Fetch the top-10 wallets dynamically from the leaderboard
-const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
 
 useEffect(() => {
   (async () => {
