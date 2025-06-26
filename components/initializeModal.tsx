@@ -60,16 +60,21 @@ async function getTop10Wallets(): Promise<string[]> {
 export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
   const [recentSlot, setRecentSlot] = useState<number>(0);
   const [amount, setAmount] = useState<string>("5");
-  // Fetch the top-10 wallets dynamically from the leaderboard
   const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
-  console.log(`modal ${candyMachine}`);
-  console.log(`candyGuard ${candyGuard}`);
-  console.log(`umi ${umi}`);
+
   useEffect(() => {
     (async () => {
       setRecentSlot(await umi.rpc.getSlot());
     })();
   }, [umi]);
+
+  useEffect(() => {
+    (async () => {
+      // Fetch the top-10 wallets from the leaderboard
+      const wallets = await getTop10Wallets();
+      setTop10Wallets(wallets);
+    })();
+  }, []);
 
   if (!candyGuard) {
     console.error("no guard defined!");
@@ -84,24 +89,13 @@ export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
     </>;
   }
 
-useEffect(() => {
-  (async () => {
-    // Fetch the top-10 wallets from the leaderboard
-    const wallets = await getTop10Wallets();
-    setTop10Wallets(wallets);
-  })();
-}, []);
-
 // Compute Merkle root from the leaderboard wallets
 const roots = new Map<string, string>();
 
-if (top10Wallets.length > 0) {
-  // Assuming 'LFG' is the label for your allowlist group
-  const merkleRoot = getMerkleRoot(top10Wallets); // generate Merkle root from the leaderboard wallets
-  
-  // Ensure merkleRoot is properly converted to hex string if it's a Buffer
-  roots.set("LFG", Buffer.from(merkleRoot).toString("hex"));
-}
+  if (top10Wallets.length > 0) {
+    const merkleRoot = getMerkleRoot(top10Wallets); // generate Merkle root from the leaderboard wallets
+    roots.set("LFG", Buffer.from(merkleRoot).toString("hex"));
+  }
 
 // If there are any Merkle roots, display them
 const rootElements = Array.from(roots).map(([key, value]) => (
