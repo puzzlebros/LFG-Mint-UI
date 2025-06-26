@@ -62,8 +62,11 @@ export const guardChecker = async (
   let ownedTokens: DigitalAssetWithTokenAndNftMintLimit[] = [];
   let ownedCoreAssets: DasApiAssetAndAssetMintLimit[] = [];
   if (!candyGuard) {
-    return { guardReturn, ownedTokens, ownedCoreAssets };
-   }
+    if (guardReturn.length === 0) {
+      //guardReturn.push({ label: "default", allowed: false });
+    }
+    return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
+  }
 
   let guardsToCheck: { label: string; guards: GuardSet }[] = candyGuard.groups;
   guardsToCheck.push({ label: "default", guards: candyGuard.guards });
@@ -81,7 +84,7 @@ export const guardChecker = async (
         maxAmount: 0,
       });
     }
-    return { guardReturn, ownedTokens, ownedCoreAssets };
+    return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
   }
 
   if (
@@ -97,7 +100,7 @@ export const guardChecker = async (
         maxAmount: 0,
       });
     }
-    return { guardReturn, ownedTokens, ownedCoreAssets };
+    return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
   }
 
   if (candyMachine.authority === umi.identity.publicKey) {
@@ -119,7 +122,7 @@ export const guardChecker = async (
           maxAmount: 0,
         });
       }
-      return { guardReturn, ownedTokens, ownedCoreAssets };
+      return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
     }
   }
 
@@ -190,33 +193,27 @@ export const guardChecker = async (
     }
 
     if (singleGuard.allowList.__option === "Some") {
+      // tell TS that this is really a Some<AllowList>:
       const allowListGuard = singleGuard.allowList as Some<AllowList>;
+      const merkleRoot = allowListGuard.value.merkleRoot;
+
       const proof = await safeFetchAllowListProofFromSeeds(umi, {
-        candyGuard:   candyMachine.mintAuthority,
-        candyMachine: candyMachine.publicKey,
-        merkleRoot:   allowListGuard.value.merkleRoot,
-        user:         umi.identity.publicKey,
+        candyGuard:        candyMachine.mintAuthority,
+        candyMachine:      candyMachine.publicKey,
+        merkleRoot,        // now TS knows this exists
+        user:              umi.identity.publicKey,
       });
 
       if (proof === null) {
-        // still not in allowlist
         guardReturn.push({
           label:    eachGuard.label,
           allowed:  false,
-          reason:   "Wallet not in allowlist",
+          reason:   "Wallet not in on-chain allowlist",
           maxAmount: 0,
         });
-      } else {
-        // ✅ allowed to claim
-        guardReturn.push({
-          label:    eachGuard.label,
-          allowed:  true,
-          maxAmount: mintableAmount,
-        });
+        continue;
       }
-      continue;  // done with this guard
     }
-
     
     if (singleGuard.assetBurn.__option === "Some") {
       const assetBurn = singleGuard.assetBurn as Some<AssetBurn>;
@@ -623,12 +620,10 @@ export const guardChecker = async (
         token2022Payment.value.amount / digitalAssetWithToken.token.amount;
       mintableAmount = calculateMintable(mintableAmount, Number(payableAmount));
     }
-
     guardReturn.push({
       label: eachGuard.label,
       allowed: true,
       maxAmount: mintableAmount,
-      
     });
   }
   return { guardReturn, ownedTokens, ownedCoreAssets };

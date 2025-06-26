@@ -14,8 +14,7 @@ import {
   route,
   getMerkleProof,
   safeFetchAllowListProofFromSeeds,
-  mintV1,
-  AllowList
+  mintV1
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import {
   some,
@@ -31,14 +30,14 @@ import {
   BlockhashWithExpiryBlockHeight,
   generateSigner,
   signAllTransactions,
-  KeypairSigner,
-  Some
+  KeypairSigner
 } from "@metaplex-foundation/umi";
 import { DasApiAssetAndAssetMintLimit, DigitalAssetWithTokenAndNftMintLimit, GuardReturn } from "../metaplex/checkerHelper";
 import { Connection } from "@solana/web3.js";
 import { setComputeUnitPrice, setComputeUnitLimit, fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 import { toWeb3JsTransaction } from "@metaplex-foundation/umi-web3js-adapters";
 import { Dispatch, SetStateAction, } from "react";
+import axios from 'axios';
 
 export interface GuardButtonList extends GuardReturn {
   header: string;
@@ -57,33 +56,26 @@ export const chooseGuardToUse = (
   return group ?? { label: 'default', guards: candyGuard.guards };
 };
 
-export const mintArgsBuilder = async (
-  umi: Umi,
+export const mintArgsBuilder = (
   guardToUse: GuardGroup<DefaultGuardSet>,
-  candyMachine: CandyMachine,
   ownedTokens: DigitalAssetWithTokenAndNftMintLimit[],
   ownedCoreAssets: DasApiAssetAndAssetMintLimit[],
   amount: number
-): Promise<Partial<DefaultGuardSetMintArgs>[]> => {
+): Partial<DefaultGuardSetMintArgs>[] => {
   const { guards } = guardToUse;
-
-   // Build each mint-args
-  const out: Partial<DefaultGuardSetMintArgs>[] = [];
+  const array: Partial<DefaultGuardSetMintArgs>[] = [];
   for (let i = 0; i < amount; i++) {
     const args: Partial<DefaultGuardSetMintArgs> = {};
-    
-    if (guards.mintLimit.__option === "Some") {
+
+    if (guards.mintLimit.__option === 'Some') {
       args.mintLimit = some({ id: guards.mintLimit.value.id });
     }
-    if (guards.solPayment.__option === "Some") {
-      args.solPayment = some({
-        destination: guards.solPayment.value.destination,
-      });
+    if (guards.solPayment.__option === 'Some') {
+      args.solPayment = some({ destination: guards.solPayment.value.destination });
     }
-    out.push(args);
+    array.push(args);
   }
-
-  return out;
+  return array;
 };
 
 export const routeBuilder = async (
@@ -91,24 +83,51 @@ export const routeBuilder = async (
   guardToUse: GuardGroup<DefaultGuardSet>,
   candyMachine: CandyMachine
 ): Promise<TransactionBuilder> => {
-  const tx = transactionBuilder();
+  let tx = transactionBuilder();
 
-  if (guardToUse.guards.allowList.__option === "Some") {
-    const allowListGuard = guardToUse.guards.allowList as Some<AllowList>;
-    const { merkleRoot } = allowListGuard.value;
+  // If the guard uses an allowlist, fetch the top 10 wallets
+  if (guardToUse.guards.allowList.__option === 'Some') {
+    // Fetch the top 10 wallets from the leaderboard API
+    const response = await axios.get<string[]>('/api/leaderboard');
+    const top10Wallets = response.data;
 
-    // only check on-chain PDA proof — no fetching your /api/allowlist
+    if (!top10Wallets || top10Wallets.length === 0) {
+      throw new Error("No top-10 wallets found in the leaderboard");
+    }
+
+    // Ensure the current wallet is in the allowlist (top 10)
+    const isInAllowlist = top10Wallets.includes(umi.identity.publicKey.toString());
+
+    if (!isInAllowlist) {
+      throw new Error("Your wallet is not in the allowlist");
+    }
+
+    // Generate Merkle proof for the current user's wallet
     const proof = await safeFetchAllowListProofFromSeeds(umi, {
-      candyGuard:   candyMachine.mintAuthority,
+      candyGuard: candyMachine.mintAuthority,
       candyMachine: candyMachine.publicKey,
-      merkleRoot,
-      user:         publicKey(umi.identity),
+      merkleRoot: getMerkleRoot(top10Wallets),
+      user: publicKey(umi.identity),
     });
 
     if (proof === null) {
-      // immediately reject
-      throw new Error("You are not on the allowlist — CLAIM is not enabled");
+      throw new Error("Failed to fetch proof for allowlist");
     }
+
+    // Build the transaction with the Merkle proof
+    tx = tx.add(
+      route(umi, {
+        guard: 'allowList',
+        candyMachine: candyMachine.publicKey,
+        candyGuard: candyMachine.mintAuthority,
+        group: guardToUse.label === 'default' ? none() : some(guardToUse.label),
+        routeArgs: {
+          path: 'proof',
+          merkleRoot: getMerkleRoot(top10Wallets),
+          merkleProof: getMerkleProof(top10Wallets, publicKey(umi.identity)),
+        },
+      })
+    );
   }
 
   return tx;
@@ -169,58 +188,47 @@ export const buildTxs = async (
   candyGuard: CandyGuard,
   nftMints: Signer[],
   guardToUse: GuardGroup<DefaultGuardSet> | { label: string; guards: undefined },
-  mintArgsArray: Partial<DefaultGuardSetMintArgs>[] = [],
-  luts: AddressLookupTableInput[] = [],
+  mintArgsArray: Partial<DefaultGuardSetMintArgs>[] | undefined,
+  luts: AddressLookupTableInput[],
   latestBlockhash: string,
 ): Promise<{ transaction: Transaction; signers: Signer[] }[]> => {
-  const out: { transaction: Transaction; signers: Signer[] }[] = [];
-
-  // Base builder: only set price, we'll add CU per‐chunk
   const base = transactionBuilder()
     .prepend(setComputeUnitPrice(umi, { microLamports: 5 }))
+    .prepend(setComputeUnitLimit(umi, { units: 1_400_000 }))
     .setBlockhash(latestBlockhash);
-
   let builder = base;
-
+  const out: { transaction: Transaction; signers: Signer[] }[] = [];
   for (let i = 0; i < nftMints.length; i++) {
-    const ix = mintV1(umi, {
-      candyMachine: candyMachine.publicKey,
-      collection: candyMachine.collectionMint,
-      asset: nftMints[i],
-      candyGuard: candyGuard.publicKey,
-      group: guardToUse.label === "default" ? none() : some(guardToUse.label),
-      mintArgs: mintArgsArray[i],
-    });
-
-    // Try to append this instruction
-    const trial = builder.add(ix);
-
-    // If it overflows the transaction size, finalize the previous chunk
-    if (!trial.fitsInOneTransaction(umi)) {
-      // 1) seal the current builder
+    const prev = builder;
+    const args = mintArgsArray?.[i];
+    builder = builder.add(
+      mintV1(umi, {
+        candyMachine: candyMachine.publicKey,
+        collection: candyMachine.collectionMint,
+        asset: nftMints[i],
+        candyGuard: candyGuard.publicKey,
+        group: guardToUse.label === 'default' ? none() : some(guardToUse.label),
+        mintArgs: args,
+      })
+    );
+    if (!builder.fitsInOneTransaction(umi)) {
+      prev.setAddressLookupTables(luts);
+      const cu = await getRequiredCU(umi, prev.build(umi));
+      const [, rest] = prev.splitByIndex(1);
+      const withCU = rest.prepend(setComputeUnitLimit(umi, { units: cu }));
+      out.push({ transaction: withCU.build(umi), signers: withCU.getSigners(umi) });
+      builder = base;
+      i--;
+      continue;
+    }
+    if (i === nftMints.length - 1) {
       builder.setAddressLookupTables(luts);
-      // 2) simulate to get exact CU
-      const neededCU = await getRequiredCU(umi, builder.build(umi));
-      // 3) prepend that CU and build
-      const ready = builder.prepend(setComputeUnitLimit(umi, { units: neededCU }));
-      out.push({ transaction: ready.build(umi), signers: ready.getSigners(umi) });
-
-      // start a fresh builder with this instruction
-      builder = base.add(ix);
-    } else {
-      // safe to keep accumulating
-      builder = trial;
+      const cu = await getRequiredCU(umi, builder.build(umi));
+      const [, rest] = builder.splitByIndex(1);
+      const withCU = rest.prepend(setComputeUnitLimit(umi, { units: cu }));
+      out.push({ transaction: withCU.build(umi), signers: withCU.getSigners(umi) });
     }
   }
-
-  // Final chunk (if any instructions remain)
-  if (builder !== base) {
-    builder.setAddressLookupTables(luts);
-    const neededCU = await getRequiredCU(umi, builder.build(umi));
-    const ready = builder.prepend(setComputeUnitLimit(umi, { units: neededCU }));
-    out.push({ transaction: ready.build(umi), signers: ready.getSigners(umi) });
-  }
-
   return out;
 };
 
@@ -352,7 +360,7 @@ export const mintClick = async (
     }
 
     // args + blockhash
-    const mintArgsArray = await mintArgsBuilder(umi, guardToUse, candyMachine, ownedTokens, ownedCoreAssets, mintAmount);
+    const mintArgsArray = mintArgsBuilder(guardToUse, ownedTokens, ownedCoreAssets, mintAmount);
     const latest = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
 
     // build transactions

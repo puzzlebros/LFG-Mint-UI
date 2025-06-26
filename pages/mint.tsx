@@ -12,7 +12,6 @@ import {
   safeFetchCandyGuard,
   CandyGuard,
   CandyMachine,
-  getMerkleRoot
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { guardChecker } from "../utils/metaplex/checkAllowed";
 import {
@@ -41,6 +40,7 @@ import { image, headerText } from "../settings";
 import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/checkerHelper";
 import { useWallet } from "@solana/wallet-adapter-react";
 import axios from "axios";
+import type { LeaderboardEntry } from "@/types/leaderboard";
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
 
@@ -64,8 +64,11 @@ export default function MintPage() {
   const { publicKey: walletPublicKey, connected } = useWallet();
 
   // — UI state —
+  const [allowlistLoaded, setAllowlistLoaded] = useState(false);
+  const [inTop10, setInTop10] = useState(false);
   const [loading, setLoading] = useState(true);
   const [guards, setGuards] = useState<GuardReturn[]>([]);
+  const [isAllowed, setIsAllowed] = useState(false);
   const [mintsCreated, setMintsCreated] = useState<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[]>();
   const [ownedTokens, setOwnedTokens] = useState<DigitalAssetWithToken[]>();
   const [ownedCoreAssets, setOwnedCoreAssets] = useState<DasApiAssetAndAssetMintLimit[]>();
@@ -88,64 +91,32 @@ export default function MintPage() {
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
 
- // New: whenever candyGuard loads, fetch the top-10 from your API,
-  // compute the Merkle root client-side and log it.
-  useEffect(() => {
-    if (!candyGuard) return;
-
-    // find the label of your allowList group
-    const allowLabel = candyGuard.groups.find(
-      (g) => g.guards.allowList.__option === "Some"
-    )?.label;
-
-    if (!allowLabel) {
-      console.warn("No allowList guard on this Candy Guard");
-      return;
-    }
-
-    (async () => {
-      try {
-        // (1) pull the current top-10 from your own endpoint
-        const res = await fetch("/api/allowlist");
-        const leaves: string[] = await res.json();
-
-        // (2) map to PublicKey[]
-        const keys = leaves.map((addr) => publicKey(addr));
-
-        // (3) compute the Merkle root
-        const root = getMerkleRoot(keys);
-
-        // (4) hex-encode for human-readable logging
-        const hex = Array.from(root)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-
-        console.groupCollapsed("🪵 allowlist debug");
-        console.log("Label:", allowLabel);
-        console.log("Leaves:", leaves);
-        console.log("Computed Merkle Root (hex):", hex);
-        console.log(
-  "▶️ Merkle root (base64):",
-  Buffer.from(root).toString("base64"));
-        console.groupEnd();
-      } catch (err) {
-        console.error("Failed to compute UI Merkle root:", err);
-      }
-    })();
-  }, [candyGuard]);
-
-  // Clear on wallet disconnect
+  // 2️⃣ Clear on wallet disconnect
   useEffect(() => {
     if (!walletPublicKey) {
       console.log("🔌 Wallet disconnected — clearing state");
       setGuards([]);
+      setIsAllowed(false);
       setLoading(false);
       setCandyMachine(undefined);
       setCandyGuard(undefined);
     }
   }, [walletPublicKey]);
 
-  // Fetch CandyMachine & Guard ONCE, when wallet connects
+  // 3️⃣ Leaderboard Top-10
+  useEffect(() => {
+    if (!walletPublicKey) {
+      setInTop10(false);
+      return;
+    }
+    axios.get<LeaderboardEntry[]>("/api/leaderboard")
+      .then(({ data }) => {
+        setInTop10(data.map(e => e.wallet_address).includes(walletPublicKey.toString()));
+      })
+      .catch(err => console.error("❌ leaderboard fetch failed:", err));
+  }, [walletPublicKey]);
+
+  // ➋ Fetch CandyMachine & Guard ONCE, when wallet connects
   useEffect(() => {
     if (!walletPublicKey || candyMachine) return;
     console.log("💠 Fetching Candy Machine & Guard…");
@@ -169,7 +140,8 @@ export default function MintPage() {
     })();
   }, [walletPublicKey, candyMachine, candyMachineId, umi, toast]);
 
-  // Run guardChecker when eligibility flag flips
+  // ➌ guardChecker effect: only runs when checkEligibility flips true,
+  // and NEVER during the hatch animation (isMinting).
   const isMinting = guards.some((g) => g.minting);
   useEffect(() => {
     if (!checkEligibility || isMinting) return;
@@ -193,10 +165,12 @@ export default function MintPage() {
           setGuards(guardReturn);
           setOwnedTokens(ot);
           setOwnedCoreAssets(oca);
+          setIsAllowed(guardReturn.some((g) => g.allowed));
         }
       } catch (err) {
         console.error(err);
         toast({ title: "Error checking eligibility", status: "error" });
+        if (!cancelled) setIsAllowed(false);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -205,10 +179,21 @@ export default function MintPage() {
       }
     })();
 
-    return () => { cancelled = true; };
-  }, [checkEligibility, walletPublicKey, candyMachine, candyGuard, umi, toast, isMinting]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    checkEligibility,
+    walletPublicKey,
+    candyMachine,
+    candyGuard,
+    umi,
+    toast,
+    isMinting,
+  ]);
 
-  // After mint, re-fetch supply & re-run guard
+  // ➍ After mint completes, wait for user to close the NFT-popup before
+  //     re-fetching both on-chain supply *and* re-running guardChecker.
   const onNftModalClose = () => {
     // (1) close the popup
     onShowNftClose();
@@ -229,9 +214,11 @@ export default function MintPage() {
       });
   };
 
-  // Post-mint webhook
+  // Also the existing ShowNft modal uses isShowNftOpen & onShowNftClose; we replace onShowNftClose with onNftModalClose in JSX.
+
+  // 8️⃣ Post-fetch NFT API call
   useEffect(() => {
-    if (!mintsCreated?.length) return;
+    if (!mintsCreated || mintsCreated.length === 0) return;
     const { offChainMetadata, mint } = mintsCreated[mintsCreated.length - 1];
     if (!offChainMetadata?.name || !offChainMetadata.image) return;
     axios.post('/api/postMint', {
@@ -239,9 +226,10 @@ export default function MintPage() {
       imageUrl: offChainMetadata.image,
       mintAddress: mint.toString(),
     }).catch(err => console.error("⚠️ postMint failed:", err));
+    // Note: we do NOT trigger guardChecker here; we wait until the user closes the modal.
   }, [mintsCreated]);
 
-  // Refresh guards on window focus
+  // 9️⃣ Refresh on window focus
   useEffect(() => {
     const onFocus = () => {
       if (walletPublicKey && !isMinting) {
@@ -253,7 +241,7 @@ export default function MintPage() {
     return () => window.removeEventListener("focus", onFocus);
   }, [walletPublicKey, isMinting]);
 
-  // Renders mint / claim buttons based on on-chain guard
+  // Page content component
   const PageContent = () => {
     // Find allow-list group label
     const allowListLabel = candyGuard
@@ -271,19 +259,19 @@ export default function MintPage() {
     const showMint = Boolean(
       walletPublicKey &&
       !showClaim &&
-      guards.some((g) => g.allowed)
+      isAllowed
     );
 
-    // Lists to hand off to <ButtonList>
-    const claimGuardList = allowGuard ? [allowGuard] : [];
+    // Claim uses only allowGuard
+    const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);
+
+    // Pay/mint uses other allowed guards; drop 'default' if multiple
     const payGuardList = useMemo(() => {
-      const arr = guards.filter((g) => g.allowed && g.label !== allowListLabel);
-      return arr.length > 1
-        ? arr.filter((g) => g.label !== "default")
-        : arr;
+      const arr = guards.filter(g => g.label !== allowListLabel && g.allowed);
+      return arr.length > 1 ? arr.filter(g => g.label !== 'default') : arr;
     }, [guards, allowListLabel]);
-    
-    // Items available
+
+    // items available
     const availableCount = candyMachine
       ? Number(candyMachine.data.itemsAvailable) - Number(candyMachine.itemsRedeemed)
       : 0;

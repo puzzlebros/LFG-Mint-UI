@@ -29,7 +29,6 @@ import {
 } from "@metaplex-foundation/mpl-toolbox";
 import React from "react";
 import { useEffect, useState } from "react";
-import { allowLists } from "@/allowlist";
 import { getRequiredCU } from "@/utils/metaplex/mintHelper";
 import {
   CandyGuard,
@@ -42,6 +41,21 @@ import {
   route,
   wrap,
 } from "@metaplex-foundation/mpl-core-candy-machine";
+import type { LeaderboardEntry } from '@/types/leaderboard';
+import { supabase } from "../utils/leaderboard/supabaseClient"
+
+
+// Function to fetch the top-10 leaderboard wallets from Supabase
+async function getTop10Wallets(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from<"leaderboard", LeaderboardEntry>("leaderboard")
+    .select("wallet_address")
+    .order("score", { ascending: false })
+    .limit(10);
+
+  if (error) throw error;
+  return data!.map((r) => r.wallet_address);
+}
 
 // new function createLUT that is called when the button is clicked and which calls createLutForCandyMachineAndGuard and returns a success toast
 const createLut =
@@ -359,28 +373,35 @@ export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
     </>;
   }
 
-  //key value object with label and roots
-  const roots = new Map<string, string>();
+// Fetch the top-10 wallets dynamically from the leaderboard
+const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
 
-  allowLists.forEach((value, key) => {
-    //@ts-ignore
-    const root = getMerkleRoot(value).toString("hex");
-    if (!roots.has(key)) {
-      roots.set(key, root);
-    }
-  });
+useEffect(() => {
+  (async () => {
+    // Fetch the top-10 wallets from the leaderboard
+    const wallets = await getTop10Wallets();
+    setTop10Wallets(wallets);
+  })();
+}, []);
 
-  //put each root into a <Text> element
-  const rootElements = Array.from(roots).map(([key, value]) => {
-    return (
-      <Box key={key}>
-        <Text fontWeight={"semibold"} key={key}>
-          {key}:
-        </Text>
-        <Text>{value}</Text>
-      </Box>
-    );
-  });
+// Compute Merkle root from the leaderboard wallets
+const roots = new Map<string, string>();
+
+if (top10Wallets.length > 0) {
+  // Assuming 'LFG' is the label for your allowlist group
+  const merkleRoot = getMerkleRoot(top10Wallets); // generate Merkle root from the leaderboard wallets
+  
+  // Ensure merkleRoot is properly converted to hex string if it's a Buffer
+  roots.set("LFG", Buffer.from(merkleRoot).toString("hex"));
+}
+
+// If there are any Merkle roots, display them
+const rootElements = Array.from(roots).map(([key, value]) => (
+  <Box key={key}>
+    <Text fontWeight={"semibold"}>{key}:</Text>
+    <Text>{value}</Text>
+  </Box>
+));
   return (
     <>
       <VStack>

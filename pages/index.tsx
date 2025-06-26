@@ -401,17 +401,9 @@ export default function HomePage() {
                   <Text as="span" fontWeight="bold">
                     Made it into the top 10?
                     <br />
-                    Claim your FREE LFG NFT
+                    You won a FREE MINT
                     <br />
-                    within the next{' '}
-                    <Text
-                      as="span"
-                      color="brand.Pink"
-                      fontWeight="bold"
-                      animation="vibrate 0.3s linear infinite"
-                    >
-                      {timeLeft}
-                    </Text>.
+                    of the collection.
                   </Text>
                   <br />
                   If not, go touch some grass
@@ -508,10 +500,10 @@ export default function HomePage() {
             >
               {isFrozen ? (
                 <>
-                  Claim your LFG within the next {' '}
+                  You have {' '}
                   <Text as="span" color="brand.Purple" fontWeight="bold">
                     {timeLeft}
-                  </Text> before the ranking resets!
+                  </Text> to claim your LFG!
                 </>
               ) : (
                 <>
