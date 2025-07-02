@@ -20,8 +20,6 @@ import {
   TokenBurn,
   TokenGate,
   TokenPayment,
-  safeFetchAllowListProofFromSeeds,
-  AllowList,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import {
   SolAmount,
@@ -38,6 +36,7 @@ import {
   mintLimitChecker,
   ownedNftChecker,
   GuardReturn,
+  allowlistChecker,
   allocationChecker,
   calculateMintable,
   nftMintLimitChecker,
@@ -55,17 +54,14 @@ export const guardChecker = async (
   umi: Umi,
   candyGuard: CandyGuard,
   candyMachine: CandyMachine,
-  solanaTime: bigint
+  solanaTime: bigint,
+  top10Wallets: string[]
 ) => {
   let guardReturn: GuardReturn[] = [];
-
   let ownedTokens: DigitalAssetWithTokenAndNftMintLimit[] = [];
   let ownedCoreAssets: DasApiAssetAndAssetMintLimit[] = [];
   if (!candyGuard) {
-    if (guardReturn.length === 0) {
-      //guardReturn.push({ label: "default", allowed: false });
-    }
-    return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
+    return { guardReturn, ownedTokens, ownedCoreAssets };
   }
 
   let guardsToCheck: { label: string; guards: GuardSet }[] = candyGuard.groups;
@@ -87,11 +83,8 @@ export const guardChecker = async (
     return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
   }
 
-  if (
-    Number(candyMachine.data.itemsAvailable) -
-      Number(candyMachine.itemsRedeemed) ===
-      0
-  ) {
+  if (Number(candyMachine.data.itemsAvailable) - Number(candyMachine.itemsRedeemed) === 0)
+    {
     for (const eachGuard of guardsToCheck) {
       guardReturn.push({
         label: eachGuard.label,
@@ -100,7 +93,7 @@ export const guardChecker = async (
         maxAmount: 0,
       });
     }
-    return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
+    return { guardReturn, ownedTokens, ownedCoreAssets };
   }
 
   if (candyMachine.authority === umi.identity.publicKey) {
@@ -122,7 +115,7 @@ export const guardChecker = async (
           maxAmount: 0,
         });
       }
-      return { guardReturn, ownedNfts: ownedTokens, ownedCoreAssets };
+      return { guardReturn, ownedTokens, ownedCoreAssets };
     }
   }
 
@@ -151,8 +144,7 @@ export const guardChecker = async (
   for (const eachGuard of guardsToCheck) {
     const singleGuard = eachGuard.guards;
     let mintableAmount =
-      Number(candyMachine.data.itemsAvailable) -
-      Number(candyMachine.itemsRedeemed);
+      Number(candyMachine.data.itemsAvailable) - Number(candyMachine.itemsRedeemed);
 
     if (singleGuard.addressGate.__option === "Some") {
       const addressGate = singleGuard.addressGate as Some<AddressGate>;
@@ -192,26 +184,19 @@ export const guardChecker = async (
       }
     }
 
+    // Check if the wallet is in top-10 and part of the allowlist
+    const walletInTop10 = allowlistChecker(top10Wallets, umi);
+    console.log("Wallet in top-10 allowlist:", walletInTop10);
+
     if (singleGuard.allowList.__option === "Some") {
-        const allowListGuard = singleGuard.allowList as Some<AllowList>;
-        const merkleRoot = allowListGuard.value.merkleRoot;
-        console.log("Allowlist merkle root: " + merkleRoot);
-
-      const proof = await safeFetchAllowListProofFromSeeds(umi, {
-        candyGuard: candyMachine.mintAuthority,
-        candyMachine: candyMachine.publicKey,
-        merkleRoot, 
-        user: umi.identity.publicKey,
-      });
-
-      // Handle proof generation failure for placeholder wallet
-      if (proof === null || umi.identity.publicKey.toString() === '11111111111111111111111111111111') {
+      if (!walletInTop10) {
         guardReturn.push({
           label: eachGuard.label,
           allowed: false,
-          reason: "Wallet not in on-chain allowlist",
+          reason: "Wallet not in allowlist (top-10 leaderboard)",
           maxAmount: 0,
         });
+        console.info(`Guard ${eachGuard.label}: Wallet not in top-10 allowlist`);
         continue;
       }
     }

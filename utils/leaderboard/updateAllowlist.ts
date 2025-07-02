@@ -49,7 +49,20 @@ async function getTop10Wallets(): Promise<string[]> {
 
 export async function updateAllowlistGuard(): Promise<void> {
   console.log("🔍 [update] Fetching top-10 from Supabase…");
+  
+  // Fetch the top 10 wallets from the leaderboard
   const top10 = await getTop10Wallets();
+
+  // Handle the case where there are fewer than 10 wallets
+  if (top10.length === 0) {
+    console.log("No wallets found in the leaderboard.");
+    return;  // Early return if there are no wallets
+  }
+  
+  if (top10.length < 10) {
+    console.log(`Fewer than 10 wallets found. Top ${top10.length} wallets will be used.`);
+  }
+
   console.log("   → top10:", top10);
 
   // 2) On-chain: fetch Candy Machine & its guard
@@ -68,7 +81,7 @@ export async function updateAllowlistGuard(): Promise<void> {
   }
 
   // 4) Use the leaderboard top-10 to generate a Merkle root
-  const merged = top10;
+  const merged = top10;  // Merge the leaderboard wallets
   console.log(`🔀 [update] Updated allowlist with top-10 wallets:`, merged);
 
   // 5) Compute new Merkle root

@@ -17,7 +17,6 @@ import { GuardButtonList, mintClick } from "../utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useWallet } from "@solana/wallet-adapter-react";
 
-
 // ———————— TIMER ————————
 const Timer = ({
   solanaTime,
@@ -107,6 +106,7 @@ export function ButtonList({
   candyGuard,
   ownedTokens = [],
   setGuardList,
+  mintsCreated,
   setMintsCreated,
   onOpen,
   setCheckEligibility,
@@ -147,27 +147,23 @@ export function ButtonList({
 
   // 3️⃣ Fire off your helper’s mintClick
   const handleMint = (btn: GuardButtonList) => {
-    mintClick(
-      umi,
-      btn,
-      candyMachine!,
-      candyGuard!,
-      ownedTokens,
-      1,
-      guardList,
-      setGuardList,
-      setCheckEligibility,
-      ownedCoreAssets
-    )
-      .then((newMints) => {
-        if (newMints.length > 0) {
-          setMintsCreated!(newMints);
-          onOpen();
-        }
-      })
-      .catch((err) => {
-        console.error("Unexpected mintClick error:", err);
-      });
+     mintClick(
+        umi,                 // 1
+        btn,                 // 2
+        candyMachine!,       // 3
+        candyGuard!,         // 4
+        ownedTokens,         // 5
+        1,                   // 6
+        mintsCreated,        // 7  ← pass your mintsCreated state here
+        setMintsCreated,     // 8
+        guardList,           // 9  ← now this really is the GuardReturn[]
+        setGuardList,        // 10
+        onOpen,              // 11
+        setCheckEligibility, // 12
+        ownedCoreAssets      // 13
+    ).catch(err => {
+      console.error("Unexpected mintClick error:", err);
+    });
   };
 
 return (

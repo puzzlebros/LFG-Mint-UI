@@ -40,7 +40,8 @@ import { image, headerText } from "../settings";
 import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/checkerHelper";
 import { useWallet } from "@solana/wallet-adapter-react";
 import axios from "axios";
-import type { LeaderboardEntry } from "@/types/leaderboard";
+import { useLeaderboard } from '../components/LeaderboardContext';
+import { cacheLeaderboard } from "../utils/metaplex/mintHelper"
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
 
@@ -48,7 +49,6 @@ const pulse = keyframes`
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.05); }
 `;
-
 const hatch = keyframes`
   0%   { filter: blur(3px); transform: scale(1) translate(0,0) rotate(0deg); }
   20%  { filter: blur(2px); transform: scale(1.02) translate(-2px,1px) rotate(-1deg); }
@@ -61,11 +61,9 @@ const hatch = keyframes`
 export default function MintPage() {
   const umi = useUmi();
   const toast = useToast();
-  const { publicKey: walletPublicKey, connected } = useWallet();
 
   // — UI state —
-  const [allowlistLoaded, setAllowlistLoaded] = useState(false);
-  const [inTop10, setInTop10] = useState(false);
+  const { top10Wallets } = useLeaderboard();
   const [loading, setLoading] = useState(true);
   const [guards, setGuards] = useState<GuardReturn[]>([]);
   const [isAllowed, setIsAllowed] = useState(false);
@@ -73,6 +71,25 @@ export default function MintPage() {
   const [ownedTokens, setOwnedTokens] = useState<DigitalAssetWithToken[]>();
   const [ownedCoreAssets, setOwnedCoreAssets] = useState<DasApiAssetAndAssetMintLimit[]>();
   const [checkEligibility, setCheckEligibility] = useState<boolean>(false);
+  const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
+  const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
+
+  // Accessing wallet and candy machine details
+  const { publicKey: walletPublicKey, connected } = useWallet();
+  const [candyMachine, setCandyMachine] = useState<CandyMachine>();
+  const [candyGuard, setCandyGuard] = useState<CandyGuard>();
+
+  // Check if the wallet is in the top-10 leaderboard
+  useEffect(() => {
+    if (!walletPublicKey || !top10Wallets || top10Wallets.length === 0) return;
+    setIsAllowed(top10Wallets.includes(walletPublicKey.toString())); 
+  }, [walletPublicKey, top10Wallets]);
+
+  useEffect(() => {
+    if (top10Wallets.length > 0) {
+      cacheLeaderboard(top10Wallets)
+    }
+  }, [top10Wallets])
 
   // CandyMachine & Guard
   const candyMachineId = useMemo(() => {
@@ -84,14 +101,7 @@ export default function MintPage() {
     return publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID);
   }, [toast]);
 
-  const [candyMachine, setCandyMachine] = useState<CandyMachine>();
-  const [candyGuard, setCandyGuard] = useState<CandyGuard>();
-
-  // — Modals —
-  const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
-  const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
-
-  // 2️⃣ Clear on wallet disconnect
+  // Clear on wallet disconnect
   useEffect(() => {
     if (!walletPublicKey) {
       console.log("🔌 Wallet disconnected — clearing state");
@@ -103,21 +113,7 @@ export default function MintPage() {
     }
   }, [walletPublicKey]);
 
-  // 3️⃣ Leaderboard Top-10
-  useEffect(() => {
-    if (!walletPublicKey) {
-      setInTop10(false);
-      return;
-    }
-    axios.get<LeaderboardEntry[]>("/api/leaderboard")
-      .then(({ data }) => {
-        console.log("Fetched top-10 leaderboard wallets:", data);  // Log the fetched leaderboard data
-        setInTop10(data.map(e => e.wallet_address).includes(walletPublicKey.toString()));
-      })
-      .catch(err => console.error("❌ leaderboard fetch failed:", err));
-  }, [walletPublicKey]);
-
-  // ➋ Fetch CandyMachine & Guard ONCE, when wallet connects
+  // Fetch CandyMachine & Guard ONCE, when wallet connects
   useEffect(() => {
     if (!walletPublicKey || candyMachine) return;
     console.log("💠 Fetching Candy Machine & Guard…");
@@ -141,7 +137,7 @@ export default function MintPage() {
     })();
   }, [walletPublicKey, candyMachine, candyMachineId, umi, toast]);
 
-  // ➌ guardChecker effect: only runs when checkEligibility flips true,
+  // GuardChecker effect: only runs when checkEligibility flips true,
   // and NEVER during the hatch animation (isMinting).
   const isMinting = guards.some((g) => g.minting);
   useEffect(() => {
@@ -155,11 +151,18 @@ export default function MintPage() {
     setLoading(true);
     let cancelled = false;
 
+    // Ensure top10Wallets is available
+    if (!top10Wallets) {
+      console.error("Top-10 wallets data is not available.");
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       try {
         const now = BigInt(Math.floor(Date.now() / 1000));
         const { guardReturn, ownedTokens: ot, ownedCoreAssets: oca } =
-          await guardChecker(umi, candyGuard, candyMachine, now);
+          await guardChecker(umi, candyGuard, candyMachine, now, top10Wallets);
 
         if (!cancelled) {
           console.log("✅ guardReturn:", guardReturn);
@@ -191,10 +194,11 @@ export default function MintPage() {
     umi,
     toast,
     isMinting,
+    top10Wallets,
   ]);
 
-  // ➍ After mint completes, wait for user to close the NFT-popup before
-  //     re-fetching both on-chain supply *and* re-running guardChecker.
+  // After mint completes, wait for user to close the NFT-popup before
+  // re-fetching both on-chain supply *and* re-running guardChecker.
   const onNftModalClose = () => {
     // (1) close the popup
     onShowNftClose();
@@ -215,9 +219,7 @@ export default function MintPage() {
       });
   };
 
-  // Also the existing ShowNft modal uses isShowNftOpen & onShowNftClose; we replace onShowNftClose with onNftModalClose in JSX.
-
-  // 8️⃣ Post-fetch NFT API call
+  // Post-fetch NFT API call
   useEffect(() => {
     if (!mintsCreated || mintsCreated.length === 0) return;
     const { offChainMetadata, mint } = mintsCreated[mintsCreated.length - 1];
@@ -227,10 +229,9 @@ export default function MintPage() {
       imageUrl: offChainMetadata.image,
       mintAddress: mint.toString(),
     }).catch(err => console.error("⚠️ postMint failed:", err));
-    // Note: we do NOT trigger guardChecker here; we wait until the user closes the modal.
   }, [mintsCreated]);
 
-  // 9️⃣ Refresh on window focus
+  // Refresh on window focus
   useEffect(() => {
     const onFocus = () => {
       if (walletPublicKey && !isMinting) {
@@ -242,7 +243,6 @@ export default function MintPage() {
     return () => window.removeEventListener("focus", onFocus);
   }, [walletPublicKey, isMinting]);
 
-  // Page content component
   const PageContent = () => {
     // Find allow-list group label
     const allowListLabel = candyGuard
@@ -260,10 +260,10 @@ export default function MintPage() {
     const showMint = Boolean(
       walletPublicKey &&
       !showClaim &&
-      isAllowed
+      isAllowed  // Use the new isAllowed state to check if the user is eligible to mint
     );
-    console.log("Claim eligibility:", showClaim, "Wallet in top-10:", inTop10);  // Log the claim eligibility
 
+    console.log("Claim eligibility:", showClaim, "Wallet in top-10:", isAllowed);  // Log the claim eligibility
 
     // Claim uses only allowGuard
     const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);

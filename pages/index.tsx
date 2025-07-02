@@ -13,10 +13,8 @@ import {
   Image as ChakraImage
 } from '@chakra-ui/react';
 import { useBreakpointValue } from '@chakra-ui/react';
-import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { keyframes } from '@emotion/react'
-
 import HorizontalScroller, { ScrollerItem } from '../components/HorizontalScroller';
 import Leaderboard                              from '../components/Leaderboard';
 import TraitDresser                             from '../components/TraitDresser';
@@ -35,9 +33,6 @@ const floatKeyframes = `
   50%       { transform: translateY(-20px); }
 }
 `
-
-// ParallaxImage runs only on the client
-const ParallaxImage = dynamic(() => import('../components/ParallaxImage'), { ssr: false });
 
 export default function HomePage() {
   const [isInTop10, setIsInTop10] = useState(false);
@@ -121,31 +116,11 @@ export default function HomePage() {
     md:   "MINTMINT",
   });
 
-  const mintBgSize = useBreakpointValue({
-    base: "24rem",
-    md:   "22rem",
-  });
-
-  const rankingHeadingSize = useBreakpointValue({
-  base: "4rem",
-  md:   "4.5rem",
-  });
-
-  const rankingCopySize = useBreakpointValue({
-  base: "1rem",
-  md:   "1.3rem",
-  });
-
-
-  const rankingHeadingMargin = useBreakpointValue({
-  base: "35px",
-  md:   "15px",
-  });
-
-  const mintButtonMargin = useBreakpointValue({
-    base: "7%",
-    md:   "7%",
-  });
+  const mintBgSize = useBreakpointValue({ base: "24rem", md: "22rem" });
+  const rankingHeadingSize = useBreakpointValue({ base: "4rem", md: "4.5rem"});
+  const rankingCopySize = useBreakpointValue({ base: "1rem", md: "1.3rem" });
+  const rankingHeadingMargin = useBreakpointValue({ base: "35px", md: "15px"});
+  const mintButtonMargin = useBreakpointValue({ base: "7%", md: "7%"});
 
   // when mount or resize, capture dimensions
   useEffect(() => {

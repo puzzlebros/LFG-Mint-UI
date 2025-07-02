@@ -22,6 +22,7 @@ import { useMemo, useEffect } from "react";
 
 import { UmiProvider } from "../utils/metaplex/UmiProvider";
 import { SolanaTimeProvider } from "@/utils/metaplex/SolanaTimeContext";
+import { LeaderboardProvider } from "../components/LeaderboardContext";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   // pick network
@@ -66,11 +67,13 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={wallets} autoConnect>
               <WalletModalProvider>
-                <UmiProvider endpoint={endpoint}>
-                  <SolanaTimeProvider>
-                    {getLayout(<Component {...pageProps} />)}
-                  </SolanaTimeProvider>
-                </UmiProvider>
+                <LeaderboardProvider>
+                  <UmiProvider endpoint={endpoint}>
+                    <SolanaTimeProvider>
+                      {getLayout(<Component {...pageProps} />)}
+                    </SolanaTimeProvider>
+                  </UmiProvider>
+                </LeaderboardProvider>
               </WalletModalProvider>
             </WalletProvider>
           </ConnectionProvider>

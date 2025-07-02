@@ -1,5 +1,4 @@
 // utils/metaplex/checkerHelper.ts
-
 import {
   Allocation,
   AssetMintLimit,
@@ -24,7 +23,6 @@ import {
   SolAmount,
   Some,
   Umi,
-  publicKey,
 } from "@metaplex-foundation/umi";
 import { DigitalAssetWithToken } from "@metaplex-foundation/mpl-token-metadata";
 import { createStandaloneToast } from "@chakra-ui/react";
@@ -338,31 +336,18 @@ export const ownedCoreAssetChecker = async (
 };
 
 export const allowlistChecker = (
-  allowLists: Map<string, string[]>,
-  umi: Umi,
-  guardLabel: string
+  top10Wallets: string[], // List of top-10 wallets
+  umi: Umi // Umi instance with connected wallet
 ): boolean => {
-  // 1) Do we even have a list for this guard?
-  if (!allowLists.has(guardLabel)) {
-    console.warn(`⚠️ allowlistChecker: no list found for guard "${guardLabel}"`);
-    return false;
-  }
-
-  const list = allowLists.get(guardLabel)!;
   const walletStr = umi.identity.publicKey.toString();
 
-  // 2) Is the user's wallet in that list?
-  const allowed = list.includes(walletStr);
+  // Check if the wallet is in the top-10 leaderboard (allowlist)
+  const allowed = top10Wallets.includes(walletStr);
 
   if (!allowed) {
-    console.info(
-      `🚫 allowlistChecker: wallet ${walletStr} is NOT in ${guardLabel} allowlist`,
-      list
-    );
+    console.info(`🚫 allowlistChecker: wallet ${walletStr} is NOT in the top-10 allowlist`);
   } else {
-    console.log(
-      `✅ allowlistChecker: wallet ${walletStr} IS in ${guardLabel} allowlist`
-    );
+    console.log(`✅ allowlistChecker: wallet ${walletStr} IS in the top-10 allowlist`);
   }
 
   return allowed;

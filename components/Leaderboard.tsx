@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef, CSSProperties } from 'react';
+// components/Leaderboard.tsx
+import React, { useEffect } from 'react';
 import {
   Box,
   Text,
@@ -10,11 +11,10 @@ import {
   Td,
   Skeleton,
   useBreakpointValue,
-  useColorModeValue,
+  useColorModeValue
 } from '@chakra-ui/react';
-import axios from 'axios';
 import { useWallet } from '@solana/wallet-adapter-react';
-import type { LeaderboardEntry } from '@/types/leaderboard';
+import { useLeaderboard } from '../components/LeaderboardContext';
 
 type ColumnWidths = {
   position?: string;
@@ -39,55 +39,34 @@ export default function Leaderboard({
   bgColor,
 }: Props) {
   const defaultBg = useColorModeValue('white', 'gray.700');
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 1️⃣ Pull everything from context
+  const {
+    leaderboardEntries,
+    top10Wallets,
+    loading: ctxLoading,
+    error: ctxError,
+  } = useLeaderboard();
+
   const { publicKey } = useWallet();
   const myWallet = publicKey?.toString();
 
-  // Responsive header alignment: left on mobile, center on desktop
-  const headerAlign = useBreakpointValue<CSSProperties['textAlign']>({ base: 'left', md: 'center' });
+  // 2️⃣ Responsive TextAlign, explicitly typed
+  const headerAlign = useBreakpointValue<'left' | 'center'>({
+    base: 'left',
+    md: 'center',
+  });
 
-  // Lazy-load trigger
+  // 3️⃣ Report top-10 status upstream
   useEffect(() => {
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setLoading(true);
-          obs.disconnect();
-        }
-      },
-      { threshold: 0.3 }
-    );
-    if (containerRef.current) obs.observe(containerRef.current);
-    return () => obs.disconnect();
-  }, []);
-
-  // Fetch data
-  useEffect(() => {
-    if (!loading || hasLoaded) return;
-    axios
-      .get<LeaderboardEntry[]>('/api/leaderboard')
-      .then(res => {
-        setEntries(res.data);
-        setHasLoaded(true);
-      })
-      .catch(() => setError('Failed to load leaderboard.'))
-      .finally(() => setLoading(false));
-  }, [loading, hasLoaded]);
-
-  // Report top‑10 status
-  useEffect(() => {
-    if (hasLoaded && onTopStatus) {
-      onTopStatus(entries.some(e => e.wallet_address === myWallet));
+    if (onTopStatus && myWallet) {
+      onTopStatus(top10Wallets.includes(myWallet));
     }
-  }, [hasLoaded, entries, myWallet, onTopStatus]);
+  }, [onTopStatus, top10Wallets, myWallet]);
 
-  // Prepare 10 rows
+  // 4️⃣ Build exactly ten rows
   const rows = Array.from({ length: 10 }).map((_, i) => {
-    const e = entries[i];
+    const e = leaderboardEntries[i];
     const isMe = !!e && e.wallet_address === myWallet;
     return {
       key: e?.wallet_address ?? `empty-${i}`,
@@ -103,7 +82,6 @@ export default function Leaderboard({
 
   return (
     <Box
-      ref={containerRef}
       bg={bg}
       p={4}
       borderRadius="md"
@@ -114,14 +92,15 @@ export default function Leaderboard({
       minH="140px"
       mx="auto"
     >
-      {error && (
+      {/* Error from context */}
+      {ctxError && (
         <Text color="red.500" textAlign="center">
-          {error}
+          {ctxError}
         </Text>
       )}
 
-      {/* loading skeleton */}
-      {loading && !error && (
+      {/* Skeleton while context is loading */}
+      {ctxLoading && !ctxError && (
         <Table
           variant={withBorders ? 'simple' : 'unstyled'}
           size="sm"
@@ -134,9 +113,15 @@ export default function Leaderboard({
         >
           <Thead display={{ base: 'none', md: 'table-header-group' }}>
             <Tr>
-              <Th width={columnWidths.position ?? '51px'} textAlign={headerAlign} textStyle="narrow">#</Th>
-              <Th width={columnWidths.user} textAlign={headerAlign} textStyle="narrow">User</Th>
-              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="narrow">Score</Th>
+              <Th width={columnWidths.position ?? '51px'} textAlign={headerAlign} textStyle="narrow">
+                #
+              </Th>
+              <Th width={columnWidths.user} textAlign={headerAlign} textStyle="narrow">
+                User
+              </Th>
+              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="narrow">
+                Score
+              </Th>
               <Th
                 display={{ base: 'none', md: 'table-cell' }}
                 width={columnWidths.wallet}
@@ -149,19 +134,30 @@ export default function Leaderboard({
           </Thead>
           <Tbody>
             {rows.map((_, idx) => (
-              <Tr key={`skeleton-${idx}`}> 
-                <Td width={columnWidths.position ?? '51px'}><Skeleton h="20px" /></Td>
-                <Td width={columnWidths.user}><Skeleton h="20px" /></Td>
-                <Td width={columnWidths.score}><Skeleton h="20px" /></Td>
-                <Td display={{ base: 'none', md: 'table-cell' }} width={columnWidths.wallet}><Skeleton h="20px" /></Td>
+              <Tr key={`skeleton-${idx}`}>
+                <Td width={columnWidths.position ?? '51px'}>
+                  <Skeleton h="20px" />
+                </Td>
+                <Td width={columnWidths.user}>
+                  <Skeleton h="20px" />
+                </Td>
+                <Td width={columnWidths.score}>
+                  <Skeleton h="20px" />
+                </Td>
+                <Td
+                  display={{ base: 'none', md: 'table-cell' }}
+                  width={columnWidths.wallet}
+                >
+                  <Skeleton h="20px" />
+                </Td>
               </Tr>
             ))}
           </Tbody>
         </Table>
       )}
 
-      {/* real table */}
-      {hasLoaded && !error && (
+      {/* Real table once context is done loading */}
+      {!ctxLoading && !ctxError && (
         <Table
           variant={withBorders ? 'simple' : 'unstyled'}
           size="sm"
@@ -174,9 +170,15 @@ export default function Leaderboard({
         >
           <Thead display={{ base: 'none', md: 'table-header-group' }}>
             <Tr>
-              <Th width={columnWidths.position ?? '51px'} textAlign={headerAlign} textStyle="narrow">#</Th>
-              <Th width={columnWidths.user} textAlign={headerAlign} textStyle="narrow">User</Th>
-              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="narrow">Score</Th>
+              <Th width={columnWidths.position ?? '51px'} textAlign={headerAlign} textStyle="narrow">
+                #
+              </Th>
+              <Th width={columnWidths.user} textAlign={headerAlign} textStyle="narrow">
+                User
+              </Th>
+              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="narrow">
+                Score
+              </Th>
               <Th
                 display={{ base: 'none', md: 'table-cell' }}
                 width={columnWidths.wallet}

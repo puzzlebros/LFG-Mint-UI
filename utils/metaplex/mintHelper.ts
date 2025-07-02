@@ -55,6 +55,12 @@ export const chooseGuardToUse = (
   return group ?? { label: 'default', guards: candyGuard.guards };
 };
 
+// Called on mint once
+let _top10Wallets: string[] = []
+export function cacheLeaderboard(wallets: string[]) {
+  _top10Wallets = wallets
+}
+
 export const mintArgsBuilder = (
   guardToUse: GuardGroup<DefaultGuardSet>,
   ownedTokens: DigitalAssetWithTokenAndNftMintLimit[],
@@ -65,7 +71,15 @@ export const mintArgsBuilder = (
   const array: Partial<DefaultGuardSetMintArgs>[] = [];
   for (let i = 0; i < amount; i++) {
     const args: Partial<DefaultGuardSetMintArgs> = {};
-
+    
+    if (guards.allowList.__option === "Some") {
+    const allowlist = _top10Wallets;
+    if (!allowlist) {
+      console.error(`allowlist for guard ${guardToUse.label} not found!`);
+    } else {
+      args.allowList = some({ merkleRoot: getMerkleRoot(allowlist) });
+    }
+    }
     // Handling mintLimit guard
     if (guards.mintLimit.__option === 'Some') {
       args.mintLimit = some({ id: guards.mintLimit.value.id });
@@ -81,7 +95,6 @@ export const mintArgsBuilder = (
   return array;
 };
 
-
 export const routeBuilder = async (
   umi: Umi,
   guardToUse: GuardGroup<DefaultGuardSet>,
@@ -89,50 +102,62 @@ export const routeBuilder = async (
 ): Promise<TransactionBuilder> => {
   let tx = transactionBuilder();
 
-  // Check if the guard requires an allowlist
-  if (guardToUse.guards.allowList.__option === 'Some') {
-    // Fetch the top-10 wallets from the leaderboard dynamically
-    const top10WalletsResponse = await fetch('/api/leaderboard');
-    const top10Wallets = await top10WalletsResponse.json();
+  if (guardToUse.guards.allowList.__option === "Some") {
+    // 1️⃣ Sort your list to guarantee the same tree on client & cron
+    const allowlist = [..._top10Wallets].sort();
+    const walletKey = umi.identity.publicKey;
+    const cmKey     = candyMachine.publicKey;
+    const cgKey     = candyMachine.mintAuthority;
 
-    if (!top10Wallets || top10Wallets.length === 0) {
-      throw new Error("No top-10 wallets found in the leaderboard");
-    }
+    // 2️⃣ Compute the root & proof
+    const merkle     = getMerkleRoot(allowlist);
+    const proofArr   = getMerkleProof(allowlist, walletKey);
 
-    // Ensure the current wallet is in the allowlist (top 10)
-    const isInAllowlist = top10Wallets.some((entry: { wallet_address: string }) => entry.wallet_address === umi.identity.publicKey.toString());
-    console.log("Is wallet in the allowlist?", isInAllowlist);
-
-    if (!isInAllowlist) {
-      throw new Error("Your wallet is not in the allowlist");
-    }
-
-    // Generate Merkle proof for the current user's wallet
-    const proof = await safeFetchAllowListProofFromSeeds(umi, {
-      candyGuard: candyMachine.mintAuthority,
-      candyMachine: candyMachine.publicKey,
-      merkleRoot: getMerkleRoot(top10Wallets.map((entry: { wallet_address: string }) => entry.wallet_address)),
-      user: publicKey(umi.identity),
-    });
-
-    if (proof === null) {
-      throw new Error("Failed to fetch proof for allowlist");
-    }
-
-    // Add the proof to the transaction
-    tx = tx.add(
-      route(umi, {
-        guard: 'allowList',
-        candyMachine: candyMachine.publicKey,
-        candyGuard: candyMachine.mintAuthority,
-        group: guardToUse.label === 'default' ? none() : some(guardToUse.label),
-        routeArgs: {
-          path: 'proof',
-          merkleRoot: getMerkleRoot(top10Wallets.map((entry: { wallet_address: string }) => entry.wallet_address)),
-          merkleProof: getMerkleProof(top10Wallets.map((entry: { wallet_address: string }) => entry.wallet_address), publicKey(umi.identity)),
-        },
-      })
+    // 3️⃣ Log everything, including both hex & base64 of the root
+    console.log("▶️ routeBuilder inputs:");
+    console.log("   allowlist (sorted):", allowlist);
+    console.log("   wallet key:         ", walletKey.toString());
+    console.log("   candyMachine key:   ", cmKey.toString());
+    console.log("   candyGuard key:     ", cgKey.toString());
+    console.log("   merkleRoot (hex):   ", Buffer.from(merkle).toString("hex"));
+    console.log("   merkleRoot (base64):", Buffer.from(merkle).toString("base64"));
+    console.log("   proof length:       ", proofArr.length);
+    console.log(
+      "   proof (base64):     ",
+      proofArr.map((b) => Buffer.from(b).toString("base64"))
     );
+
+    // 4️⃣ Fetch any on-chain PDA
+    const proofAccount = await safeFetchAllowListProofFromSeeds(umi, {
+      candyGuard:   cgKey,
+      candyMachine: cmKey,
+      merkleRoot:   merkle,
+      user:         walletKey,
+    });
+    console.log("🔍 on-chain proof account:", proofAccount);
+
+    // 5️⃣ If no PDA, add the route instruction with our sorted data
+    if (proofAccount === null) {
+      console.log("➕ No proof found → adding route instruction");
+      tx = tx.add(
+        route(umi, {
+          guard:        "allowList",
+          candyMachine: cmKey,
+          candyGuard:   cgKey,
+          group:
+            guardToUse.label === "default"
+              ? none()
+              : some(guardToUse.label),
+          routeArgs: {
+            path:        "proof",
+            merkleRoot:  merkle,
+            merkleProof: proofArr,
+          },
+        })
+      );
+    } else {
+      console.log("✅ Proof PDA already exists; skipping route.");
+    }
   }
 
   return tx;
@@ -244,16 +269,6 @@ export const getRequiredCU = async (umi: Umi, tx: Transaction): Promise<number> 
   return sim.value.unitsConsumed ? sim.value.unitsConsumed + 20_000 : defaultCU;
 };
 
-export interface MintClickParams {
-  umi: Umi;
-  guard: GuardReturn;
-  candyMachine: CandyMachine;
-  candyGuard: CandyGuard;
-  ownedTokens: DigitalAssetWithTokenAndNftMintLimit[];
-  ownedCoreAssets: DasApiAssetAndAssetMintLimit[];
-  amount?: number;
-}
-
 const updateLoadingText = (
   loadingText: string | undefined,
   guardList: GuardReturn[],
@@ -291,171 +306,179 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
 };
 
 export const mintClick = async (
-  umi: Umi,
-  guard: GuardReturn,
-  candyMachine: CandyMachine,
-  candyGuard: CandyGuard,
-  ownedTokens: DigitalAssetWithToken[],
-  mintAmount: number,
-  guardList: GuardReturn[],
-  setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
-  setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  ownedCoreAssets: DasApiAssetAndAssetMintLimit[]
-) : Promise<{ mint: PublicKey; offChainMetadata: JsonMetadata }[]> => {
+  umi: Umi,                                  // 1
+  guard: GuardReturn,                        // 2
+  candyMachine: CandyMachine,                // 3
+  candyGuard: CandyGuard,                    // 4
+  ownedTokens: DigitalAssetWithToken[],      // 5
+  mintAmount: number,                        // 6
+  mintsCreated: {                            // 7
+    mint: PublicKey;
+    offChainMetadata?: JsonMetadata;
+  }[] | undefined,
+  setMintsCreated: Dispatch<                 // 8
+    SetStateAction<
+      { mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined
+    >
+  >,
+  guardList: GuardReturn[],                  // 9
+  setGuardList: Dispatch<SetStateAction<GuardReturn[]>>, // 10
+  onOpen: () => void,                        // 11
+  setCheckEligibility: Dispatch<SetStateAction<boolean>>, // 12
+  ownedCoreAssets: DasApiAssetAndAssetMintLimit[]        // 13
+) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
   if (!guardToUse.guards) {
-    console.error("No guard defined!");
-    return [];
+    console.error("no guard defined!");
+    return;
   }
 
   try {
-    // — mark minting
+    //find the guard by guardToUse.label and set minting to true
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
     if (guardIndex === -1) {
-      console.error("Guard not found");
-      return [];
+      console.error("guard not found");
+      return;
     }
     const newGuardList = [...guardList];
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
-    // — allowlist proof
     let routeBuild = await routeBuilder(umi, guardToUse, candyMachine);
-    console.log("Route built with allowlist proof:", routeBuild);
-
-    if (routeBuild && routeBuild.items.length > 0) {
+    if (routeBuild) {
       createStandaloneToast().toast({
         title: "Allowlist detected. Please sign to be approved to mint.",
         status: "info",
         duration: 900,
         isClosable: true,
       });
-      console.log("Adding Merkle proof to the mint transaction...");
-      const price = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
-      const latestBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "finalized" });
-
-      routeBuild = routeBuild
-        .prepend(setComputeUnitPrice(umi, { microLamports: price }))
-        .setBlockhash(latestBlockhash);
-
-      const builtTx = await routeBuild.buildAndSign(umi);
-      await umi.rpc.sendTransaction(builtTx, {
-        skipPreflight: true,
-        preflightCommitment: "finalized",
-        commitment: "finalized",
-      });
-      } else {
-     console.error("Failed to build route for minting with proof.");
+      const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
+      routeBuild = routeBuild.setBlockhash(latestBlockhash)
+      await umi.rpc
+      .sendTransaction(routeBuild.build(umi), { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
     }
 
     // fetch LUT
     let tables: AddressLookupTableInput[] = [];
-    if (process.env.NEXT_PUBLIC_LUT) {
-      tables = [await fetchAddressLookupTable(umi, publicKey(process.env.NEXT_PUBLIC_LUT))];
+    const lut = process.env.NEXT_PUBLIC_LUT;
+    if (lut) {
+      const lutPubKey = publicKey(lut);
+      const fetchedLut = await fetchAddressLookupTable(umi, lutPubKey);
+      tables = [fetchedLut];
     } else {
       createStandaloneToast().toast({
-        title: "Set NEXT_PUBLIC_LUT in .env!",
+        title: "The developer should really set a lookup table!",
         status: "warning",
         duration: 900,
         isClosable: true,
       });
     }
 
-    // signers
-    const nftSigners: KeypairSigner[] = [];
+    let nftsigners = [] as KeypairSigner[];
+
     for (let i = 0; i < mintAmount; i++) {
-      nftSigners.push(generateSigner(umi));
+      const nftMint = generateSigner(umi);
+      nftsigners.push(nftMint);
     }
 
-    // args + blockhash
     const mintArgsArray = mintArgsBuilder(guardToUse, ownedTokens, ownedCoreAssets, mintAmount);
-    const latest = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
+    const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
 
-    // build transactions
-    const mintTxs = await buildTxs(
-      umi,
-      candyMachine,
-      candyGuard,
-      nftSigners,
-      guardToUse,
-      mintArgsArray,
-      tables,
-      latest.blockhash
-    );
-    if (mintTxs.length === 0) {
-      console.error("No mint tx built!");
-      return [];
+    const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
+      await buildTxs(
+        umi,
+        candyMachine,
+        candyGuard,
+        nftsigners,
+        guardToUse,
+        mintArgsArray,
+        tables,
+        latestBlockhash.blockhash,
+      );
+    if (!mintTxs.length) {
+      console.error("no mint tx built!");
+      return;
     }
+
+    updateLoadingText(`Please sign`, guardList, guardToUse.label, setGuardList);
     
-    updateLoadingText(`Please sign...`, guardList, guardToUse.label, setGuardList);
-    
-    // collect signed TXs
     const signedTransactions = await signAllTransactions(mintTxs);
 
     let signatures: Uint8Array[] = [];
-        let amountSent = 0;
-        const sendPromises = signedTransactions.map((tx, index) => {
-          return umi.rpc
-            .sendTransaction(tx, { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
-            .then((signature) => {
-              console.log(
-                `Transaction ${index + 1} resolved with signature: ${
-                  base58.deserialize(signature)[0]
-                }`
-              );
-              amountSent = amountSent + 1;
-              signatures.push(signature);
-              return { status: "fulfilled", value: signature };
-            })
-            .catch((error) => {
-              console.error(`Transaction ${index + 1} failed:`, error);
-              return { status: "rejected", reason: error };
-            });
+    let amountSent = 0;
+    const sendPromises = signedTransactions.map((tx, index) => {
+      return umi.rpc
+        .sendTransaction(tx, { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
+        .then((signature) => {
+          console.log(
+            `Transaction ${index + 1} resolved with signature: ${
+              base58.deserialize(signature)[0]
+            }`
+          );
+          amountSent = amountSent + 1;
+          signatures.push(signature);
+          return { status: "fulfilled", value: signature };
+        })
+        .catch((error) => {
+          console.error(`Transaction ${index + 1} failed:`, error);
+          return { status: "rejected", reason: error };
         });
+    });
 
     await Promise.allSettled(sendPromises);
 
-    if (signatures.length === 0) {
-      throw new Error("No transactions succeeded");
+    if (!(await sendPromises[0]).status === true) {
+      // throw error that no tx was created
+      throw new Error("no tx was created");
     }
-
-    updateLoadingText("Finalizing…", guardList, guardToUse.label, setGuardList);
+    updateLoadingText(
+      `finalizing transaction(s)`,
+      guardList,
+      guardToUse.label,
+      setGuardList
+    );
 
     createStandaloneToast().toast({
       title: `${signedTransactions.length} Transaction(s) sent!`,
       status: "success",
       duration: 3000,
     });
-
-    const successfulMints = await verifyTx(
-      umi,
-      signatures,
-      nftSigners,
-      latest,
-      "finalized"
+    const successfulMints = await verifyTx(umi, signatures, nftsigners, latestBlockhash, "finalized");
+    updateLoadingText(
+      "Fetching your NFT",
+      guardList,
+      guardToUse.label,
+      setGuardList
+    );
+    // Filter out successful mints and map to fetch promises
+    const fetchNftPromises = successfulMints.map((mintResult) =>
+      fetchNft(umi, mintResult).then((nftData) => ({
+        mint: mintResult,
+        nftData,
+      }))
     );
 
-    updateLoadingText("Fetching your NFT…", guardList, guardToUse.label, setGuardList);
+    const fetchedNftsResults = await Promise.all(fetchNftPromises);
+    // Prepare data for setting mintsCreated
+    let newMintsCreated: { mint: PublicKey; offChainMetadata: JsonMetadata }[] =
+      [];
+    fetchedNftsResults.map((acc) => {
+      if (acc.nftData.digitalAsset && acc.nftData.jsonMetadata) {
+        newMintsCreated.push({
+          mint: acc.mint,
+          offChainMetadata: acc.nftData.jsonMetadata,
+        });
+      }
+      return acc;
+    }, []);
 
-    // Fetch on-chain metadata for each successful mint
-    const fetchedNftsResults = await Promise.all(
-      successfulMints.map(async (mintPubKey) => {
-        const { digitalAsset, jsonMetadata } = await fetchNft(umi, mintPubKey);
-        return { mint: mintPubKey, digitalAsset, jsonMetadata };
-      })
-    );
-
-    const newMintsCreated: { mint: PublicKey; offChainMetadata: JsonMetadata }[] =
-      fetchedNftsResults
-        .filter((r) => r.digitalAsset && r.jsonMetadata)
-        .map((r) => ({
-          mint: r.mint,
-          offChainMetadata: r.jsonMetadata!,
-        }));
-
-    return newMintsCreated;
+    // Update mintsCreated only if there are new mints
+    if (newMintsCreated.length > 0) {
+      setMintsCreated(newMintsCreated);
+      onOpen();
+    }
   } catch (e) {
-    console.error(`minting failed because of`, e);
+    console.error(`minting failed because of ${e}`);
     createStandaloneToast().toast({
       title: "Your mint failed!",
       description: "Please try again.",
@@ -463,17 +486,17 @@ export const mintClick = async (
       duration: 900,
       isClosable: true,
     });
-    return [];
   } finally {
+    //find the guard by guardToUse.label and set minting to true
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
-    if (guardIndex !== -1) {
-      const reset = [...guardList];
-      reset[guardIndex].minting = false;
-      reset[guardIndex].loadingText = undefined;
-      setGuardList(reset);
+    if (guardIndex === -1) {
+      console.error("guard not found");
+      return;
     }
-
-    // setCheckEligibility(true);
+    const newGuardList = [...guardList];
+    newGuardList[guardIndex].minting = false;
+    setGuardList(newGuardList);
+    setCheckEligibility(true);
     updateLoadingText(undefined, guardList, guardToUse.label, setGuardList);
   }
 };
