@@ -263,7 +263,11 @@ export default function MintPage() {
       isAllowed  // Use the new isAllowed state to check if the user is eligible to mint
     );
 
-    console.log("Claim eligibility:", showClaim, "Wallet in top-10:", isAllowed);  // Log the claim eligibility
+    useEffect(() => {
+        console.log(
+          `Claim eligibility: ${showClaim} Wallet in top-10: ${isAllowed}`
+        );
+      }, [showClaim, isAllowed]);
 
     // Claim uses only allowGuard
     const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);

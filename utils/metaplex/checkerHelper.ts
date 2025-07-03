@@ -336,20 +336,18 @@ export const ownedCoreAssetChecker = async (
 };
 
 export const allowlistChecker = (
-  top10Wallets: string[], // List of top-10 wallets
-  umi: Umi // Umi instance with connected wallet
+  top10Wallets: string[],
+  umi: Umi
 ): boolean => {
   const walletStr = umi.identity.publicKey.toString();
-
-  // Check if the wallet is in the top-10 leaderboard (allowlist)
-  const allowed = top10Wallets.includes(walletStr);
+  const allowed   = top10Wallets.includes(walletStr);
 
   if (!allowed) {
-    console.info(`🚫 allowlistChecker: wallet ${walletStr} is NOT in the top-10 allowlist`);
-  } else {
-    console.log(`✅ allowlistChecker: wallet ${walletStr} IS in the top-10 allowlist`);
+    console.info(
+      `🚫 allowlistChecker: wallet ${walletStr} is NOT in the top-10 allowlist`
+    );
   }
-
+  // (no log when allowed)
   return allowed;
 };
 
