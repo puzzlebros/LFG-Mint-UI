@@ -23,7 +23,7 @@ import {
   publicKey,
   BlockhashWithExpiryBlockHeight,
 } from "@metaplex-foundation/umi";
-import { DasApiAssetAndAssetMintLimit, DigitalAssetWithTokenAndNftMintLimit, GuardReturn } from "../metaplex/checkerHelper";
+import { GuardReturn } from "../metaplex/checkerHelper";
 import { Connection } from "@solana/web3.js";
 import { setComputeUnitPrice, setComputeUnitLimit } from "@metaplex-foundation/mpl-toolbox";
 import { toWeb3JsTransaction } from "@metaplex-foundation/umi-web3js-adapters";
@@ -83,6 +83,39 @@ export const mintArgsBuilder = (
   return array;
 };
 
+export async function sendAllowListProof(
+  umi: Umi,
+  guardToUse: GuardGroup<DefaultGuardSet>,
+  candyMachine: CandyMachine
+) {
+  if (guardToUse.guards.allowList.__option !== "Some") return;
+
+  const allowlist = [..._top10Wallets];
+
+  const existing = await safeFetchAllowListProofFromSeeds(umi, {
+    candyGuard: candyMachine.mintAuthority,
+    candyMachine: candyMachine.publicKey,
+    merkleRoot: getMerkleRoot(allowlist),
+    user: publicKey(umi.identity),
+  });
+
+  if (existing === null) {
+    await route(umi, {
+      guard: "allowList",
+      candyMachine: candyMachine.publicKey,
+      candyGuard: candyMachine.mintAuthority,
+      group: guardToUse.label === "default"
+        ? none()
+        : some(guardToUse.label),
+      routeArgs: {
+        path: "proof",
+        merkleRoot: getMerkleRoot(allowlist),
+        merkleProof: getMerkleProof(allowlist, publicKey(umi.identity)),
+      },
+    }).sendAndConfirm(umi);
+  }
+}
+
 export const routeBuilder = async (
   umi: Umi,
   guardToUse: GuardGroup<DefaultGuardSet>,
@@ -92,7 +125,6 @@ export const routeBuilder = async (
 
   if (guardToUse.guards.allowList.__option === "Some") {
     const allowlist = [..._top10Wallets];
-    console.log("[routeBuilder] Cached allowlist:", allowlist);
     if (!allowlist) {
       console.error("allowlist not found!");
       return transactionBuilder();
@@ -103,15 +135,6 @@ export const routeBuilder = async (
       merkleRoot: getMerkleRoot(allowlist),
       user: publicKey(umi.identity),
     });
-    console.log("[routeBuilder] safeFetchAllowListProofFromSeeds result:", allowListProof);
-
-    const merkleRoot = getMerkleRoot(allowlist);
-    console.log("Computed Merkle root base64:", Buffer.from(merkleRoot).toString('base64'));
-
-    const merkleProof = getMerkleProof(allowlist, publicKey(umi.identity));
-    console.log("[routeBuilder] Computed Merkle proof length:", merkleProof.length);
-    merkleProof.forEach((p, i) => console.log(`Proof[${i}] = `, p));
-
     if (allowListProof === null) {
       tx2 = tx2.add(
         route(umi, {
@@ -122,7 +145,7 @@ export const routeBuilder = async (
             guardToUse.label === "default" ? none() : some(guardToUse.label),
           routeArgs: {
             path: "proof",
-            merkleRoot:  getMerkleRoot(allowlist),
+            merkleRoot: getMerkleRoot(allowlist),
             merkleProof: getMerkleProof(allowlist, publicKey(umi.identity)),
           },
         })

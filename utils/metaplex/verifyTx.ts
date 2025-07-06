@@ -32,24 +32,31 @@ export const verifyTx = async (
   const verifySignature = async (
     signature: Uint8Array
   ): Promise<VerifySignatureResult> => {
-    console.log(base58.deserialize(signature)[0]);
+    const sigStr = base58.deserialize(signature)[0];
+    console.log("[verifyTx] Checking signature:", sigStr);
+
     let transaction: TransactionWithMeta | null | undefined;
     for (let i = 0; i < 30; i++) {
       transaction = await umi.rpc.getTransaction(signature);
       if (transaction) {
+        console.log(`[verifyTx] Found tx on try ${i + 1} for sig:`, sigStr);
         break;
       }
+      console.log(`[verifyTx] Waiting for tx to land... try ${i + 1}`);
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    if (transaction === undefined || transaction === null) {
+    if (!transaction) {
+      console.error("[verifyTx] No TX found for signature:", sigStr);
       return { success: false, reason: "No TX found" };
     }
 
     if (detectBotTax(transaction.meta.logs)) {
+      console.error("[verifyTx] Bot tax detected in logs!");
       return { success: false, reason: "Bot Tax detected!" };
     }
 
+    // Which mint was this?
     const mintedAssets = nftSigners
       .filter((signer) =>
         transaction?.message.accounts.some(
@@ -58,11 +65,15 @@ export const verifyTx = async (
       )
       .map((signer) => signer.publicKey);
 
+    console.log("[verifyTx] Minted assets for sig:", sigStr, mintedAssets);
+
     return { success: true, mintedAssets };
   };
 
+  console.log("[verifyTx] Will confirm", signatures.length, "txs");
+
+  // 1. Confirm all transactions
   const promises = [];
-  //first confirm using umi
   for (let i = 0; i < signatures.length; i++) {
     promises.push(
       umi.rpc.confirmTransaction(signatures[i], {
@@ -72,9 +83,14 @@ export const verifyTx = async (
     );
   }
 
-  await Promise.all(promises);
+  try {
+    await Promise.all(promises);
+    console.log("[verifyTx] All txs confirmed at RPC");
+  } catch (e) {
+    console.error("[verifyTx] Error in umi.rpc.confirmTransaction:", e);
+  }
 
-  //then make sure that the RPC actually sees the tx (just required for lagging RPCs)
+  // 2. Fetch & match to mint signers
   const stati = await Promise.all(signatures.map(verifySignature));
   let successful: PublicKey[] = [];
   let failed: string[] = [];

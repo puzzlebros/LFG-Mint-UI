@@ -417,7 +417,7 @@ export default function HomePage() {
             <Tooltip
               label={
                 isFrozen
-                  ? `New leaderboard starting in ${timeLeft}`
+                  ? `New ranking in ${timeLeft}`
                   : `Next claim in ${timeLeft}`
               }
             >
