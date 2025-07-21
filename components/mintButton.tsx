@@ -90,8 +90,8 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
-  if (!guardToUse.guards) {
-    console.error("no guard defined!");
+  if (!candyGuard.groups.find(g => g.label === guardToUse.label)) {
+    console.error(`Group label ${guardToUse.label} not found in candyGuard groups!`);
     return;
   }
 

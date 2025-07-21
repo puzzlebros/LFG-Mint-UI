@@ -86,17 +86,17 @@ export async function clearAllowlistGuard(): Promise<void> {
   await updateCandyGuard(umi, {
     candyGuard: guardData.publicKey,
     guards: {},
-    groups: [
-      {
-        label: "LFG",
-        guards: {
-          // startDate: some({ date: dateTime(epochISO) }),
-          // endDate:   some({ date: dateTime(nowISO) }),
-          allowList: some({ merkleRoot: emptyRoot }),
-          // mintLimit: some({ id: 1, limit: 1 }), // re-enable if desired
-        },
-      },
-    ],
+    groups: guardData.groups.map((g) =>
+      g.label === "LFG"
+        ? {
+            label: "LFG",
+            guards: {
+              allowList: some({ merkleRoot: emptyRoot }),
+              // mintLimit: some({ id: 1, limit: 1 }),
+            },
+          }
+        : g
+    ),
   }).sendAndConfirm(umi);
 
   console.log("✅ [clear] On‐chain allowList cleared & expired");
