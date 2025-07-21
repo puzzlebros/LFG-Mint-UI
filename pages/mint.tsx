@@ -44,6 +44,7 @@ import { useLeaderboard } from '../components/LeaderboardContext';
 import { cacheLeaderboard } from "../utils/metaplex/mintHelper"
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
+import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 
 const pulse = keyframes`
   0%, 100% { transform: scale(1); }
@@ -73,6 +74,7 @@ export default function MintPage() {
   const [checkEligibility, setCheckEligibility] = useState<boolean>(false);
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
+  const { isFrozen } = useWeeklyCycle();  // get frozen state from your weekly cycle hook
 
   // Accessing wallet and candy machine details
   const { publicKey: walletPublicKey, connected } = useWallet();
@@ -255,7 +257,8 @@ export default function MintPage() {
     const showClaim = Boolean(
       walletPublicKey &&
       allowGuard?.allowed &&
-      allowGuard.maxAmount > 0
+      allowGuard.maxAmount > 0 &&
+      isFrozen    // only allow claim button if in frozen window
     );
     const showMint = Boolean(
       walletPublicKey &&
