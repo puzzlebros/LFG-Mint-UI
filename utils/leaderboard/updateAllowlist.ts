@@ -93,7 +93,7 @@ export async function updateAllowlistGuard(): Promise<void> {
 
   const now = Math.floor(Date.now() / 1000);
   const oneWeek = 7 * 24 * 60 * 60;
-  const windowId = Math.floor(now / oneWeek);
+  const windowId = Math.floor(now / oneWeek) % 256;
 
   // 6) Build updated groups array: replace only the LFG group, keep others intact
   const newGroups = guardData.groups.map((g) =>
