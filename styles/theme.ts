@@ -14,6 +14,7 @@ export default extendTheme({
       Pink:         "#F279A6",
       Purple:       "#6C00FF",
       BrightPurple: "#9D72FF",
+      LightPurple:  "#DFDBFF",
       DarkPurple:   "#161540",
       DarkPink:     "8C5178",
       White:        "#FFFFFF",

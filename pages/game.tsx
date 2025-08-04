@@ -5,11 +5,10 @@ import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
 import axios from "axios";
+import TutorialPopup from "../components/modals/TutorialPopup";
 
 export default function GamePage() {
-  // ────────────────────────────────────────────────────────────────────────────
-  // 1. Hooks MUST be called unconditionally, at the top of the component
-  // ────────────────────────────────────────────────────────────────────────────
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { isFrozen, next } = useWeeklyCycle();
   const { publicKey, connected } = useWallet();
@@ -31,10 +30,6 @@ export default function GamePage() {
       iframeRef.current.contentWindow.postMessage(message, window.location.origin);
     }
   }, [connected, publicKey]);
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // 2. All functions below are just helpers—no more hooks!
-  // ────────────────────────────────────────────────────────────────────────────
 
   // Start a session on our backend whenever the user enters the game
   const startSession = async () => {
@@ -74,9 +69,6 @@ export default function GamePage() {
     }
   };
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 3. Now we can early‐return for the frozen state
-  // ────────────────────────────────────────────────────────────────────────────
   if (isFrozen) {
     return (
       <Center h="100vh" p={4}>
@@ -89,11 +81,9 @@ export default function GamePage() {
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 4. Finally, render the live game iframe
-  // ────────────────────────────────────────────────────────────────────────────
   return (
     <Box width="100%" height="100%" overflow="hidden">
+      <TutorialPopup />
       <iframe
         ref={iframeRef}
         src="/UnityBuild/index.html"

@@ -33,9 +33,8 @@ import {
   Text,
   Button,
 } from "@chakra-ui/react";
-import { ButtonList } from "../components/mintButton";
-import { ShowNft } from "../components/showNft";
-import { InitializeModal } from "../components/initializeModal";
+import { ButtonList } from "../components/buttons/mintButton";
+import { InitializeModal } from "../components/modals/initializeModal";
 import { image, headerText } from "../settings";
 import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/checkerHelper";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -45,6 +44,9 @@ import { cacheLeaderboard } from "../utils/metaplex/mintHelper"
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
 import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
+import { useWindowSize } from "../utils/useWindowSize";
+import Confetti from "react-confetti";
+import ShowNft from "../components/modals/showNft";
 
 const pulse = keyframes`
   0%, 100% { transform: scale(1); }
@@ -80,6 +82,20 @@ export default function MintPage() {
   const { publicKey: walletPublicKey, connected } = useWallet();
   const [candyMachine, setCandyMachine] = useState<CandyMachine>();
   const [candyGuard, setCandyGuard] = useState<CandyGuard>();
+
+  const windowSize = useWindowSize();
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Trigger confetti when NFT modal opens
+  useEffect(() => {
+    if (isShowNftOpen) {
+      setShowConfetti(true);
+      const timer = setTimeout(() => {
+        setShowConfetti(false);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [isShowNftOpen]);
 
   // Check if the wallet is in the top-10 leaderboard
   useEffect(() => {
@@ -139,9 +155,8 @@ export default function MintPage() {
     })();
   }, [walletPublicKey, candyMachine, candyMachineId, umi, toast]);
 
-  // GuardChecker effect: only runs when checkEligibility flips true,
-  // and NEVER during the hatch animation (isMinting).
   const isMinting = guards.some((g) => g.minting);
+
   useEffect(() => {
     if (!checkEligibility || isMinting) return;
     if (!walletPublicKey || !candyMachine || !candyGuard) {
@@ -204,7 +219,6 @@ export default function MintPage() {
   const onNftModalClose = () => {
     // (1) close the popup
     onShowNftClose();
-
     // (2) pull fresh CM data so `itemsRedeemed` / `itemsAvailable` updates
     console.log("🔄 Re-fetching Candy Machine supply…");
     setLoading(true);
@@ -353,10 +367,10 @@ export default function MintPage() {
             <Center w="full"><Button size="default" isDisabled>Mint</Button></Center>
           )}
 
-          {/* ADMIN */}
-          {umi.identity.publicKey === candyMachine?.authority && (
-            <Button size="default" mt={6} onClick={onInitializerOpen}>ADMIN</Button>
-          )}
+        {/* ADMIN */}
+        {umi.identity.publicKey === candyMachine?.authority && (
+          <Button size="default" mt={6} onClick={onInitializerOpen}>ADMIN</Button>
+        )}
         </VStack>
 
         {/* RIGHT */}
@@ -431,8 +445,16 @@ export default function MintPage() {
         {/* Show minted NFT */}
         <Modal isOpen={isShowNftOpen} onClose={onNftModalClose}>
           <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>A NEW FLAMINGO HAS BORN...</ModalHeader>
+          <ModalContent
+          maxW={{ base: "90vw", md: "900px" }}
+          w="full"
+          borderRadius={0}>
+            <ModalHeader
+            textStyle="condensed"
+                      fontSize={{ base: "4rem", md: "3rem" }}
+            >
+              A NEW FLAMINGO HAS BORN...
+            </ModalHeader>
             <ModalCloseButton />
             <ModalBody>
               <ShowNft nfts={mintsCreated} />
@@ -453,6 +475,21 @@ export default function MintPage() {
         </Modal>
       </Flex>
       <Footer/>
+
+      {/* Confetti overlay */}
+      {showConfetti && (
+        <Confetti
+          width={windowSize.width}
+          height={windowSize.height}
+          recycle={false}
+          numberOfPieces={200}
+          gravity={0.3}
+          initialVelocityY={{ min: 10, max: 20 }}
+          initialVelocityX={{ min: -10, max: 10 }}
+          colors={["#F279A6", "#6C00FF", "#9D72FF", "#161540"]}
+          style={{ position: "fixed", top: 0, left: 0, pointerEvents: "none", zIndex: 9999 }}
+        />
+      )}
     </Flex>
   );
 }

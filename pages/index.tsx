@@ -10,21 +10,25 @@ import {
   Text,
   Button,
   Tooltip,
-  Image as ChakraImage
+  Image as ChakraImage,
+  useBreakpointValue,
+  useDisclosure
 } from '@chakra-ui/react';
-import { useBreakpointValue } from '@chakra-ui/react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { keyframes } from '@emotion/react'
-import HorizontalScroller, { ScrollerItem } from '../components/HorizontalScroller';
+import HorizontalScroller, { ScrollerItem } from '../components/fx/HorizontalScroller';
 import Leaderboard                              from '../components/Leaderboard';
-import TraitDresser                             from '../components/TraitDresser';
-import InteractiveHeading                       from '@/components/InteractiveHeading';
-import Cloud from "../components/Cloud";
-import Balloon from '../components/Balloon'
+import TraitDresser                             from '../components/fx/TraitDresser';
+import InteractiveHeading                       from '@/components/fx/InteractiveHeading';
+import Cloud from "../components/fx/Cloud";
+import Balloon from '../components/fx/Balloon'
 import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 import { Footer } from '../components/Footer'
 import { ChevronDownIcon } from '@chakra-ui/icons'
 import { formatRemaining } from '../utils/leaderboard/formatRemaining';
+import CongratsPopup from '../components/modals/CongratsPopup';
+import Confetti from 'react-confetti';
+import { useWindowSize } from "../utils/useWindowSize";
 
 // define a simple float animation
 const floatKeyframes = `
@@ -35,24 +39,47 @@ const floatKeyframes = `
 `
 
 export default function HomePage() {
-  const [isInTop10, setIsInTop10] = useState(false);
   const { publicKey } = useWallet();
   const myWallet      = publicKey?.toString();
   const router = useRouter();
 
-  // freeze state + countdown
+  const [isInTop10, setIsInTop10] = useState(false);
   const { isFrozen, next, countdown } = useWeeklyCycle();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [hasShown, setHasShown] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  const windowSize = useWindowSize();
+
+  useEffect(() => {
+    if (isFrozen && isInTop10 && !hasShown) {
+      onOpen();
+      setHasShown(true);
+      setShowConfetti(true);
+      const timer = setTimeout(() => setShowConfetti(false), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [isFrozen, isInTop10, hasShown, onOpen]);
+
+  function handleClose() {
+    onClose();
+    setShowConfetti(false);
+  }
     
   // ref to measure container size
   const welcomeRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
   const gameRef = useRef<HTMLDivElement>(null)
   const [gameDims, setGameDims] = useState({ w: 0, h: 0 })
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const now    = new Date()
   const diffMs = next.getTime() - now.getTime()
   const timeLeft = formatRemaining(diffMs);
-
 
   useEffect(() => {
   function updateGame() {
@@ -280,8 +307,8 @@ export default function HomePage() {
           />
         </Box>
 
-        {/** ——— Game Section ——— **/}
-        <Box
+      {/** ——— Game Section ——— **/}
+      <Box
           ref={gameRef}
           id="game"
           as="section"
@@ -409,7 +436,10 @@ export default function HomePage() {
                     Right now! Play and reach the highest score you can.
                   </Text>
                   <br />
-                  Get into the top 10 and claim a FREE mint from the collection.
+                                    <Text as="span"                 fontSize="1.2rem"
+>
+                  Rank in the top 10 and claim a FREE mint from the collection each Saturday.
+                  </Text>
                 </Text>
               </>
             )}
@@ -432,9 +462,7 @@ export default function HomePage() {
             </Tooltip>
           </Stack>
         </Center>
-      </Box>
-
-
+        </Box>
 
       {/** ——— Ranking Section ——— **/}
       <Box
@@ -525,99 +553,115 @@ export default function HomePage() {
           fixed={false}
           align="bottom"
         />
-      </Box>
+        </Box>
 
-{/** ——— Mint + Trait-Dresser Section ——— **/}
-<Box
-  as="section"
-  flex="none"
-  w="100%"
-  h="100vh"
-  scrollSnapAlign="start"
-  scrollSnapStop="always"
-  position="relative"
-  overflow="hidden"
-  overscrollBehaviorY="contain"
->
-  {/* Layer 1: background heading */}
-  <Box
-    position="absolute"
-    inset="0"
-    display="flex"
-    alignItems="center"
-    justifyContent="center"
-    zIndex={0}
-    pointerEvents="none"
-    mt="-30"
-  >
-    <InteractiveHeading
-      minWidth={45}
-      maxWidth={85}
-      minSlant={-10}
-      maxSlant={30}
-      previewWidth={80}
-      previewSlant={0}
-      transitionDuration={0.2}
-      fontSize={mintBgSize}
-      fontWeight="normal"
-      letterSpacing="0.01em"
-      lineHeight=".75"
-      color="brand.Pink"
-      whiteSpace="pre"
-    >
-      {mintBgText}
-    </InteractiveHeading>
-  </Box>
-
-  {/* Layer 2: centered TraitDresser with button positioned relative */}
-  <Box
-    position="absolute"
-    inset="0"
-    display="flex"
-    alignItems="center"
-    justifyContent="center"
-    zIndex={1}
-  >
-    {/* Inner wrapper keeps dresser vertically centered, button spaced below */}
-    <Box display="flex" flexDirection="column" alignItems="center" mt="10vh">
-      <TraitDresser
-        skinSrc="/images/skins/1.png"
-        skinSize={traitSize}
-        traitPaths={{
-          clothes: [
-            '/images/traits/clothes/1.png',
-            '/images/traits/clothes/2.png',
-            '/images/traits/clothes/3.png',
-          ],
-          beak: ['/images/traits/beak/1.png'],
-          eyes: [
-            '/images/traits/eyes/1.png',
-            '/images/traits/eyes/2.png',
-            '/images/traits/eyes/3.png',
-          ],
-          head: [
-            '/images/traits/head/1.png',
-            '/images/traits/head/2.png',
-            '/images/traits/head/3.png',
-          ],
-        }}
-      />
-      <Button
-        mt={mintButtonMargin}
-        size="default"
-        onClick={() => (window.location.href = '/mint')}
+      {/** ——— Mint Section ——— **/}
+      <Box
+        as="section"
+        flex="none"
+        w="100%"
+        h="100vh"
+        scrollSnapAlign="start"
+        scrollSnapStop="always"
+        position="relative"
+        overflow="hidden"
+        overscrollBehaviorY="contain"
       >
-        MINT
-      </Button>
-    </Box>
-  </Box>
+        {/* Layer 1: background heading */}
+        <Box
+          position="absolute"
+          inset="0"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={0}
+          pointerEvents="none"
+          mt="-30"
+        >
+          <InteractiveHeading
+            minWidth={45}
+            maxWidth={85}
+            minSlant={-10}
+            maxSlant={30}
+            previewWidth={80}
+            previewSlant={0}
+            transitionDuration={0.2}
+            fontSize={mintBgSize}
+            fontWeight="normal"
+            letterSpacing="0.01em"
+            lineHeight=".75"
+            color="brand.Pink"
+            whiteSpace="pre"
+          >
+            {mintBgText}
+          </InteractiveHeading>
+        </Box>
 
-  {/* Layer 3: footer */}
-  <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
-    <Footer />
-  </Box>
-</Box>
+        {/* Layer 2: centered TraitDresser with button positioned relative */}
+        <Box
+          position="absolute"
+          inset="0"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={1}
+        >
+          {/* Inner wrapper keeps dresser vertically centered, button spaced below */}
+          <Box display="flex" flexDirection="column" alignItems="center" mt="10vh">
+            <TraitDresser
+              skinSrc="/images/skins/1.png"
+              skinSize={traitSize}
+              traitPaths={{
+                clothes: [
+                  '/images/traits/clothes/1.png',
+                  '/images/traits/clothes/2.png',
+                  '/images/traits/clothes/3.png',
+                ],
+                beak: ['/images/traits/beak/1.png'],
+                eyes: [
+                  '/images/traits/eyes/1.png',
+                  '/images/traits/eyes/2.png',
+                  '/images/traits/eyes/3.png',
+                ],
+                head: [
+                  '/images/traits/head/1.png',
+                  '/images/traits/head/2.png',
+                  '/images/traits/head/3.png',
+                ],
+              }}
+            />
+            <Button
+              mt={mintButtonMargin}
+              size="default"
+              onClick={() => (window.location.href = '/mint')}
+            >
+              MINT
+            </Button>
+          </Box>
+        </Box>
 
+        {/* Layer 3: footer */}
+        <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
+          <Footer />
+        </Box>
+        </Box>
+
+      {/* Confetti overlay */}
+      {isClient && showConfetti && (
+        <Confetti
+          width={windowSize.width}
+          height={windowSize.height}
+          recycle={false}
+          numberOfPieces={200}
+          gravity={0.3}
+          initialVelocityY={{ min: 10, max: 20 }}
+          initialVelocityX={{ min: -10, max: 10 }}
+          colors={["#F279A6", "#6C00FF", "#9D72FF", "#161540"]}
+          style={{ position: "fixed", top: 0, left: 0, pointerEvents: "none", zIndex: 9999 }}
+        />
+      )}
+      <CongratsPopup isOpen={isOpen} onClose={handleClose} />
+      
     </Box>
   );
 }

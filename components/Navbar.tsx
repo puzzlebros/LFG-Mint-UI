@@ -14,11 +14,10 @@ import {
 } from "@chakra-ui/react";
 import { HamburgerIcon, CloseIcon } from "@chakra-ui/icons";
 import { motion, AnimatePresence } from "framer-motion";
-import LogoImage from "./LogoImage";
+import LogoImage from "./fx/LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
-import { CustomWalletButton } from "./CustomWalletButton";
+import { CustomWalletButton } from "./buttons/CustomWalletButton";
 import { formatRemaining } from '../utils/leaderboard/formatRemaining';
-
 
 // Variants for fade in/out
 const iconVariants = {
