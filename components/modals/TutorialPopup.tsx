@@ -10,9 +10,7 @@ import {
   Box,
   Flex,
   Text,
-  Image,
   useTheme,
-  useBreakpointValue,
   HStack,
 } from "@chakra-ui/react";
 
@@ -70,31 +68,78 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
     <Modal isOpen={isOpen} onClose={closeModal} size="xl" isCentered>
       <ModalOverlay />
       <ModalContent
-        maxW="500px"
-        p={0}
+        maxW={{ base: "96vw", md: "500px" }}
+        maxH={{ base: "60vh", md: "570px" }}
         bg={theme.colors.brand.White}
         color={theme.colors.brand.DarkPurple}
         borderRadius={0}
         boxShadow="md"
+        position="relative"
+        overflow="hidden"
+        p={0}
+        display="flex"
+        flexDirection="column"
+        justifyContent="flex-end"
       >
-        <ModalCloseButton />
-        <ModalBody px={0} pt={8} pb={0}>
-          <Flex direction="column" align="center" textAlign="center">
-            {/* Image at top */}
-            {currentStep.image && (
-              <Image
-                src={currentStep.image}
-                alt={currentStep.title}
-                maxW="250px"
-                mb={2}
-                userSelect="none"
-                mx="auto"
-                borderRadius={0}
-                boxShadow="none"
-              />
-            )}
+        <ModalCloseButton zIndex={2} color={theme.colors.brand.DarkPurple} />
 
-            {/* Title */}
+        {/* Background image/video fills the whole modal */}
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          width="100%"
+          height="100%"
+          zIndex={0}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          pointerEvents="none"
+          // Remove opacity for normal image display
+        >
+          {currentStep.image && (
+            <img
+              src={currentStep.image}
+              alt={currentStep.title}
+              style={{
+                height: "100%",
+                width: "auto",
+                objectFit: "contain",
+                display: "block",
+                margin: "0 auto",
+                // Remove or tweak opacity if you don't want transparency
+                opacity: 1,
+                pointerEvents: "none",
+                userSelect: "none",
+              }}
+              draggable={false}
+            />
+          )}
+        </Box>
+
+        {/* Foreground content */}
+        <ModalBody
+          px={{ base: 2, md: 8 }}
+          py={0}
+          zIndex={1}
+          display="flex"
+          flexDirection="column"
+          justifyContent="flex-end"
+          alignItems="center"
+          height="100%"
+          minH={{ base: "70vh", md: "600px" }}
+        >
+          <Flex
+            direction="column"
+            align="center"
+            justify="flex-end"
+            textAlign="center"
+            w="full"
+            h="100%"
+            pt={{ base: "60%", md: "55%" }} // push content to lower half
+            pb={0}
+            position="relative"
+          >
             <Text
               fontFamily={theme.fonts.heading}
               textStyle="narrow"
@@ -103,11 +148,12 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
               mb={2}
               textAlign="center"
               textTransform="uppercase"
+              color={theme.colors.brand.DarkPurple}
+              zIndex={1}
+              fontWeight="extrabold"
             >
               {currentStep.title}
             </Text>
-
-            {/* Description */}
             <Text
               fontFamily={theme.fonts.body}
               fontSize="md"
@@ -116,31 +162,20 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
               maxW="90%"
               mx="auto"
               mb={6}
+              zIndex={1}
             >
               {currentStep.content}
             </Text>
-
-            {/* Dots below description */}
-            <HStack spacing={2} justify="center" mt={-2} mb={2}>
-              {tutorialSteps.map((_, idx) => (
-                <Box
-                  key={idx}
-                  w="7px"
-                  h="7px"
-                  borderRadius="full"
-                  bg={
-                    idx === stepIndex
-                      ? theme.colors.brand.Purple
-                      : "gray.300"
-                  }
-                  opacity={idx === stepIndex ? 1 : 0.45}
-                  transition="background 0.2s"
-                />
-              ))}
-            </HStack>
           </Flex>
         </ModalBody>
-        <ModalFooter justifyContent="center" pb={6} pt={0}>
+        <ModalFooter
+          justifyContent="center"
+          pb={6}
+          pt={0}
+          zIndex={1}
+          flexDirection="column"
+          bg="transparent"
+        >
           <Button
             color="white"
             bg={theme.colors.brand.Purple}
@@ -152,9 +187,29 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
             mx="auto"
             fontSize="lg"
             onClick={nextStep}
+            mb={4}
+            zIndex={1}
           >
             {stepIndex + 1 === tutorialSteps.length ? "LET'S GO!" : "NEXT"}
           </Button>
+          {/* Dots below the button */}
+          <HStack spacing={2} justify="center" mb={0}>
+            {tutorialSteps.map((_, idx) => (
+              <Box
+                key={idx}
+                w="7px"
+                h="7px"
+                borderRadius="full"
+                bg={
+                  idx === stepIndex
+                    ? theme.colors.brand.Purple
+                    : "gray.300"
+                }
+                opacity={idx === stepIndex ? 1 : 0.45}
+                transition="background 0.2s"
+              />
+            ))}
+          </HStack>
         </ModalFooter>
       </ModalContent>
     </Modal>

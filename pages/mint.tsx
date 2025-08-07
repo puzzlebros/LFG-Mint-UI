@@ -61,6 +61,22 @@ const hatch = keyframes`
  100%  { filter: blur(0); transform: scale(1.1) translate(0,0) rotate(0deg); }
 `;
 
+function hasPostedMint(mintAddress: string | undefined): boolean {
+  if (!mintAddress) return false;
+  try {
+    return !!localStorage.getItem(`mint-posted:${mintAddress}`);
+  } catch (e) {
+    return false;
+  }
+}
+
+function setPostedMint(mintAddress: string | undefined): void {
+  if (!mintAddress) return;
+  try {
+    localStorage.setItem(`mint-posted:${mintAddress}`, "1");
+  } catch (e) { /* ignore */ }
+}
+
 export default function MintPage() {
   const umi = useUmi();
   const toast = useToast();
@@ -235,16 +251,25 @@ export default function MintPage() {
       });
   };
 
-  // Post-fetch NFT API call
   useEffect(() => {
     if (!mintsCreated || mintsCreated.length === 0) return;
     const { offChainMetadata, mint } = mintsCreated[mintsCreated.length - 1];
-    if (!offChainMetadata?.name || !offChainMetadata.image) return;
+    const mintAddress = mint?.toString();
+    if (!offChainMetadata?.name || !offChainMetadata.image || !mintAddress) return;
+
+    // Only run if this mint hasn't been posted yet
+    if (hasPostedMint(mintAddress)) {
+      console.log(`[API POST] Already posted for mint ${mintAddress}, skipping`);
+      return;
+    }
+
     axios.post('/api/postMint', {
       name: offChainMetadata.name,
       imageUrl: offChainMetadata.image,
-      mintAddress: mint.toString(),
-    }).catch(err => console.error("⚠️ postMint failed:", err));
+      mintAddress,
+    })
+    .then(() => setPostedMint(mintAddress))
+    .catch(err => console.error("⚠️ postMint failed:", err));
   }, [mintsCreated]);
 
   // Refresh on window focus
@@ -451,9 +476,11 @@ export default function MintPage() {
           borderRadius={0}>
             <ModalHeader
             textStyle="condensed"
-                      fontSize={{ base: "4rem", md: "3rem" }}
+            ml="6"
+            mr="6"
+            fontSize={{ base: "4rem", md: "3rem" }}
             >
-              A NEW FLAMINGO HAS BORN...
+              A NEW FLAMINGO HAS BORN!
             </ModalHeader>
             <ModalCloseButton />
             <ModalBody>
