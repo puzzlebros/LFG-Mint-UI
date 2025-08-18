@@ -68,8 +68,8 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
     <Modal isOpen={isOpen} onClose={closeModal} size="xl" isCentered>
       <ModalOverlay />
       <ModalContent
-        maxW={{ base: "96vw", md: "500px" }}
-        maxH={{ base: "60vh", md: "570px" }}
+        maxW={{ base: "95vw", md: "500px" }}
+        maxH={{ base: "75vh", md: "570px" }}
         bg={theme.colors.brand.White}
         color={theme.colors.brand.DarkPurple}
         borderRadius={0}
@@ -95,7 +95,7 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
           alignItems="center"
           justifyContent="center"
           pointerEvents="none"
-          // Remove opacity for normal image display
+          overflow="hidden" 
         >
           {currentStep.image && (
             <img
@@ -103,8 +103,8 @@ export default function TutorialPopup({ onCloseExternal }: TutorialPopupProps) {
               alt={currentStep.title}
               style={{
                 height: "100%",
-                width: "auto",
-                objectFit: "contain",
+                width: "100%",
+                objectFit: "cover",
                 display: "block",
                 margin: "0 auto",
                 // Remove or tweak opacity if you don't want transparency
