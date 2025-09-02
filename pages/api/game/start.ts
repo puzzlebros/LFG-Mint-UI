@@ -34,23 +34,23 @@ export default async function handler(
   }
 
   // ─── Try on‐chain reverse lookup via Bonfida SNS ────────────────────────────
-  let finalName = '';
+  let finalName = ''
   try {
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC;
-    if (!rpcUrl) throw new Error('Missing NEXT_PUBLIC_RPC in env');
-    const connection = new Connection(rpcUrl, 'confirmed');
-    const maybeName = await reverseLookup(
-      connection,
-      new PublicKey(walletAddress)
-    );
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC
+    if (!rpcUrl) throw new Error('Missing NEXT_PUBLIC_RPC')
+    const connection = new Connection(rpcUrl, 'confirmed')
+
+    // ⬇️ lazy import so missing deps never kill cold start
+    const { reverseLookup } = await import('@bonfida/spl-name-service')
+    const maybeName = await reverseLookup(connection, new PublicKey(walletAddress))
     if (typeof maybeName === 'string' && maybeName.trim()) {
-      finalName = maybeName.trim();
-      console.log(`✅ Reverse‐lookup SNS name: ${finalName}`);
+      finalName = maybeName.trim()
+      console.log(`✅ Reverse‐lookup SNS name: ${finalName}`)
     } else {
-      throw new Error('No on‐chain SNS name');
+      console.log('🔍 No on-chain SNS name')
     }
-  } catch (err) {
-    console.log(`🔍 No on‐chain SNS name: ${(err as Error).message}`);
+  } catch (e: any) {
+    console.log(`🔍 SNS lookup skipped: ${e?.message || e}`)
   }
 
   // ─── Fallback to client‐provided or blank ──────────────────────────────────

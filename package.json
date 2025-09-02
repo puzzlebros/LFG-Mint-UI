@@ -22,7 +22,7 @@
     }
   },
   "dependencies": {
-    "@bonfida/spl-name-service": "^0.1.56",
+    "@bonfida/spl-name-service": "^0.1.67",
     "@chakra-ui/icons": "^2.2.4",
     "@chakra-ui/react": "^2.8.2",
     "@emotion/react": "^11.14.0",
@@ -37,11 +37,12 @@
     "@metaplex-foundation/umi-signer-wallet-adapters": "^0.9.1",
     "@metaplex-foundation/umi-web3js-adapters": "^0.9.1",
     "@solana-mobile/wallet-adapter-mobile": "^2.2.0",
+    "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-base": "^0.9.5",
     "@solana/wallet-adapter-react": "^0.15.5",
     "@solana/wallet-adapter-react-ui": "^0.9.7",
     "@solana/wallet-adapter-wallets": "^0.19.34",
-    "@solana/web3.js": "^1.91.3",
+    "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.49.4",
     "@vercel/analytics": "^1.5.0",
     "axios": "^1.8.4",
@@ -68,5 +69,6 @@
     "@types/node": "^18.19.123",
     "@types/react": "^18.3.23",
     "typescript": "^5.9.2"
-  }
+  },
+  "packageManager": "pnpm@9.12.3+sha512.cce0f9de9c5a7c95bef944169cc5dfe8741abfb145078c0d508b868056848a87c81e626246cb60967cbd7fd29a6c062ef73ff840d96b3c86c40ac92cf4a813ee"
 }
