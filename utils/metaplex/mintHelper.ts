@@ -96,7 +96,7 @@ export async function sendAllowListProof(
     candyGuard: candyMachine.mintAuthority,
     candyMachine: candyMachine.publicKey,
     merkleRoot: getMerkleRoot(allowlist),
-    user: publicKey(umi.identity),
+    user: umi.identity.publicKey,
   });
 
   if (existing === null) {
@@ -110,7 +110,7 @@ export async function sendAllowListProof(
       routeArgs: {
         path: "proof",
         merkleRoot: getMerkleRoot(allowlist),
-        merkleProof: getMerkleProof(allowlist, publicKey(umi.identity)),
+        merkleProof: getMerkleProof(allowlist, umi.identity.publicKey),
       },
     }).sendAndConfirm(umi);
   }
@@ -124,8 +124,8 @@ export const routeBuilder = async (
   let tx2 = transactionBuilder();
 
   if (guardToUse.guards.allowList.__option === "Some") {
-    const allowlist = [..._top10Wallets];
-    if (!allowlist) {
+  const allowlist = [..._top10Wallets];
+  if (!allowlist || allowlist.length === 0) {
       console.error("allowlist not found!");
       return transactionBuilder();
     }
@@ -259,7 +259,8 @@ export const buildTxs = async (
     if (!builder.fitsInOneTransaction(umi)) {
       before = before.setAddressLookupTables(luts);
       const units = await getRequiredCU(umi, before.build(umi));
-      let [CU, withoutCU] = before.splitByIndex(1); //remove computeUnitLimit to allow adding it again
+      console.log(`[mint tx split] estimated CU: ${units}`); // ⬅️ surface sim cost
+      let [CU, withoutCU] = before.splitByIndex(1);
       const withCU = withoutCU.prepend(setComputeUnitLimit(umi, { units }));
       transactions.push({
         transaction: withCU.build(umi),
@@ -272,7 +273,8 @@ export const buildTxs = async (
     if (i === nftMints.length - 1) {
       builder = builder.setAddressLookupTables(luts);
       const units = await getRequiredCU(umi, builder.build(umi));
-      let [CU, withoutCU] = builder.splitByIndex(1); //remove computeUnitLimit to allow adding it again
+      console.log(`[mint tx final] estimated CU: ${units}`); // ⬅️ surface sim cost
+      let [CU, withoutCU] = builder.splitByIndex(1);
       const withCU = withoutCU.prepend(setComputeUnitLimit(umi, { units }));
       transactions.push({
         transaction: withCU.build(umi),

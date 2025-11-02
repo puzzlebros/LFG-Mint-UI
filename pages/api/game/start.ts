@@ -41,7 +41,6 @@ export default async function handler(
     const connection = new Connection(rpcUrl, 'confirmed')
 
     // ⬇️ lazy import so missing deps never kill cold start
-    const { reverseLookup } = await import('@bonfida/spl-name-service')
     const maybeName = await reverseLookup(connection, new PublicKey(walletAddress))
     if (typeof maybeName === 'string' && maybeName.trim()) {
       finalName = maybeName.trim()

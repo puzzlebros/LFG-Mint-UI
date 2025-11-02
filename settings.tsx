@@ -1,7 +1,7 @@
 // settings.tsx
 export const mintSettings = [
   { label: "LFG", mintText: "FREE!", buttonLabel: "CLAIM", header: "TOP 10 PRIZE" },
-  { label: "OG", mintText: "0.1 sol", buttonLabel: "MINT", header: "SUPPORT THE PROJECT" }
+  { label: "OG", mintText: "0.05 sol", buttonLabel: "MINT", header: "SUPPORT THE PROJECT" }
 ];
 
 export const image = "/images/Pack.png";

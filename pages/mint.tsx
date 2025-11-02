@@ -32,6 +32,7 @@ import {
   Center,
   Text,
   Button,
+  Tooltip,
 } from "@chakra-ui/react";
 import { ButtonList } from "../components/buttons/mintButton";
 import { InitializeModal } from "../components/modals/initializeModal";
@@ -60,6 +61,20 @@ const hatch = keyframes`
   80%  { filter: blur(0.2px); transform: scale(1.08) translate(1px,-2px) rotate(2deg); }
  100%  { filter: blur(0); transform: scale(1.1) translate(0,0) rotate(0deg); }
 `;
+
+const DUMMY_NFT: { mint: PublicKey; offChainMetadata: JsonMetadata } = {
+  mint: publicKey("11111111111111111111111111111111"),
+  offChainMetadata: {
+    name: "Let’s Flamingo #DEMO",
+    description: "Demo preview of your minted Flamingo. This is local-only.",
+    image: "/images/skins/1.png", // put any local asset here
+    attributes: [
+      { trait_type: "Background", value: "Lavender" },
+      { trait_type: "Mood", value: "Hyped" },
+      { trait_type: "Edition", value: "Demo" },
+    ],
+  },
+};
 
 function hasPostedMint(mintAddress: string | undefined): boolean {
   if (!mintAddress) return false;
@@ -101,6 +116,17 @@ export default function MintPage() {
 
   const windowSize = useWindowSize();
   const [showConfetti, setShowConfetti] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
+
+useEffect(() => {
+  if (process.env.NODE_ENV === "production") return;
+  const qs = new URLSearchParams(window.location.search);
+  if (qs.has("demoNft")) {
+    setIsDemo(true);
+    setMintsCreated([DUMMY_NFT]);
+    onShowNftOpen();
+  }
+}, [onShowNftOpen]);
 
   // Trigger confetti when NFT modal opens
   useEffect(() => {
@@ -115,11 +141,13 @@ export default function MintPage() {
 
   // Check if the wallet is in the top-10 leaderboard
   useEffect(() => {
+    if (isDemo) return;
     if (!walletPublicKey || !top10Wallets || top10Wallets.length === 0) return;
     setIsAllowed(top10Wallets.includes(walletPublicKey.toString())); 
   }, [walletPublicKey, top10Wallets]);
 
   useEffect(() => {
+    if (isDemo) return;
     if (top10Wallets.length > 0) {
       cacheLeaderboard(top10Wallets)
     }
@@ -137,6 +165,7 @@ export default function MintPage() {
 
   // Clear on wallet disconnect
   useEffect(() => {
+    if (isDemo) return;
     if (!walletPublicKey) {
       console.log("🔌 Wallet disconnected — clearing state");
       setGuards([]);
@@ -149,6 +178,7 @@ export default function MintPage() {
 
   // Fetch CandyMachine & Guard ONCE, when wallet connects
   useEffect(() => {
+    if (isDemo) return;
     if (!walletPublicKey || candyMachine) return;
     console.log("💠 Fetching Candy Machine & Guard…");
     setLoading(true);
@@ -174,6 +204,7 @@ export default function MintPage() {
   const isMinting = guards.some((g) => g.minting);
 
   useEffect(() => {
+    if (isDemo) return;
     if (!checkEligibility || isMinting) return;
     if (!walletPublicKey || !candyMachine || !candyGuard) {
       setCheckEligibility(false);
@@ -252,6 +283,7 @@ export default function MintPage() {
   };
 
   useEffect(() => {
+    if (isDemo) return;
     if (!mintsCreated || mintsCreated.length === 0) return;
     const { offChainMetadata, mint } = mintsCreated[mintsCreated.length - 1];
     const mintAddress = mint?.toString();
@@ -274,6 +306,7 @@ export default function MintPage() {
 
   // Refresh on window focus
   useEffect(() => {
+    if (isDemo) return;
     const onFocus = () => {
       if (walletPublicKey && !isMinting) {
         console.log("Window focus → refresh guard");
@@ -306,6 +339,7 @@ export default function MintPage() {
     );
 
     useEffect(() => {
+      if (isDemo) return;
         console.log(
           `Claim eligibility: ${showClaim} Wallet in top-10: ${isAllowed}`
         );
@@ -389,7 +423,13 @@ export default function MintPage() {
               </Center>
             )
           ) : (
-            <Center w="full"><Button size="default" isDisabled>Mint</Button></Center>
+            <Center w="full">
+              <Tooltip label="Connect a wallet to mint" hasArrow placement="top" openDelay={200}>
+                <span>
+                  <Button size="default" isDisabled>Mint</Button>
+                </span>
+              </Tooltip>
+            </Center>
           )}
 
         {/* ADMIN */}
@@ -452,7 +492,7 @@ export default function MintPage() {
     <Flex
       direction="column"
       minH="100vh"
-      bgGradient="linear(to-b, #93D2FF 0%, #BDACFF 29%, #FFBCD5 100%)"
+      // bgGradient="linear(to-b, #93D2FF 0%, #BDACFF 29%, #FFBCD5 100%)"
     >
       <Flex
         flex="1"
@@ -479,6 +519,9 @@ export default function MintPage() {
             ml="6"
             mr="6"
             fontSize={{ base: "4rem", md: "3rem" }}
+            lineHeight={"3.5rem"}
+            pb={1}
+            mb={-5}
             >
               A NEW FLAMINGO HAS BORN!
             </ModalHeader>

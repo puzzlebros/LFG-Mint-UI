@@ -95,6 +95,10 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
     return;
   }
 
+  console.log(`[mintClick] selected label="${guard.label}" → resolved group="${guardToUse.label}"`);
+console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`);
+
+
    try {
     //find the guard by guardToUse.label and set minting to true
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);

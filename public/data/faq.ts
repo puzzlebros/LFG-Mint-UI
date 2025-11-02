@@ -14,7 +14,7 @@ export const faqs: Faq[] = [
   {
     question: "How are they game and the NFT related?",
     answer:
-      "The game has a ranking. Every weekend, the top 10 can claim a free NFT from the collection.",
+      "You can connect your wallet and play the game to record your high score. Weekly winners can claim a FREE MINT.",
   },
   {
     question: "How does the ranking work?",
@@ -24,31 +24,36 @@ export const faqs: Faq[] = [
   {
     question: "How do I know if I won?",
     answer:
-      "If you show up in the ranking while it is frozen, you will see the CLAIM button. Once you claim it, you are not eligible for a free NFT anymore.",
+      "If you show up in the ranking by Saturday, you will see the CLAIM button for your FREE MINT.",
   },
   {
-    question: "How many NFT of the collection can I have?",
+    question: "How many times can I win?",
     answer:
-      "You can win only 1 NFT per wallet by playing the game. Then you can mint any amount you like at 0.1 fixed price per item.",
+      "Until the supply lasts, any week in which you rank in the top 10 by Saturday, you are eligible for a free mint.",
   },
   {
-    question: "What is Solana?",
+    question: "Why does this project exist?",
     answer:
-      "Solana is one of the most recognized blockchains in the world. It is lightweight and has the strongest community.",
+      "We are a very small team of creatives and indie devs that love making games. With your support we can make and give you exclusive access as we grow together.",
   },
   {
-    question: "How do I collect it?",
+    question: "Is this a scam?",
     answer:
-      "To mint means that you become the rightful owner of an item of the collection. You need a tiny bit of sol to cover for the network cost associated to that transaction that makes that possible.",
+      "No, we are game developers, art directors, artists and designers with based backgrounds wanting to adopt the web3 space as a way to connect with people interested in art, design and games.",
+  },
+  {
+    question: "Are you doxxed?",
+    answer:
+      "No, but if you hop into the Discord we can know each other and plan for the future together.",
   },
   {
     question: "What else can I know about the collection?",
     answer:
-      "The collection is a Metaplex Core NFT Standard, which ensures world class security and efficiency recognized by the biggest marketplaces such as Magic Eden and Tensor.",
+      "Let's Flamingo! is a Metaplex Core collection, which ensures world class security and efficiency.",
   },
   {
-    question: "How is my wallet used in this app?",
+    question: "How is my wallet used by this app?",
     answer:
-      "Your wallet is not used by any commercial purpose and your account data is not collected ever by this app. Your connected wallet is perfectly safe and private, and it only serves the purpose of recording your score in the ranking to mint from the Metaplex Core collection. Ranking data is cleared every week and no wallet data is ever stored anywhere.",
+      "Your wallet is kept private and safe. Its only purpose is recording your score in the ranking and allowing you to FREE MINT if you win. Ranking data is cleared every week and is not collected or used anywhere after that.",
   },
 ];
