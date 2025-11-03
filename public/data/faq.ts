@@ -12,7 +12,7 @@ export const faqs: Faq[] = [
       "It is a game and NFT collection. Anyone can play it and collect it.",
   },
   {
-    question: "How are they game and the NFT related?",
+    question: "How are the game and collection related?",
     answer:
       "You can connect your wallet and play the game to record your high score. Weekly winners can claim a FREE MINT.",
   },

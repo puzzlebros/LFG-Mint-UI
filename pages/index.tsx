@@ -433,12 +433,12 @@ export default function HomePage() {
                   ml="5"
                 >
                   <Text as="span" fontWeight="bold">
-                    Right now! Play and reach the highest score you can.
+                    Right now! Play and fly as high as you can.
                   </Text>
                   <br />
                                     <Text as="span"                 fontSize="1.2rem"
 >
-                  Rank in the top 10 and claim a FREE mint from the collection each Saturday.
+                  If you rank in the top 10 by Saturday you win a FREE mint from the collection.
                   </Text>
                 </Text>
               </>

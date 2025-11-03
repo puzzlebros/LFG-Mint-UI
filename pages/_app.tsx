@@ -2,7 +2,7 @@
 import Head from "next/head";
 import type { AppProps } from "next/app";
 import { Analytics } from "@vercel/analytics/next";
-import { image, headerText } from "@/settings";
+import { image, headerText, description } from "@/settings";
 import { ChakraProvider } from "@chakra-ui/react";
 import { ParallaxProvider } from "react-scroll-parallax";
 import Layout from "../components/Layout";
@@ -52,14 +52,22 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
+        {/* SEO / OG */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content={headerText} />
-        <meta property="og:description" content="LFG" />
+        <meta property="og:description" content={description} />
         <meta property="og:image" content={image} />
         <meta name="description" content="LFG" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{headerText}</title>
-        <link rel="icon" href="/favicon.ico" />
+
+        {/* Favicons & PWA */}
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-title" content="LFG" />
+        <link rel="manifest" href="/site.webmanifest" />
       </Head>
 
       <ParallaxProvider>
