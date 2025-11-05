@@ -421,7 +421,7 @@ export default function HomePage() {
                   textStyle="condensed"
                   lineHeight="6rem"
                 >
-                  WEN MOON?
+                  JOIN THE FLOCK
                 </Heading>
                 <Text
                   textStyle="copy"
@@ -433,12 +433,11 @@ export default function HomePage() {
                   ml="5"
                 >
                   <Text as="span" fontWeight="bold">
-                    Right now! Play and fly as high as you can.
+                    Play and fly as high as you can.
                   </Text>
                   <br />
-                                    <Text as="span"                 fontSize="1.2rem"
->
-                  If you rank in the top 10 by Saturday you win a FREE mint from the collection.
+                  <Text as="span"                 fontSize="1.2rem">
+                    Rank in the top 10 and FREE mint from the collection.
                   </Text>
                 </Text>
               </>
