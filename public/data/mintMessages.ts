@@ -3,11 +3,12 @@ export type DayBucket = 'morning' | 'night';
 
 export const mintMessages: Record<DayBucket, string[]> = {
   morning: [
-    'A fresh Flamingo takes flight ☀️',
-    'Sunrise mint just landed',
-    'A new Flamingo joined the flock',
-    'Coffee + mint = perfect day',
-    'Flock it',
+    "If you reply I'm following you",
+    "Say it back for some luck",
+    "Say it back?",
+    "Let's get it!",
+    "Let's FLAMINGO!",
+    "Flock it",
   ],
   night: [
     'Night mint under neon lights 🌙',

@@ -1,7 +1,7 @@
 // components/Footer.tsx
 import React from 'react'
 import { Box, Flex, Text, Link, Icon } from '@chakra-ui/react'
-import { SiX, SiDiscord } from 'react-icons/si'
+import { SiX, SiDiscord, SiTelegram } from 'react-icons/si'
 
 export function Footer() {
   return (
@@ -44,6 +44,18 @@ export function Footer() {
             lineHeight="1"
           >
             <Icon as={SiDiscord} boxSize={5} _hover={{ color: 'brand.Purple' }} />
+          </Link>
+
+          <Link
+            href="https://t.me/letsflamingo"
+            isExternal
+            aria-label="Telegram"
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            lineHeight="1"
+          >
+            <Icon as={SiTelegram} boxSize={5} _hover={{ color: 'brand.Purple' }} />
           </Link>
         </Flex>
       </Flex>

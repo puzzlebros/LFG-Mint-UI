@@ -1,156 +1,180 @@
 // pages/api/postMint.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { TwitterApi } from 'twitter-api-v2'
-import axios from 'axios'
+import { xFetchWithAutoRefresh } from '@/lib/xAuth' // auto-refresh + retry helper
 import { mintMessages, defaultHashtags, type DayBucket } from '@/public/data/mintMessages'
 
-/** Return "GM!" for 05:00–11:59, otherwise "GN!" in the given IANA TZ. */
-function getGreeting(tz: string): 'GM!' | 'GN!' {
-  const hour = Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false })
-      .format(new Date())
-  )
-  return (hour >= 5 && hour < 12) ? 'GM!' : 'GN!'
+/** ───────── compact night window helpers ─────────
+ * Default: GN only from 02:00–03:59 in the given TZ (2 hours).
+ * Override with env:
+ *   POST_NIGHT_START=2   // inclusive hour (0–23)
+ *   POST_NIGHT_END=4     // exclusive hour (0–24), can wrap (e.g., 23 → 2)
+ */
+function hourInTz(tz: string): number {
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date()))
 }
-
-/** Morning (05–11) vs Night (else) bucket to index message sets. */
+function inNightWindow(hour: number, start: number, end: number): boolean {
+  start = Math.max(0, Math.min(23, Number.isFinite(start) ? start : 2))
+  end   = Math.max(1, Math.min(24,  Number.isFinite(end)   ? end   : 4))
+  if (start < end) return hour >= start && hour < end        // e.g., 2..4
+  return hour >= start || hour < end                         // wrap, e.g., 23..2
+}
+function getGreeting(tz: string): 'GM!' | 'GN!' {
+  const h = hourInTz(tz)
+  const start = Number(process.env.POST_NIGHT_START ?? 2)   // default 02:00
+  const end   = Number(process.env.POST_NIGHT_END   ?? 4)   // default 04:00 (exclusive)
+  return inNightWindow(h, start, end) ? 'GN!' : 'GM!'
+}
 function getDayBucket(tz: string): DayBucket {
-  const hour = Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false })
-      .format(new Date())
-  )
-  return (hour >= 5 && hour < 12) ? 'morning' : 'night'
+  const h = hourInTz(tz)
+  const start = Number(process.env.POST_NIGHT_START ?? 2)
+  const end   = Number(process.env.POST_NIGHT_END   ?? 4)
+  return inNightWindow(h, start, end) ? 'night' : 'morning'
 }
 
 function pickRandom<T>(arr: T[], fallback: T): T {
   return arr.length ? arr[Math.floor(Math.random() * arr.length)] : fallback
 }
+function ipfsToHttp(u: string) {
+  return u?.startsWith('ipfs://') ? u.replace('ipfs://', 'https://dweb.link/ipfs/') : u
+}
+function guessMimeFromUrl(url: string): string | undefined {
+  const lower = (url || '').split('?')[0].toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  return undefined
+}
+async function safeJson(res: Response) {
+  try { return await res.json() } catch { return null }
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  console.log('▶️ Received request to /api/postMint')
-
-  // Allow only POST
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'Only POST allowed' })
   }
 
-  // Env validation
   const {
-    TWITTER_API_KEY,
-    TWITTER_API_SECRET,
-    TWITTER_ACCESS_TOKEN,
-    TWITTER_ACCESS_SECRET,
     DISCORD_WEBHOOK_URL,
-    POST_TIMEZONE, // optional IANA TZ (e.g., "America/Argentina/Buenos_Aires")
+    POST_TIMEZONE,
+    TELEGRAM_BOT_TOKEN,       // optional (kept, but safe to remove)
+    TELEGRAM_CHAT_ID,         // optional (kept, but safe to remove)
   } = process.env
 
-  if (
-    !TWITTER_API_KEY ||
-    !TWITTER_API_SECRET ||
-    !TWITTER_ACCESS_TOKEN ||
-    !TWITTER_ACCESS_SECRET ||
-    !DISCORD_WEBHOOK_URL
-  ) {
-    console.error('❌ Missing one of required env vars:', {
-      TWITTER_API_KEY:        !!TWITTER_API_KEY,
-      TWITTER_API_SECRET:     !!TWITTER_API_SECRET,
-      TWITTER_ACCESS_TOKEN:   !!TWITTER_ACCESS_TOKEN,
-      TWITTER_ACCESS_SECRET:  !!TWITTER_ACCESS_SECRET,
-      DISCORD_WEBHOOK_URL:    !!DISCORD_WEBHOOK_URL,
-    })
-    return res.status(500).json({
-      error: 'Server misconfiguration: missing Twitter or Discord credentials',
-    })
+  if (!DISCORD_WEBHOOK_URL) {
+    return res.status(500).json({ error: 'Missing DISCORD_WEBHOOK_URL' })
   }
 
-  // Payload validation
   const { name, imageUrl: rawImageUrl, mintAddress } = req.body as {
-    name?: string
-    imageUrl?: string
-    mintAddress?: string
+    name?: string; imageUrl?: string; mintAddress?: string
   }
-
-  console.log('📦 Payload:', { name, rawImageUrl, mintAddress })
-
   if (!name || !rawImageUrl || !mintAddress) {
-    console.error('❌ Invalid payload')
     return res.status(400).json({ error: 'Missing name, imageUrl, or mintAddress' })
   }
 
+  // Compose message
+  const imageUrl = ipfsToHttp(rawImageUrl)
+  const tz = POST_TIMEZONE || 'America/Argentina/Buenos_Aires'
+  const greet = getGreeting(tz)
+  const bucket = getDayBucket(tz)
+  const bodyLine = pickRandom(mintMessages[bucket], 'A new Flamingo minted!')
+  const hashtags = (defaultHashtags?.length ? defaultHashtags : ['#LetsFlamingo', '#SolanaNFT']).join(' ')
+  const postText = `${greet} 🦩 ${bodyLine}\n${hashtags}`
+
+  // Fetch image once (shared)
+  let imgBuf: ArrayBuffer | null = null
+  let imgMime = 'image/png'
   try {
-    // Normalize IPFS → HTTPS
-    const imageUrl = rawImageUrl.startsWith('ipfs://')
-      ? rawImageUrl.replace('ipfs://', 'https://dweb.link/ipfs/')
-      : rawImageUrl
-
-    console.log('🔗 Resolved imageUrl:', imageUrl)
-
-    // Fetch image bytes
-    console.log('🔄 Fetching image bytes…')
-    const imgResp = await axios.get<ArrayBuffer>(imageUrl, { responseType: 'arraybuffer' })
-    const imgBuffer = Buffer.from(imgResp.data)
-    console.log('✅ Fetched', imgBuffer.length, 'bytes')
-
-    // Init Twitter
-    console.log('🐦 Initializing Twitter client (user context)…')
-    const twitter = new TwitterApi({
-      appKey:      TWITTER_API_KEY,
-      appSecret:   TWITTER_API_SECRET,
-      accessToken: TWITTER_ACCESS_TOKEN,
-      accessSecret: TWITTER_ACCESS_SECRET,
-    })
-
-    // Upload media
-    console.log('🐦 Uploading media to v2…')
-    const mediaId = await twitter.v2.uploadMedia(imgBuffer, { media_type: 'image/png' })
-    console.log('✅ Media uploaded, mediaId=', mediaId)
-
-    // Time-aware prefix + random body line
-    const tz = POST_TIMEZONE || 'America/Argentina/Buenos_Aires'
-    const greet = getGreeting(tz)                          // "GM!" or "GN!"
-    const bucket = getDayBucket(tz)                        // "morning" or "night"
-    const bodyLine = pickRandom(mintMessages[bucket], 'A new Flamingo minted!')
-    const hashtagsText = (defaultHashtags?.length ? defaultHashtags : ['#LetsFlamingo', '#SolanaNFT']).join(' ')
-
-    // Compose tweet
-    const tweetText = [
-      `${greet} 🦩 ${bodyLine}`,
-      `Name: ${name}`,
-      `Mint: ${mintAddress}`,
-      hashtagsText,
-    ].join('\n')
-
-    console.log('🐦 Posting v2 Tweet:', tweetText.replace(/\n/g, ' | '))
-    const tweet = await twitter.v2.tweet({
-      text:  tweetText,
-      media: { media_ids: [mediaId] },
-    })
-    console.log('✅ Tweet sent, id=', tweet.data.id)
-
-    // Discord embed (neutral; customize if you want greet/body here too)
-    console.log('🤖 Sending Discord webhook…')
-    await axios.post(
-      DISCORD_WEBHOOK_URL,
-      {
-        embeds: [
-          {
-            title: '🦩 New Flamingo Minted!',
-            description: `**Name:** ${name}\n**Mint Address:** ${mintAddress}`,
-            image: { url: imageUrl },
-            color: 0xff79a6,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      },
-      { headers: { 'Content-Type': 'application/json' } }
-    )
-    console.log('✅ Discord webhook sent')
-
-    return res.status(200).json({ success: true, tweetId: tweet.data.id })
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), 20_000)
+    const imgResp = await fetch(imageUrl, { signal: ac.signal })
+    clearTimeout(t)
+    if (!imgResp.ok) throw new Error(`Image fetch failed: ${imgResp.status} ${imgResp.statusText}`)
+    imgBuf = await imgResp.arrayBuffer()
+    imgMime = imgResp.headers.get('content-type') || guessMimeFromUrl(imageUrl) || 'image/png'
   } catch (e: any) {
-    console.error('❌ postMint error:', e)
-    if (e?.data) console.error('→ API error response:', e.data)
-    return res.status(500).json({ error: e?.message || 'Internal error' })
+    console.warn('⚠️ Image fetch issue:', e?.message || e)
   }
+
+  const results: Record<string, any> = {}
+
+  // 1) X (best effort)
+  try {
+    if (!imgBuf) throw new Error('No image buffer for X')
+
+    const form = new FormData()
+    form.append('media', new Blob([imgBuf], { type: imgMime }), 'asset')
+    form.append('media_category', 'tweet_image')
+    form.append('media_type', imgMime)
+
+    const uploadResp = await xFetchWithAutoRefresh('https://api.x.com/2/media/upload', {
+      method: 'POST',
+      body: form,
+    })
+    const uploadJson = await safeJson(uploadResp)
+    if (!uploadResp.ok) throw new Error(`Media upload failed: ${uploadResp.status} ${JSON.stringify(uploadJson)}`)
+
+    const mediaId = uploadJson?.data?.id as string
+    if (!mediaId) throw new Error('No media id returned by X')
+
+    const tweetResp = await xFetchWithAutoRefresh('https://api.x.com/2/tweets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: postText, media: { media_ids: [mediaId] } }),
+    })
+    const tweetJson = await safeJson(tweetResp)
+    if (!tweetResp.ok) throw new Error(`Tweet failed: ${tweetResp.status} ${JSON.stringify(tweetJson)}`)
+
+    results.x = { ok: true, tweetId: tweetJson?.data?.id ?? null }
+  } catch (e: any) {
+    console.error('❌ X post error:', e?.message || e)
+    results.x = { ok: false, error: e?.message || String(e) }
+  }
+
+  // 2) Discord (always)
+  try {
+    await fetch(DISCORD_WEBHOOK_URL!, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: '🦩 New Flamingo Minted!',
+          description: `**Name:** ${name}\n**Mint Address:** ${mintAddress}\n\n${postText}`,
+          image: { url: imageUrl },
+          color: 0xff79a6,
+          timestamp: new Date().toISOString(),
+        }],
+      }),
+    })
+    results.discord = { ok: true }
+  } catch (e: any) {
+    console.error('❌ Discord error:', e?.message || e)
+    results.discord = { ok: false, error: e?.message || String(e) }
+  }
+
+  // 3) Telegram block is optional — can be removed safely for now.
+  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+    try {
+      if (imgBuf) {
+        const tf = new FormData()
+        tf.append('chat_id', TELEGRAM_CHAT_ID)
+        tf.append('caption', `${postText}\n\nName: ${name}\nMint: ${mintAddress}`)
+        tf.append('parse_mode', 'HTML')
+        tf.append('photo', new Blob([imgBuf], { type: imgMime }), 'mint.png')
+        const tgResp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, { method: 'POST', body: tf })
+        const tgJson = await safeJson(tgResp)
+        if (!tgResp.ok) throw new Error(`Telegram sendPhoto failed: ${tgResp.status} ${JSON.stringify(tgJson)}`)
+      }
+      results.telegram = { ok: true }
+    } catch (e: any) {
+      console.error('❌ Telegram error:', e?.message || e)
+      results.telegram = { ok: false, error: e?.message || String(e) }
+    }
+  } else {
+    results.telegram = { ok: false, skipped: true, reason: 'TELEGRAM_* not set' }
+  }
+
+  const httpOk = (results.discord?.ok ?? false) || (results.x?.ok ?? false) || (results.telegram?.ok ?? false)
+  return res.status(httpOk ? 200 : 502).json({ success: httpOk, results })
 }
