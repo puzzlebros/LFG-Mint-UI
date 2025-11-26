@@ -102,7 +102,7 @@ export default function ShowNft({
   return (
     <SimpleGrid
       templateColumns={{ base: "1fr", md: "60% 40%" }}
-      spacing={6}
+      spacing={{ base: 2, md: 6 }}
       p={6}
       w="full"
       color={theme.colors.brand.DarkPurple}
@@ -147,7 +147,7 @@ export default function ShowNft({
           fontSize="2.7rem"
           color={theme.colors.brand.Pink}
           userSelect="text"
-          whiteSpace="nowrap"
+  whiteSpace={{ base: "normal", md: "nowrap" }}  // wrap on mobile, keep nowrap on desktop
           textTransform="uppercase"
         >
           {metadata.name ?? "Unnamed NFT"}

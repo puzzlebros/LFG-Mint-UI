@@ -15,6 +15,8 @@ import {
   useDisclosure
 } from '@chakra-ui/react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import ThemedModal from '../components/modals/ThemedModal';
 import { keyframes } from '@emotion/react'
 import HorizontalScroller, { ScrollerItem } from '../components/fx/HorizontalScroller';
 import Leaderboard                              from '../components/Leaderboard';
@@ -41,6 +43,7 @@ const floatKeyframes = `
 export default function HomePage() {
   const { publicKey } = useWallet();
   const myWallet      = publicKey?.toString();
+  const { setVisible } = useWalletModal();
   const router = useRouter();
 
   const [isInTop10, setIsInTop10] = useState(false);
@@ -48,6 +51,22 @@ export default function HomePage() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [hasShown, setHasShown] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+
+  const {
+    isOpen: isEntryOpen,
+    onOpen: onEntryOpen,
+    onClose: onEntryClose,
+  } = useDisclosure();
+
+  const handleWelcomeCtaClick = () => {
+    if (!publicKey) {
+      // no wallet connected → show entry modal
+      onEntryOpen();
+    } else {
+      // wallet already connected → go straight to the game
+      window.location.assign('/game');
+    }
+  };
 
   const windowSize = useWindowSize();
 
@@ -80,6 +99,7 @@ export default function HomePage() {
   const now    = new Date()
   const diffMs = next.getTime() - now.getTime()
   const timeLeft = formatRemaining(diffMs);
+  const hasWallet = !!myWallet;
 
   useEffect(() => {
   function updateGame() {
@@ -143,9 +163,13 @@ export default function HomePage() {
     md:   "MINTMINT",
   });
 
+  const welcomeTitleSize = useBreakpointValue({ base: "4rem", md: "7.5rem" });
+  const welcomeCopySize = useBreakpointValue({ base: "1rem", md: "1.2rem" });
+  const welcomeCopyAltSize = useBreakpointValue({ base: "1rem", md: "1.1rem" });
+  const welcomeCopyLineHeight = useBreakpointValue({ base: "1rem", md: "1.5rem" });
   const mintBgSize = useBreakpointValue({ base: "24rem", md: "22rem" });
-  const rankingHeadingSize = useBreakpointValue({ base: "4rem", md: "4.5rem"});
-  const rankingCopySize = useBreakpointValue({ base: "1rem", md: "1.3rem" });
+  const rankingHeadingSize = useBreakpointValue({ base: "2.7rem", md: "3.5rem"});
+  const rankingCopySize = useBreakpointValue({ base: "1rem", md: "1.15rem" });
   const rankingHeadingMargin = useBreakpointValue({ base: "35px", md: "15px"});
   const mintButtonMargin = useBreakpointValue({ base: "7%", md: "7%"});
 
@@ -196,6 +220,21 @@ export default function HomePage() {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-20px); }
 `
+
+const pulseClaim = keyframes`
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(108, 0, 255, 0.7);   /* brand.Purple-ish */
+  }
+  70% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 16px rgba(108, 0, 255, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(108, 0, 255, 0);
+  }
+`;
 
   // listen to game ranking button
   useEffect(() => {
@@ -258,10 +297,11 @@ export default function HomePage() {
           zIndex={1}
         >
           <InteractiveHeading
+            enableMobileAutoAnimate={false}
             color="#FFF"
             fontSize={mintHeroSize}
             fontWeight="normal"
-            letterSpacing="0.01em"
+            letterSpacing="0.001em"
             lineHeight="0.8"
             /* desktop tilt range */
             minWidth={25}
@@ -378,87 +418,87 @@ export default function HomePage() {
         }
 
         <Center h="100%">
-          <Stack spacing={2} textAlign="center" align="center" w="full" maxW="420px" mx="auto">
-            {isFrozen ? (
+          <Stack spacing={2} textAlign="center" align="center" w="full" maxW="550px" mx="auto" mt={5}>
               <>
                 <Heading
                   as="h1"
-                  fontSize="8rem"
+                  fontSize={welcomeTitleSize}
                   textStyle="condensed"
-                  color="brand.DarkPurple"
-                  lineHeight="6rem"
-                >
-                  CLAIM DAY!
-                </Heading>
-
-                <Text
-                  textStyle="copy"
-                  fontSize="1.3rem"
-                  whiteSpace="normal"
-                  wordBreak="break-word"
-                  mt="7"
-                  mr="5"
-                  ml="5"
-                >
-                  <Text as="span" fontWeight="bold">
-                    Made it into the top 10?
-                    <br />
-                    You won a FREE MINT
-                    <br />
-                    of the collection.
-                  </Text>
-                  <br />
-                  If not, go touch some grass
-                  <br />
-                  and come back later!
-                </Text>
-              </>
-            ) : (
-              <>
-                <Heading
-                  as="h1"
-                  fontSize="7rem"
-                  textStyle="condensed"
-                  lineHeight="6rem"
+                  lineHeight="5rem"
                 >
                   JOIN THE FLOCK
                 </Heading>
                 <Text
                   textStyle="copy"
-                  fontSize="1.3rem"
+                  fontSize="1.2rem"
+                  lineHeight="1.5rem"
                   whiteSpace="normal"
                   wordBreak="break-word"
-                  mt="5"
+                  mt={{ base: "1", md: "5" }}
                   mr="5"
                   ml="5"
                 >
-                  <Text as="span" fontWeight="bold">
-                    Play and fly as high as you can.
+                  <Text as="span" fontWeight="bold" fontSize="1.5rem" lineHeight="2.3rem">
+                    Play. Rank. Collect.
                   </Text>
-                  <br />
-                  <Text as="span"                 fontSize="1.2rem">
-                    Rank in the top 10 and FREE mint from the collection.
+                  <br/>
+                  <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
+                    Let’s Flamingo is a web3 casual game<br/>
+                    crafted with passion by indie game devs<br/>
+                    powered by a 5555 NFT collection of flamingos<br/>
+                    which you can mint for free every Saturday.
+                    <br/>
                   </Text>
+                  <br/>
+ <Text as="span" fontSize={welcomeCopyAltSize}>
+  <b>How? It's simple:</b><br />
+  Play and fly as high as you can!<br />
+  Each Saturday, if you show in the Top 10,<br />
+  you’ll be able to claim your free flamingo.{``}
+  <Text
+    as="button"
+    type="button"
+    display="inline"
+    ml={1}
+    color="brand.Lavender"
+    textDecoration="none"
+    _hover={{ textDecoration: 'underline' }}
+    cursor="pointer"
+    fontWeight="bold"
+    onClick={() => router.push('/faq#about')}
+  >
+  Why?
+  </Text>
+  <br />
+</Text>
                 </Text>
               </>
-            )}
-
-            <Tooltip
-              label={
-                isFrozen
-                  ? `New ranking in ${timeLeft}`
-                  : `Next claim in ${timeLeft}`
-              }
-            >
-              <Button
-                mt="8"
-                size="default"
-                isDisabled={isFrozen}
-                onClick={() => !isFrozen && window.location.assign("/game")}
-              >
-                PLAY
-              </Button>
-            </Tooltip>
+              {isFrozen ? (
+  <Tooltip
+    label="The game is locked on Saturdays"
+    hasArrow
+    placement="top"
+  >
+    <Box>
+      <Button
+        mt={{ base: "3", md: "8" }}
+        size="default"
+        isDisabled
+        pointerEvents="none"
+      >
+        LET'S GO!
+      </Button>
+    </Box>
+  </Tooltip>
+) : (
+  <Button
+        mt={{ base: "3", md: "8" }}
+    size="default"
+    onClick={handleWelcomeCtaClick}   // 👈 now goes through our modal logic
+  >
+    LET'S GO
+  </Button>
+)}
           </Stack>
         </Center>
         </Box>
@@ -473,49 +513,71 @@ export default function HomePage() {
         scrollSnapAlign="start"
         scrollSnapStop="always"
         position="relative"
-        bg={isFrozen ? 'brand.Lavender' : 'brand.White'}
-      >
-        <Center h="100%" mt="-3">
-          <Stack spacing={2} textAlign="center" align="center" maxW="600px" w="100%">
+  bg={isFrozen ? undefined : 'brand.White'}
+  bgGradient={
+    isFrozen
+      ? 'linear(to-b, var(--chakra-colors-brand-gradientStart) 0%, var(--chakra-colors-brand-gradientMid) 29.5%, var(--chakra-colors-brand-gradientEnd) 100%)'
+      : undefined
+  }
+        >
+        <Center h="100%" >
+          <Stack 
+          spacing={2} 
+          textAlign="center" 
+          align="center" 
+          maxW="850px" 
+          w="90%">
             <Heading
               size="xl"
               fontSize={rankingHeadingSize}
-              textStyle="condensed"
-              lineHeight="4.2rem"
+              textStyle="narrow"
+              lineHeight="4rem"
               mt={rankingHeadingMargin}
             >
               {isFrozen
-                ? 'WEEKLY WINNERS'
+                ? 'MINT DAY'
                 : (
-                  'HIGH SCORES'
+                  'FLY TO THE TOP!'
                 )
               }
             </Heading>
 
-            <Text
-              textStyle="copy"
-              fontSize={rankingCopySize}
-              textAlign="center"
-              mb={4}
-              mr={10}
-              ml={10}
-            >
-              {isFrozen ? (
-                <>
-                  You have {' '}
-                  <Text as="span" color="brand.Purple" fontWeight="bold">
-                    {timeLeft}
-                  </Text> to claim your LFG!
-                </>
-              ) : (
-                <>
-                  Rank to win a FREE MINT in {' '}
-                  <Text as="span" color="brand.Purple" fontWeight="bold">
-                    {timeLeft}
-                  </Text>.
-                </>
-              )}
-            </Text>
+            {/* ── Copy variations ── */}
+      <Text
+  textStyle="copy"
+  fontSize={rankingCopySize}
+  textAlign="center"
+  mb={{ base: "2", md: "4" }}
+
+>
+  {isFrozen ? (
+    hasWallet && isInTop10 ? (
+      <>
+        Congrats! You’ve got {' '}
+        <Text as="span" color="brand.Purple" fontWeight="bold">
+          {timeLeft}
+        </Text>{' '}
+        to mint your flamingo before the next round begins!
+      </>
+    ) : (
+      <>
+        Not this time, but don’t give up! You can try again in {' '}
+        <Text as="span" color="brand.Purple" fontWeight="bold">
+          {timeLeft}
+        </Text>
+        .
+      </>
+    )
+  ) : (
+    <>
+      Play to enter the top 10, and mint your <b>FREE</b> flamingo.{' '}
+      <Text as="span" color="brand.Purple" fontWeight="bold">
+        {timeLeft}
+      </Text>{' '}
+      until next claim!
+    </>
+  )}
+</Text>
 
             <Center w="100%" mt="-4">
               <Leaderboard
@@ -532,26 +594,50 @@ export default function HomePage() {
               />
             </Center>
 
-            {myWallet && isInTop10 && isFrozen && (
-              <Button 
-              size="default"
-              onClick={() => (window.location.href = '/mint')}>
-                CLAIM
-              </Button>
-            )}
+{isFrozen && hasWallet && isInTop10 ? (
+  // Frozen window + winner → CLAIM
+  <Button
+    mt={{ base: "0", md: "2" }}
+    size="default"
+    animation={`${pulseClaim} 1.6s ease-in-out infinite`}
+    onClick={() => (window.location.href = '/mint')}
+  >
+    CLAIM
+  </Button>
+) : hasWallet ? (
+  // Wallet connected (any other case) → PLAY
+  <Button
+    mt={{ base: "0", md: "2" }}
+    size="default"
+    onClick={() => window.location.assign('/game')}
+  >
+    PLAY
+  </Button>
+) : (
+  // No wallet → CONNECT (opens wallet adapter modal)
+  <Button
+    mt={{ base: "0", md: "2" }}
+    size="default"
+    onClick={() => setVisible(true)}
+  >
+    CONNECT
+  </Button>
+)}
 
           </Stack>
         </Center>
 
-        <HorizontalScroller
-          items={rankingScroller}
-          speed={20}
-          height="50px"
-          bgColor="brand.Purple"
-          zIndex={2}
-          fixed={false}
-          align="bottom"
-        />
+<Box display={{ base: "none", md: "block" }}>
+  <HorizontalScroller
+    items={rankingScroller}
+    speed={20}
+    height="50px"
+    bgColor="brand.Purple"
+    zIndex={2}
+    fixed={false}
+    align="bottom"
+  />
+</Box>
         </Box>
 
       {/** ——— Mint Section ——— **/}
@@ -660,7 +746,56 @@ export default function HomePage() {
         />
       )}
       <CongratsPopup isOpen={isOpen} onClose={handleClose} />
-      
+      {/* Entry modal for “LET'S GO” when no wallet is connected */}
+      <ThemedModal
+  isOpen={isEntryOpen}
+  onClose={onEntryClose}
+  title="LET'S GET YOU IN THE GAME!"
+    headerProps={{
+    fontSize: { base: "3rem", md: "3.5rem" },
+    lineHeight: { base: "2.4rem", md: "3rem" },
+  }}
+  bodyProps={{
+    fontSize: { base: "1rem", md: "1.2rem" },
+  }}
+  footer={
+    
+  <Stack
+    direction={{ base: 'column', md: 'row' }}
+    spacing={3}
+    w="100%"
+    justify="center"
+    align="center"
+  >
+    <Button
+      variant="primary"
+      size="popup"
+      onClick={() => {
+        onEntryClose();
+        window.location.assign('/game'); // PLAY AS GUEST
+      }}
+    >
+      PLAY AS GUEST
+    </Button>
+
+    <Button
+      variant="secondary"
+      size="popup"
+      onClick={() => {
+        if (!publicKey) {
+          setVisible(true); // open wallet adapter modal
+        }
+        onEntryClose();
+      }}
+    >
+      CONNECT WALLET
+    </Button>
+  </Stack>
+  }
+>
+  Join for fun as a guest, or connect your wallet to climb the ranks and win an NFT!
+</ThemedModal>
+
     </Box>
   );
 }

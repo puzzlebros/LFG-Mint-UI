@@ -12,9 +12,14 @@ export const faqs: Faq[] = [
       "It is a game and NFT collection. Anyone can play it and collect it.",
   },
   {
-    question: "How are the game and collection related?",
+    question: "How are the game and NFT collection related?",
     answer:
       "You can connect your wallet and play the game to record your high score. Weekly winners can claim a FREE MINT.",
+  },
+  {
+    question: "Why does this project exist?",
+    answer:
+      "We are artists, designers, developers. We like making beautiful and fun things. We want to grow a community of like-minded people interested in art, design and games.",
   },
   {
     question: "How does the ranking work?",
@@ -32,9 +37,9 @@ export const faqs: Faq[] = [
       "Until the supply lasts, any week in which you rank in the top 10 by Saturday, you are eligible for a free mint.",
   },
   {
-    question: "Why does this project exist?",
+    question: "Are there plans for the future of this project?",
     answer:
-      "We are a very small team of creatives and indie devs that love making games. With your support we can make and give you exclusive access as we grow together.",
+      "We are the creatives behind The Puzzle Bros. ",
   },
   {
     question: "Is this a scam?",
@@ -42,14 +47,9 @@ export const faqs: Faq[] = [
       "No, we are game developers, art directors, artists and designers with based backgrounds wanting to adopt the web3 space as a way to connect with people interested in art, design and games.",
   },
   {
-    question: "Are you doxxed?",
-    answer:
-      "No, but if you hop into the Discord we can know each other and plan for the future together.",
-  },
-  {
     question: "What else can I know about the collection?",
     answer:
-      "Let's Flamingo! is a Metaplex Core collection, which ensures world class security and efficiency.",
+      "Let's Flamingo! is a Metaplex Core collection, which ensures world class security and efficiency. The collection is already listed by Magic Eden and Tensor.",
   },
   {
     question: "How is my wallet used by this app?",

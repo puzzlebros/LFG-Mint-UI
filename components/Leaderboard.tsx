@@ -54,7 +54,7 @@ export default function Leaderboard({
   // 2️⃣ Responsive TextAlign, explicitly typed
   const headerAlign = useBreakpointValue<'left' | 'center'>({
     base: 'left',
-    md: 'center',
+    md: 'left',
   });
 
   // 3️⃣ Report top-10 status upstream
@@ -85,7 +85,7 @@ export default function Leaderboard({
       bg={bg}
       p={4}
       borderRadius="md"
-      boxShadow="sm"
+      boxShadow="none"
       display="inline-block"
       w="max-content"
       h={height}
@@ -119,7 +119,7 @@ export default function Leaderboard({
               <Th width={columnWidths.user} textAlign={headerAlign} textStyle="narrow">
                 User
               </Th>
-              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="narrow">
+              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="copy">
                 Score
               </Th>
               <Th
@@ -159,31 +159,49 @@ export default function Leaderboard({
       {/* Real table once context is done loading */}
       {!ctxLoading && !ctxError && (
         <Table
-          variant={withBorders ? 'simple' : 'unstyled'}
+          variant="unstyled" 
           size="sm"
           w="max-content"
           sx={{
             tableLayout: 'fixed',
             borderCollapse: 'separate',
-            borderSpacing: '3px',
+            borderSpacing: '2px',
           }}
         >
           <Thead display={{ base: 'none', md: 'table-header-group' }}>
             <Tr>
-              <Th width={columnWidths.position ?? '51px'} textAlign={headerAlign} textStyle="narrow">
-                #
+    <Th
+      width={columnWidths.position ?? '51px'}
+      textAlign="left"
+      textStyle="copy"
+      textColor={'brand.Purple'}
+      fontFamily="body"
+      fontSize="0.75rem"  // smaller
+      px={1}              // align with TDs
+      pt={0}
+    >                #
               </Th>
-              <Th width={columnWidths.user} textAlign={headerAlign} textStyle="narrow">
+              <Th width={columnWidths.user} textAlign={headerAlign} fontSize="0.7rem"      px={1}     textTransform="none"         // align with TDs
+ textStyle="copy" fontFamily="body"      textColor={'brand.Purple'}
+>
                 User
               </Th>
-              <Th width={columnWidths.score} textAlign={headerAlign} textStyle="narrow">
+              <Th width={columnWidths.score} textAlign={headerAlign} fontSize="0.7rem"      px={1}   textTransform="none"           // align with TDs
+ textStyle="copy" fontFamily="body"      textColor={'brand.Purple'}
+>
                 Score
               </Th>
               <Th
                 display={{ base: 'none', md: 'table-cell' }}
                 width={columnWidths.wallet}
                 textAlign={headerAlign}
-                textStyle="narrow"
+                textStyle="copy"
+                fontFamily="body"
+                textTransform="none"
+                      textColor={'brand.Purple'}
+fontSize="0.7rem"
+                      px={1}              // align with TDs
+
               >
                 Wallet
               </Th>

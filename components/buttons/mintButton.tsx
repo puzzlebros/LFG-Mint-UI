@@ -395,36 +395,54 @@ export function ButtonList({
             )}
 
             <Tooltip label={!walletPublicKey ? "Log in to mint" : btn.tooltip}>
-              <Button
-                size="default"
-                mt="3"
-                {...buttonProps}
-                isDisabled={!walletPublicKey || !btn.allowed}
-                isLoading={guardList.find((g) => g.label === btn.label)?.minting}
-                loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
-                onClick={() =>
-                  mintClick(
-                    umi,
-                    btn,
-                    candyMachine,
-                    candyGuard,
-                    1,
-                    setMintsCreated,
-                    guardList,
-                    setGuardList,
-                    onOpen,
-                    setCheckEligibility
-                  ).catch((err) => {
-                    console.error("Unexpected mintClick error:", err);
-                  })
-                }
-              >
-                {btn.buttonLabel}
-              </Button>
+  <Button
+    size="default"
+    mt="2"
+    {...buttonProps}
+    isDisabled={!walletPublicKey || !btn.allowed}
+    isLoading={guardList.find((g) => g.label === btn.label)?.minting}
+    loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
+    onClick={() =>
+      mintClick(
+        umi,
+        btn,
+        candyMachine,
+        candyGuard,
+        1,
+        setMintsCreated,
+        guardList,
+        setGuardList,
+        onOpen,
+        setCheckEligibility
+      ).catch((err) => {
+        console.error("Unexpected mintClick error:", err);
+      })
+    }
+  >
+    {btn.label === "OG" ? (
+      <Text as="span">
+        {/* main label in default button style */}
+        MINT{" "}
+        {/* price in copyLight */}
+        <Text
+          as="span"
+          textStyle="copy"
+          color="white"
+          fontSize="1rem"
+          letterSpacing="-0.01em"
+          textTransform="none"
+        >
+          (<b>0.05</b> sol)
+        </Text>
+      </Text>
+    ) : (
+      // other guards (e.g. LFG) still use the setting-based label
+      btn.buttonLabel
+    )}
+  </Button>
             </Tooltip>
 
-            <Text fontStyle="copy" fontWeight="bold">{btn.mintText}</Text>
-            <Divider w="full" />
+            <Divider w="full" borderColor="transparent" />
           </VStack>
         );
       })}

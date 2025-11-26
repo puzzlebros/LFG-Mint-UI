@@ -104,13 +104,13 @@ export default function Navbar() {
                 cursor="pointer"
                 onClick={() => setIsMenuOpen(false)}
                 >
-                  <LogoImage src="/images/LFG_Iso.png" alt="LFG Isotype" boxSize="50px" />
+                  <LogoImage src="/images/LFG_Iso.png" alt="LFG Isotype" boxSize="45px" />
                 </Box>
               </NextLink>
               <ChakraImage
                 src="/images/LFG_Logo.png"
                 alt="LFG Logotype"
-                h="40px"
+                h="35px"
                 userSelect="none"
                 pointerEvents="none"
               />
@@ -137,7 +137,7 @@ export default function Navbar() {
                         size="lg"
                         w={10}
                         h={9}
-                        color="brand.Purple"
+                        color="brand.DarkPurple"
                         fontSize="17px"
                         onClick={toggleMenu}
                       />
@@ -158,8 +158,8 @@ export default function Navbar() {
                         size="lg"
                         w={10}
                         h={9}
-                        fontSize="22px"
-                        color="brand.Purple"
+                        fontSize="28px"
+                        color="brand.DarkPurple"
                         onClick={toggleMenu}
                       />
                     </motion.div>
@@ -187,7 +187,7 @@ export default function Navbar() {
                         size="lg"
                         w={10}
                         h={9}
-                        color="brand.Purple"
+                        color="brand.DarkPurple"
                         fontSize="17px"
                         onClick={toggleMenu}
                       />
@@ -208,8 +208,8 @@ export default function Navbar() {
                         size="lg"
                         w={10}
                         h={9}
-                        fontSize="22px"
-                        color="brand.Purple"
+                        fontSize="30px"
+                        color="brand.DarkPurple"
                         onClick={toggleMenu}
                       />
                     </motion.div>
@@ -219,32 +219,54 @@ export default function Navbar() {
             )}
           </Flex>
           {isFrozen && showFreezeBanner && (
-            <Box bg="brand.Pink" color="white" position="relative">
-              <Flex align="center" justify="center" px={4} py={2}>
-                <Text textAlign="center">
-                  🎉 Congratulations to the winners! The game will resume in{" "}
-                  <Text as="span" fontWeight="bold">
-                    {timeLeft}
-                  </Text>
-                  .
-                </Text>
-                <IconButton
-                  aria-label="Dismiss"
-                  icon={<CloseIcon />}
-                  variant="ghost"
-                  size="xs"
-                  color="white"
-                  fontSize="10px"
-                  position="absolute"
-                  top="50%"
-                  right={2}
-                  transform="translateY(-50%)"
-                  _hover={{ bg: "rgba(255, 255, 255, 0)" }}
-                  onClick={() => setShowFreezeBanner(false)}
-                />
-              </Flex>
-            </Box>
-          )}
+  <Box bg="brand.Pink" color="white" position="relative">
+    <Flex
+      align="center"
+      justify={{ base: "flex-start", md: "center" }} // 👈 left on mobile, centered on desktop
+      px={4}
+      py={2}
+      position="relative"
+    >
+      {/* Text takes full row width so it can sit flush left on mobile */}
+      <Box flex="1">
+        <Text
+          textAlign={{ base: "left", md: "center" }}
+          ml={{ base: 2, md: 0 }}
+          pr={{ base: 8, md: 0 }} // space for the close button on mobile
+          fontSize={{ base: "0.85rem", md: "0.95rem" }}
+          lineHeight={{ base: "1.1rem", md: "1.3rem" }}
+        >
+          Congratulations to the winners!
+          <Box as="span" display={{ base: "block", md: "inline" }}>
+            {" "}
+            The game will unlock in{" "}
+            <Text as="span" fontWeight="bold">
+              {timeLeft}
+            </Text>
+            .
+          </Box>
+        </Text>
+      </Box>
+
+      <IconButton
+        aria-label="Dismiss"
+        icon={<CloseIcon />}
+        variant="ghost"
+        size="xs"
+        color="white"
+        fontSize="10px"
+        position="absolute"
+        top="50%"
+        right={2}
+        transform="translateY(-50%)"
+        _hover={{ bg: "rgba(255, 255, 255, 0)" }}
+        onClick={() => setShowFreezeBanner(false)}
+      />
+    </Flex>
+  </Box>
+)}
+
+
         </Box>
       </Slide>
 
@@ -262,9 +284,11 @@ export default function Navbar() {
               <Tooltip
                 label={
                   isFrozen
-                    ? `New ranking in ${timeLeft}`
-                    : `Next claim in ${timeLeft}`
+                    ? `The game is locked on Saturday`
+                    : "Start playing now!"
                 }
+                placement="top"
+                hasArrow
               >
                 <Button size="default" variant="primary" isDisabled={isFrozen} onClick={handlePlay}>
                   PLAY

@@ -24,6 +24,9 @@ export interface InteractiveHeadingProps
   enableTilt?: boolean;
   /** how long to wait for a tilt-permission response (ms) */
   permissionTimeout?: number;
+
+  /** NEW: allow disabling the auto "breathing" animation on mobile */
+  enableMobileAutoAnimate?: boolean;
 }
 
 export default function InteractiveHeading({
@@ -32,15 +35,16 @@ export default function InteractiveHeading({
   maxWidth           = 146,
   minSlant           = -15,
   maxSlant           = 15,
-  minWidthMobile    = minWidth,
-  maxWidthMobile    = maxWidth,
-  minSlantMobile    = minSlant,
-  maxSlantMobile    = maxSlant,
+  minWidthMobile     = minWidth,
+  maxWidthMobile     = maxWidth,
+  minSlantMobile     = minSlant,
+  maxSlantMobile     = maxSlant,
   previewWidth       = (26 + 146) / 2,
   previewSlant       = 0,
   transitionDuration = 0.3,
   enableTilt         = true,
   permissionTimeout  = 5000,
+  enableMobileAutoAnimate = true, // <-- NEW default
 
   fontSize      = "6xl",
   letterSpacing = "0.2em",
@@ -173,11 +177,17 @@ export default function InteractiveHeading({
     return () => clearTimeout(timer as any);
   }, [enableTilt, tiltAllowed, permissionDenied, permissionTimeout]);
 
-  // 4) Auto-animate on deny
+  // 4) Auto-animate on deny (with mobile toggle)
   useEffect(() => {
-    if (!(enableTilt && permissionDenied)) return;
+    if (!enableTilt || !permissionDenied) return;
+
+    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+    // if we're on mobile and the prop is disabled, do not animate
+    if (mobile && !enableMobileAutoAnimate) return;
+
     let rafId: number;
     let startTs = 0;
+
     const animate = (ts: number) => {
       if (!startTs) startTs = ts;
       const t = (ts - startTs) / 1000;
@@ -191,11 +201,13 @@ export default function InteractiveHeading({
       }
       rafId = requestAnimationFrame(animate);
     };
+
     rafId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafId);
   }, [
     enableTilt,
     permissionDenied,
+    enableMobileAutoAnimate,  // <- NEW dependency
     effectiveMinWidth,
     effectiveMaxWidth,
     effectiveMinSlant,

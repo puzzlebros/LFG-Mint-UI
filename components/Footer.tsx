@@ -17,7 +17,7 @@ export function Footer() {
       <Flex align="center" justify="space-between">
         {/* left: legal text */}
         <Text fontSize="0.75rem">
-          © {new Date().getFullYear()} LFGNFT. All rights reserved.
+          {new Date().getFullYear()} ©LETSFLAMINGONFT
         </Text>
 
         {/* right: social icons */}

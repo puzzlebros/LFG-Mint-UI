@@ -49,10 +49,22 @@ import { useWindowSize } from "../utils/useWindowSize";
 import Confetti from "react-confetti";
 import ShowNft from "../components/modals/showNft";
 
-const pulse = keyframes`
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.05); }
+
+const pulseClaim = keyframes`
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(108, 0, 255, 0.7);
+  }
+  70% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 16px rgba(108, 0, 255, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(108, 0, 255, 0);
+  }
 `;
+
 const hatch = keyframes`
   0%   { filter: blur(3px); transform: scale(1) translate(0,0) rotate(0deg); }
   20%  { filter: blur(2px); transform: scale(1.02) translate(-2px,1px) rotate(-1deg); }
@@ -62,12 +74,18 @@ const hatch = keyframes`
  100%  { filter: blur(0); transform: scale(1.1) translate(0,0) rotate(0deg); }
 `;
 
+const gradientShift = keyframes`
+  0%   { background-position: 50% 0%; }
+  50%  { background-position: 50% 100%; }
+  100% { background-position: 50% 0%; }
+`;
+
 const DUMMY_NFT: { mint: PublicKey; offChainMetadata: JsonMetadata } = {
   mint: publicKey("11111111111111111111111111111111"),
   offChainMetadata: {
-    name: "Let’s Flamingo #DEMO",
+    name: "LFG #DEMO",
     description: "Demo preview of your minted Flamingo. This is local-only.",
-    image: "/images/skins/1.png", // put any local asset here
+    image: "/images/skins/1.png",
     attributes: [
       { trait_type: "Background", value: "Lavender" },
       { trait_type: "Mood", value: "Hyped" },
@@ -107,9 +125,9 @@ export default function MintPage() {
   const [checkEligibility, setCheckEligibility] = useState<boolean>(false);
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
-  const { isFrozen } = useWeeklyCycle();  // get frozen state from your weekly cycle hook
+  const { isFrozen } = useWeeklyCycle();
 
-  // Accessing wallet and candy machine details
+  // wallet + CM
   const { publicKey: walletPublicKey, connected } = useWallet();
   const [candyMachine, setCandyMachine] = useState<CandyMachine>();
   const [candyGuard, setCandyGuard] = useState<CandyGuard>();
@@ -118,17 +136,17 @@ export default function MintPage() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
 
-useEffect(() => {
-  if (process.env.NODE_ENV === "production") return;
-  const qs = new URLSearchParams(window.location.search);
-  if (qs.has("demoNft")) {
-    setIsDemo(true);
-    setMintsCreated([DUMMY_NFT]);
-    onShowNftOpen();
-  }
-}, [onShowNftOpen]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.has("demoNft")) {
+      setIsDemo(true);
+      setMintsCreated([DUMMY_NFT]);
+      onShowNftOpen();
+    }
+  }, [onShowNftOpen]);
 
-  // Trigger confetti when NFT modal opens
+  // confetti when NFT modal opens
   useEffect(() => {
     if (isShowNftOpen) {
       setShowConfetti(true);
@@ -139,31 +157,30 @@ useEffect(() => {
     }
   }, [isShowNftOpen]);
 
-  // Check if the wallet is in the top-10 leaderboard
+  // wallet in top10?
   useEffect(() => {
     if (isDemo) return;
     if (!walletPublicKey || !top10Wallets || top10Wallets.length === 0) return;
-    setIsAllowed(top10Wallets.includes(walletPublicKey.toString())); 
-  }, [walletPublicKey, top10Wallets]);
+    setIsAllowed(top10Wallets.includes(walletPublicKey.toString()));
+  }, [walletPublicKey, top10Wallets, isDemo]);
 
   useEffect(() => {
     if (isDemo) return;
     if (top10Wallets.length > 0) {
-      cacheLeaderboard(top10Wallets)
+      cacheLeaderboard(top10Wallets);
     }
-  }, [top10Wallets])
+  }, [top10Wallets, isDemo]);
 
-  // CandyMachine & Guard
+  // CM ID
   const candyMachineId = useMemo(() => {
     if (!process.env.NEXT_PUBLIC_CANDY_MACHINE_ID) {
       toast({ title: "No Candy Machine ID in .env", status: "error" });
-      // fallback dummy
       return publicKey("11111111111111111111111111111111");
     }
     return publicKey(process.env.NEXT_PUBLIC_CANDY_MACHINE_ID);
   }, [toast]);
 
-  // Clear on wallet disconnect
+  // clear on disconnect
   useEffect(() => {
     if (isDemo) return;
     if (!walletPublicKey) {
@@ -174,9 +191,9 @@ useEffect(() => {
       setCandyMachine(undefined);
       setCandyGuard(undefined);
     }
-  }, [walletPublicKey]);
+  }, [walletPublicKey, isDemo]);
 
-  // Fetch CandyMachine & Guard ONCE, when wallet connects
+  // fetch CM + Guard once on connect
   useEffect(() => {
     if (isDemo) return;
     if (!walletPublicKey || candyMachine) return;
@@ -195,14 +212,14 @@ useEffect(() => {
         toast({ title: "Error loading Candy Machine", status: "error" });
       } finally {
         setLoading(false);
-        // kick off one guard check now that CM+guard are loaded
         if (walletPublicKey) setCheckEligibility(true);
       }
     })();
-  }, [walletPublicKey, candyMachine, candyMachineId, umi, toast]);
+  }, [walletPublicKey, candyMachine, candyMachineId, umi, toast, isDemo]);
 
   const isMinting = guards.some((g) => g.minting);
 
+  // guardChecker
   useEffect(() => {
     if (isDemo) return;
     if (!checkEligibility || isMinting) return;
@@ -215,7 +232,6 @@ useEffect(() => {
     setLoading(true);
     let cancelled = false;
 
-    // Ensure top10Wallets is available
     if (!top10Wallets) {
       console.error("Top-10 wallets data is not available.");
       setLoading(false);
@@ -259,14 +275,12 @@ useEffect(() => {
     toast,
     isMinting,
     top10Wallets,
+    isDemo,
   ]);
 
-  // After mint completes, wait for user to close the NFT-popup before
-  // re-fetching both on-chain supply *and* re-running guardChecker.
+  // after mint finishes & modal closes, refresh supply + guards
   const onNftModalClose = () => {
-    // (1) close the popup
     onShowNftClose();
-    // (2) pull fresh CM data so `itemsRedeemed` / `itemsAvailable` updates
     console.log("🔄 Re-fetching Candy Machine supply…");
     setLoading(true);
     fetchCandyMachine(umi, candyMachineId)
@@ -276,12 +290,12 @@ useEffect(() => {
         toast({ title: "Error updating supply", status: "error" });
       })
       .finally(() => {
-        // (3) now that supply is updated, re-run guardChecker exactly once
         setCheckEligibility(true);
         setLoading(false);
       });
   };
 
+  // post to /api/postMint once per mint
   useEffect(() => {
     if (isDemo) return;
     if (!mintsCreated || mintsCreated.length === 0) return;
@@ -289,7 +303,6 @@ useEffect(() => {
     const mintAddress = mint?.toString();
     if (!offChainMetadata?.name || !offChainMetadata.image || !mintAddress) return;
 
-    // Only run if this mint hasn't been posted yet
     if (hasPostedMint(mintAddress)) {
       console.log(`[API POST] Already posted for mint ${mintAddress}, skipping`);
       return;
@@ -300,11 +313,11 @@ useEffect(() => {
       imageUrl: offChainMetadata.image,
       mintAddress,
     })
-    .then(() => setPostedMint(mintAddress))
-    .catch(err => console.error("⚠️ postMint failed:", err));
-  }, [mintsCreated]);
+      .then(() => setPostedMint(mintAddress))
+      .catch(err => console.error("⚠️ postMint failed:", err));
+  }, [mintsCreated, isDemo]);
 
-  // Refresh on window focus
+  // refresh on focus
   useEffect(() => {
     if (isDemo) return;
     const onFocus = () => {
@@ -315,40 +328,40 @@ useEffect(() => {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [walletPublicKey, isMinting]);
+  }, [walletPublicKey, isMinting, isDemo]);
 
   const PageContent = () => {
-    // Find allow-list group label
+    // allow-list group
     const allowListLabel = candyGuard
       ?.groups.find(g => g.guards.allowList.__option === 'Some')
       ?.label;
     const allowGuard = guards.find(g => g.label === allowListLabel);
 
-    // Show states
+    // states
     const showLogin = !connected;
     const showClaim = Boolean(
       walletPublicKey &&
       allowGuard?.allowed &&
       allowGuard.maxAmount > 0 &&
-      isFrozen    // only allow claim button if in frozen window
+      isFrozen
     );
-    const showMint = Boolean(
-      walletPublicKey &&
-      !showClaim &&
-      isAllowed  // Use the new isAllowed state to check if the user is eligible to mint
-    );
+    // showMint = any connected wallet that is not in claim state
+    const showMint = Boolean(walletPublicKey && !showClaim);
 
     useEffect(() => {
       if (isDemo) return;
-        console.log(
-          `Claim eligibility: ${showClaim} Wallet in top-10: ${isAllowed}`
-        );
-      }, [showClaim, isAllowed]);
+      console.log(
+        `Claim eligibility: ${showClaim} Wallet in top-10 (any allowed guard): ${isAllowed}`
+      );
+    }, [showClaim, isAllowed]);
 
-    // Claim uses only allowGuard
-    const claimGuardList = useMemo(() => allowGuard ? [allowGuard] : [], [allowGuard]);
+    // claim uses only allowGuard
+    const claimGuardList = useMemo(
+      () => (allowGuard ? [allowGuard] : []),
+      [allowGuard]
+    );
 
-    // Pay/mint uses other allowed guards; drop 'default' if multiple
+    // pay mint uses non-allowList allowed guards, drop default if multiple
     const payGuardList = useMemo(() => {
       const arr = guards.filter(g => g.label !== allowListLabel && g.allowed);
       return arr.length > 1 ? arr.filter(g => g.label !== 'default') : arr;
@@ -359,54 +372,190 @@ useEffect(() => {
       ? Number(candyMachine.data.itemsAvailable) - Number(candyMachine.itemsRedeemed)
       : 0;
 
+    // dynamic title + description
+    let title = headerText;
+    let descriptionContent: JSX.Element;
+
+    if (showClaim) {
+      title = "MINT YOUR REWARD";
+      descriptionContent = (
+        <>
+          <Text as="span" fontWeight="bold">
+            Congrats, Top 10 champ!
+          </Text>
+          <br />
+          You’ve got what it takes, hit the button and mint your NFT
+          before the 24 hour window closes.
+        </>
+      );
+    } else if (showMint) {
+      title = "GET YOUR LFG";
+      descriptionContent = (
+        <>
+          <b>Want to help the flock grow?</b>
+          <br />
+          Buy your NFT and fly with us, every mint keeps the project
+          soaring and unlocks new adventures for the community.
+        </>
+      );
+    } else if (showLogin) {
+      title = "CONNECT YOUR WALLET";
+      descriptionContent = (
+        <>
+          <Text as="span" fontWeight="bold">
+            Log in to join the flock.
+          </Text>
+          <br />
+          Play to win or mint right away!
+        </>
+      );
+    } else {
+      // fallback – should be rare
+      title = headerText;
+      descriptionContent = (
+        <>
+          Connect your wallet to see if you can mint and join the flock.
+        </>
+      );
+    }
+
+    // which guard list + button props
+    const activeGuardList = showClaim ? claimGuardList : payGuardList;
+    const claimButtonProps = showClaim
+      ? { animation: `${pulseClaim} 1.6s ease-in-out infinite` }
+      : undefined;
+
     return (
       <Flex
         direction={{ base: "column", md: "row" }}
         align="center"
         justify="center"
         flex="1"
-        gap={6}
+        gap={{ base: 3, md: 15 }}
         px={2}
         mt="20"
       >
-        {/* LEFT */}
-        <VStack align="center" spacing={6} flex={1} h="100%" justify="center">
-          <Heading
-            fontSize="5.8rem"
-            fontWeight="normal"
-            textAlign="center"
-            textStyle="condensed"
-            lineHeight="4.5rem"
-          >
-            {headerText}
-          </Heading>
+        {/* LEFT: title, description, LFGs remaining, admin */}
+        <VStack align="center" spacing={4} flex={1} h="100%" justify="center">
+<Heading
+  mt={{ base: "-3", md: "-10" }}
+  fontSize={{ base: "2.7rem", md: "3.7rem" }}   // smaller on mobile
+  fontWeight="normal"
+  textAlign="center"
+  textStyle="narrow"
+  lineHeight={{ base: "2.3rem", md: "3.3rem" }} // adjusted for mobile
+>
+  {showLogin ? (
+    <>
+      CONNECT
+      <br />
+      YOUR WALLET
+    </>
+  ) : (
+    title
+  )}
+</Heading>
 
-          {showLogin && (
-            <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
-              <Text as="span" fontWeight="bold">Log in to join the flock.</Text><br/>
-              Play to win or mint right away!
+  <Text
+    textAlign="center"
+    textStyle="copy"
+    fontSize={{ base: "1rem", md: "1.2rem" }}     // smaller on mobile
+    lineHeight={{ base: "1.3rem", md: "1.7rem" }} // adjusted for mobile
+  >
+    {descriptionContent}
+  </Text>
+
+          {/* Hide LFGs remaining on showLogin */}
+          {!showLogin && (
+            <Text
+              textAlign="center"
+              mt={{ base: "-2", md: "-2" }}
+              // gradient animation applied at container level
+              bgGradient="linear(to-b, brand.Purple, brand.Pink)"
+              bgSize="100% 200%"
+              animation={`${gradientShift} 3.5s ease-in-out infinite`}
+              bgClip="text"
+              color="transparent"
+              fontSize={{ base: "1.3rem", md: "1.7rem" }}
+            >
+              {/* label in regular style */}
+              <Text
+                as="span"
+                textStyle="normal"
+                fontWeight="normal"
+                mr={2}
+                bg="inherit"
+                bgClip="inherit"
+              >
+                {availableCount}
+              </Text>
+              {/* number in narrow style */}
+              <Text
+                as="span"
+                textStyle="narrow"
+                fontWeight="normal"
+                bg="inherit"
+                bgClip="inherit"
+              >
+                REMAINING
+              </Text>
             </Text>
           )}
-          {showClaim && (
-            <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
-              <Text as="span" fontWeight="bold">You are a top 10 winner.</Text><br/>
-              Claim your Flamingo FREE!
-            </Text>
-          )}
-          {showMint && (
-            <Text textAlign="center" textStyle="copy" fontSize="1.3rem">
-              <Text as="span" fontWeight="bold">Support the project.</Text><br/>
-              Mint your Flamingo<br/>and join the flock.
-            </Text>
+</VStack>
+
+        {/* RIGHT: pack image + button + price */}
+        <VStack align="center" spacing={2} flex={1}>
+          {/* Image / skeleton */}
+          {walletPublicKey ? (
+            (!candyMachine || loading) ? (
+              <Skeleton
+                w={{ base: "200px", md: "375px" }}
+                h={{ base: "200px", md: "475px" }}
+                rounded="md"
+              />
+            ) : (
+              <Box
+                w="100%"
+                maxW={{ base: "250px", md: "800px" }}
+                animation={isMinting ? `${hatch} 0.8s ease-in-out infinite` : undefined}
+                justifyContent="center"
+                display="flex"
+              >
+                <Image
+                  src={image}
+                  alt="Project artwork"
+                  rounded="md"
+                  objectFit="cover"
+                  w="90%"
+                  h="auto"
+                  maxH={{ base: "350px", md: "800px" }}
+                />
+              </Box>
+            )
+          ) : (
+            <Box w="100%" maxW={{ base: "100%", md: "400" }} justifyContent="center" display="flex">
+              <Image
+                src={image}
+                alt="Project artwork"
+                rounded="md"
+                objectFit="cover"
+                w="90%"
+                h="auto"
+                maxH={{ base: "300px", md: "400" }}
+              />
+            </Box>
           )}
 
+          {/* Button + price under image */}
           {walletPublicKey ? (
             (!candyMachine || !candyGuard || loading) ? (
-              <Center w="full"><Skeleton h="48px" w="200px" /></Center>
+              <Center w="full">
+                <Skeleton h="48px" w="200px" />
+              </Center>
             ) : (
               <Center w="full">
                 <ButtonList
-                  guardList={ showClaim ? claimGuardList : payGuardList }
+                  guardList={activeGuardList}
                   candyMachine={candyMachine}
                   candyGuard={candyGuard}
                   umi={umi}
@@ -416,84 +565,34 @@ useEffect(() => {
                   onOpen={onShowNftOpen}
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
-                  {...(showClaim
-                    ? { buttonProps: { animation: `${pulse} 1.2s ease-in-out infinite`, colorScheme: "pink" } }
-                    : {})}
+                  buttonProps={claimButtonProps}
                 />
               </Center>
             )
           ) : (
             <Center w="full">
-              <Tooltip label="Connect a wallet to mint" hasArrow placement="top" openDelay={200}>
+              <Tooltip
+                label="Connect a wallet to mint"
+                hasArrow
+                placement="top"
+                openDelay={200}
+              >
                 <span>
-                  <Button size="default" isDisabled>Mint</Button>
+                  <Button size="default" isDisabled mt={2}>
+                    MINT 
+                  </Button>
                 </span>
               </Tooltip>
             </Center>
-          )}
-
-        {/* ADMIN */}
-        {umi.identity.publicKey === candyMachine?.authority && (
-          <Button size="default" mt={6} onClick={onInitializerOpen}>ADMIN</Button>
-        )}
-        </VStack>
-
-        {/* RIGHT */}
-        <VStack align="center" spacing={2} flex={1}>
-          {walletPublicKey ? (
-            (!candyMachine || loading) ? (
-              <Skeleton
-                w={{ base: "200px", md: "375px" }}
-                h={{ base: "200px", md: "475px" }}
-                rounded="md"
-              />
-            ) : (
-              <>
-                <Box
-                  w="100%"
-                  maxW={{ base: "100%", md: "800px" }}
-                  animation={isMinting ? `${hatch} 0.8s ease-in-out infinite` : undefined}
-                >
-                  <Image
-                    src={image}
-                    alt="Project artwork"
-                    rounded="md"
-                    objectFit="cover"
-                    w="100%"
-                    h="auto"
-                    maxH={{ base: "300px", md: "800px" }}
-                  />
-                </Box>
-                <Text fontStyle="copy" fontWeight="bold" color="brand.DarkPink">
-                  LFGs remaining: {availableCount}
-                </Text>
-              </>
-            )
-          ) : (
-            <Box w="100%" maxW={{ base: "100%", md: "800px" }}>
-              <Image
-                src={image}
-                alt="Project artwork"
-                rounded="md"
-                objectFit="cover"
-                w="100%"
-                h="auto"
-                maxH={{ base: "300px", md: "800px" }}
-              />
-            </Box>
           )}
         </VStack>
       </Flex>
     );
   };
 
-  // Main return
+  // main return
   return (
-    <Flex
-      direction="column"
-      minH="100vh"
-      // bgGradient="linear(to-b, #93D2FF 0%, #BDACFF 29%, #FFBCD5 100%)"
-    >
+    <Flex direction="column" minH="100vh">
       <Flex
         flex="1"
         direction="column"
@@ -507,24 +606,15 @@ useEffect(() => {
           <PageContent />
         </Box>
 
-        {/* Show minted NFT */}
+        {/* minted NFT modal */}
         <Modal isOpen={isShowNftOpen} onClose={onNftModalClose}>
           <ModalOverlay />
           <ModalContent
-          maxW={{ base: "90vw", md: "900px" }}
-          w="full"
-          borderRadius={0}>
-            <ModalHeader
-            textStyle="condensed"
-            ml="6"
-            mr="6"
-            fontSize={{ base: "4rem", md: "3rem" }}
-            lineHeight={"3.5rem"}
-            pb={1}
-            mb={-5}
-            >
-              A NEW FLAMINGO HAS BORN!
-            </ModalHeader>
+            maxW={{ base: "90vw", md: "900px" }}
+            w="full"
+            borderRadius={0}
+          >
+
             <ModalCloseButton />
             <ModalBody>
               <ShowNft nfts={mintsCreated} />
@@ -532,19 +622,22 @@ useEffect(() => {
           </ModalContent>
         </Modal>
 
-        {/* InitializeModal */}
+        {/* initializer modal */}
         <Modal isOpen={isInitializerOpen} onClose={onInitializerClose}>
           <ModalOverlay />
           <ModalContent maxW="600px">
             <ModalHeader>Initializer</ModalHeader>
             <ModalCloseButton />
             <ModalBody>
-              <InitializeModal umi={umi} candyMachine={candyMachine!} candyGuard={candyGuard!}/>
+              {candyMachine && candyGuard && (
+                <InitializeModal umi={umi} candyMachine={candyMachine} candyGuard={candyGuard} />
+              )}
             </ModalBody>
           </ModalContent>
         </Modal>
       </Flex>
-      <Footer/>
+
+      <Footer />
 
       {/* Confetti overlay */}
       {showConfetti && (

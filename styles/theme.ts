@@ -62,6 +62,13 @@ export default extendTheme({
       textAlign:  "center",
       color:      "brand.DarkPurple",
     },
+        copyLight: {
+      fontFamily: `"Noto Sans", sans-serif`,
+      fontWeight: 200,
+      lineHeight: "normal",
+      textAlign:  "center",
+      color:      "brand.DarkPurple",
+    },
     ranking: {
       fontFamily: `"Noto Sans", sans-serif`,
       fontSize:   "16px",
@@ -97,6 +104,11 @@ export default extendTheme({
         nav: {
           w: { base: "250px", md: "170px" },
           h: { base: "45px", md: "35px" },
+          textStyle:  "narrow",
+        },
+        popup: {
+          w: { base: "250px", md: "250px" },
+          h:              "40px",
           textStyle:  "narrow",
         },
       },
