@@ -158,8 +158,26 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     }
 
     updateLoadingText(`Please sign...`, guardList, guardToUse.label, setGuardList);
-    
-    const signedTransactions = await signAllTransactions(mintTxs);
+
+    // ──────────────────────────────────────────────────────────────
+    // Ensure Phantom (wallet) signs first, then additional signers
+    // ──────────────────────────────────────────────────────────────
+    const walletSigner = umi.identity;
+
+    const mintTxsWithWalletFirst = mintTxs.map(({ transaction, signers }) => {
+      // Remove any existing instance of the wallet signer, then re-add it at the front
+      const otherSigners = signers.filter(
+        (s) => s.publicKey !== walletSigner.publicKey
+      );
+
+      return {
+        transaction,
+        signers: [walletSigner, ...otherSigners],
+      };
+    });
+
+    const signedTransactions = await signAllTransactions(mintTxsWithWalletFirst);
+
 
     let signatures: Uint8Array[] = [];
     let amountSent = 0;

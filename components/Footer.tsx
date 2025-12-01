@@ -2,6 +2,11 @@
 import React from 'react'
 import { Box, Flex, Text, Link, Icon } from '@chakra-ui/react'
 import { SiX, SiDiscord, SiTelegram } from 'react-icons/si'
+import { MdOutlineStorefront, MdInsights, MdRadar } from 'react-icons/md'
+
+const MAGIC_EDEN_URL  = 'https://magiceden.io/marketplace/letsflamingonft'          // ← put your collection URL here
+const TENSOR_URL      = 'https://www.tensor.trade/trade/letsflamingonft'      // ← or direct collection link
+const DAPPRADAR_URL   = 'https://dappradar.com/dapp/let-s-flamingo'         // ← or your app’s page
 
 export function Footer() {
   return (
@@ -12,7 +17,6 @@ export function Footer() {
       px={{ base: 4, md: 8 }}
       bg="brand.Pink"
       color="brand.White"
-      // no extra margin/padding to “push” content—just sits at bottom of its container
     >
       <Flex align="center" justify="space-between">
         {/* left: legal text */}
@@ -20,8 +24,9 @@ export function Footer() {
           {new Date().getFullYear()} ©LETSFLAMINGONFT
         </Text>
 
-        {/* right: social icons */}
+        {/* right: social + marketplaces */}
         <Flex align="center" gap={4}>
+          {/* X */}
           <Link
             href="https://x.com/LetsFlamingoNFT"
             isExternal
@@ -34,6 +39,7 @@ export function Footer() {
             <Icon as={SiX} boxSize={5} _hover={{ color: 'brand.DarkPurple' }} />
           </Link>
 
+          {/* Discord */}
           <Link
             href="https://discord.gg/Bek9PJgYz8"
             isExternal
@@ -46,6 +52,7 @@ export function Footer() {
             <Icon as={SiDiscord} boxSize={5} _hover={{ color: 'brand.Purple' }} />
           </Link>
 
+          {/* Telegram */}
           <Link
             href="https://t.me/letsflamingo"
             isExternal
@@ -56,6 +63,45 @@ export function Footer() {
             lineHeight="1"
           >
             <Icon as={SiTelegram} boxSize={5} _hover={{ color: 'brand.Purple' }} />
+          </Link>
+
+          {/* Magic Eden */}
+          <Link
+            href={MAGIC_EDEN_URL}
+            isExternal
+            aria-label="Magic Eden"
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            lineHeight="1"
+          >
+            <Icon as={MdOutlineStorefront} boxSize={5} _hover={{ color: 'brand.DarkPurple' }} />
+          </Link>
+
+          {/* Tensor */}
+          <Link
+            href={TENSOR_URL}
+            isExternal
+            aria-label="Tensor"
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            lineHeight="1"
+          >
+            <Icon as={MdInsights} boxSize={5} _hover={{ color: 'brand.DarkPurple' }} />
+          </Link>
+
+          {/* DappRadar */}
+          <Link
+            href={DAPPRADAR_URL}
+            isExternal
+            aria-label="DappRadar"
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            lineHeight="1"
+          >
+            <Icon as={MdRadar} boxSize={5} _hover={{ color: 'brand.DarkPurple' }} />
           </Link>
         </Flex>
       </Flex>

@@ -25,41 +25,57 @@ export interface InteractiveHeadingProps
   /** how long to wait for a tilt-permission response (ms) */
   permissionTimeout?: number;
 
-  /** NEW: allow disabling the auto "breathing" animation on mobile */
+  /** kept for compatibility, now effectively unused */
   enableMobileAutoAnimate?: boolean;
+
+  /** when this changes, on mobile we randomize once */
+  randomizeOnMobileKey?: number | string;
 }
 
 export default function InteractiveHeading({
   children,
-  minWidth           = 26,
-  maxWidth           = 146,
-  minSlant           = -15,
-  maxSlant           = 15,
-  minWidthMobile     = minWidth,
-  maxWidthMobile     = maxWidth,
-  minSlantMobile     = minSlant,
-  maxSlantMobile     = maxSlant,
-  previewWidth       = (26 + 146) / 2,
-  previewSlant       = 0,
+  minWidth = 26,
+  maxWidth = 146,
+  minSlant = -15,
+  maxSlant = 15,
+  minWidthMobile = minWidth,
+  maxWidthMobile = maxWidth,
+  minSlantMobile = minSlant,
+  maxSlantMobile = maxSlant,
+  previewWidth = (26 + 146) / 2,
+  previewSlant = 0,
   transitionDuration = 0.3,
-  enableTilt         = true,
-  permissionTimeout  = 5000,
-  enableMobileAutoAnimate = true, // <-- NEW default
+  enableTilt = true,
+  permissionTimeout = 5000,
+  enableMobileAutoAnimate = true, // no-op now
+  randomizeOnMobileKey,
 
-  fontSize      = "6xl",
+  fontSize = "6xl",
   letterSpacing = "0.2em",
-  lineHeight    = "1.1",
+  lineHeight = "1.1",
   ...rest
 }: InteractiveHeadingProps) {
   const ref = useRef<HTMLHeadingElement>(null);
-  const [tiltAllowed, setTiltAllowed]           = useState(false);
+  const [tiltAllowed, setTiltAllowed] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   // determine responsive axis limits
-  const effectiveMinWidth = useBreakpointValue({ base: minWidthMobile, md: minWidth })!;
-  const effectiveMaxWidth = useBreakpointValue({ base: maxWidthMobile, md: maxWidth })!;
-  const effectiveMinSlant = useBreakpointValue({ base: minSlantMobile, md: minSlant })!;
-  const effectiveMaxSlant = useBreakpointValue({ base: maxSlantMobile, md: maxSlant })!;
+  const effectiveMinWidth = useBreakpointValue({
+    base: minWidthMobile,
+    md: minWidth,
+  })!;
+  const effectiveMaxWidth = useBreakpointValue({
+    base: maxWidthMobile,
+    md: maxWidth,
+  })!;
+  const effectiveMinSlant = useBreakpointValue({
+    base: minSlantMobile,
+    md: minSlant,
+  })!;
+  const effectiveMaxSlant = useBreakpointValue({
+    base: maxSlantMobile,
+    md: maxSlant,
+  })!;
 
   // Utility to check if current device is mobile
   function isMobile() {
@@ -67,67 +83,54 @@ export default function InteractiveHeading({
     return window.innerWidth < 768;
   }
 
-  // 1) Core: pointer + deviceorientation (if allowed), with mobile throttling
+  // Helper to apply wdth/slnt given normalized [0,1] coords
+  function applyAxesFromNorm(xNorm: number, yNorm: number) {
+    const el = ref.current;
+    if (!el) return;
+    const wd =
+      effectiveMinWidth +
+      xNorm * (effectiveMaxWidth - effectiveMinWidth);
+    const sl =
+      effectiveMinSlant +
+      yNorm * (effectiveMaxSlant - effectiveMinSlant);
+    el.style.fontVariationSettings = `"wdth" ${wd.toFixed(
+      1
+    )}, "slnt" ${sl.toFixed(1)}`;
+  }
+
+  // 1) Desktop: pointer + (optionally) deviceorientation
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isMobile()) return; // ❗ Mobile handled separately
+
     const el = ref.current;
     if (!el) return;
 
-    let pointerFrameId: number | null = null;
     let orientationFrameId: number | null = null;
 
-    // Always re-use this logic for both pointer and tilt
-    const updateAxes = (xNorm: number, yNorm: number) => {
-      const wd = effectiveMinWidth + xNorm * (effectiveMaxWidth - effectiveMinWidth);
-      const sl = effectiveMinSlant + yNorm * (effectiveMaxSlant - effectiveMinSlant);
-      el.style.fontVariationSettings =
-        `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
+    const onPointerMove = (e: PointerEvent) => {
+      const xNorm = clamp(e.clientX / window.innerWidth, 0, 1);
+      const yNorm = clamp(e.clientY / window.innerHeight, 0, 1);
+      applyAxesFromNorm(xNorm, yNorm);
     };
 
-    // Pointer move handler
-    const onPointerMove = (e: PointerEvent) => {
-      if (isMobile()) {
-        if (pointerFrameId) cancelAnimationFrame(pointerFrameId);
-        pointerFrameId = requestAnimationFrame(() => {
-          updateAxes(
-            clamp(e.clientX / window.innerWidth, 0, 1),
-            clamp(e.clientY / window.innerHeight, 0, 1)
-          );
-        });
-      } else {
-        updateAxes(
-          clamp(e.clientX / window.innerWidth, 0, 1),
-          clamp(e.clientY / window.innerHeight, 0, 1)
-        );
-      }
-    };
     window.addEventListener("pointermove", onPointerMove);
 
-    // Device orientation handler
-    let onDeviceOrientation: ((e: DeviceOrientationEvent) => void) | null = null;
+    // Device orientation handler (desktop / tablets that support it)
+    let onDeviceOrientation: ((e: DeviceOrientationEvent) => void) | null =
+      null;
     if (enableTilt && tiltAllowed) {
       onDeviceOrientation = (e: DeviceOrientationEvent) => {
         const gamma = e.gamma ?? 0;
-        const beta  = e.beta  ?? 0;
-        if (isMobile()) {
-          if (orientationFrameId) cancelAnimationFrame(orientationFrameId);
-          orientationFrameId = requestAnimationFrame(() => {
-            updateAxes(
-              clamp((gamma + 45) / 90, 0, 1),
-              clamp((beta  + 45) / 90, 0, 1)
-            );
-          });
-        } else {
-          updateAxes(
-            clamp((gamma + 45) / 90, 0, 1),
-            clamp((beta  + 45) / 90, 0, 1)
-          );
-        }
+        const beta = e.beta ?? 0;
+        const xNorm = clamp((gamma + 45) / 90, 0, 1);
+        const yNorm = clamp((beta + 45) / 90, 0, 1);
+        applyAxesFromNorm(xNorm, yNorm);
       };
       window.addEventListener("deviceorientation", onDeviceOrientation);
     }
 
     return () => {
-      if (pointerFrameId) cancelAnimationFrame(pointerFrameId);
       window.removeEventListener("pointermove", onPointerMove);
       if (onDeviceOrientation) {
         if (orientationFrameId) cancelAnimationFrame(orientationFrameId);
@@ -135,16 +138,24 @@ export default function InteractiveHeading({
       }
     };
   }, [
+    enableTilt,
+    tiltAllowed,
     effectiveMinWidth,
     effectiveMaxWidth,
     effectiveMinSlant,
     effectiveMaxSlant,
-    enableTilt,
-    tiltAllowed,
   ]);
 
-  // 2) Prompt for permission on first tap (iOS)
+  // 2) Prompt for permission (desktop/tablet only now)
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isMobile()) {
+      // On mobile we're using tap-random, not tilt
+      setTiltAllowed(false);
+      setPermissionDenied(true);
+      return;
+    }
+
     const devOrient = (DeviceOrientationEvent as any);
     if (enableTilt && typeof devOrient?.requestPermission === "function") {
       const el = ref.current;
@@ -167,9 +178,12 @@ export default function InteractiveHeading({
     }
   }, [enableTilt]);
 
-  // 3) Fallback on denial or timeout
+  // 3) Fallback on denial or timeout (desktop only, but **no** auto-animate now)
   useEffect(() => {
     if (!enableTilt) return;
+    if (typeof window === "undefined") return;
+    if (isMobile()) return; // mobile uses tap-random now
+
     let timer: NodeJS.Timeout;
     if (!tiltAllowed && !permissionDenied) {
       timer = setTimeout(() => setPermissionDenied(true), permissionTimeout);
@@ -177,37 +191,39 @@ export default function InteractiveHeading({
     return () => clearTimeout(timer as any);
   }, [enableTilt, tiltAllowed, permissionDenied, permissionTimeout]);
 
-  // 4) Auto-animate on deny (with mobile toggle)
+  // 4) Mobile: random switches on tap (anywhere)
   useEffect(() => {
-    if (!enableTilt || !permissionDenied) return;
+    if (typeof window === "undefined") return;
+    if (!isMobile()) return;
 
-    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
-    // if we're on mobile and the prop is disabled, do not animate
-    if (mobile && !enableMobileAutoAnimate) return;
-
-    let rafId: number;
-    let startTs = 0;
-
-    const animate = (ts: number) => {
-      if (!startTs) startTs = ts;
-      const t = (ts - startTs) / 1000;
-      const xNorm = (Math.sin(t) + 1) / 2;
-      const yNorm = (Math.cos(t) + 1) / 2;
-      if (ref.current) {
-        const wd = effectiveMinWidth + xNorm * (effectiveMaxWidth - effectiveMinWidth);
-        const sl = effectiveMinSlant + yNorm * (effectiveMaxSlant - effectiveMinSlant);
-        ref.current.style.fontVariationSettings =
-          `"wdth" ${wd.toFixed(1)}, "slnt" ${sl.toFixed(1)}`;
-      }
-      rafId = requestAnimationFrame(animate);
+    const handleTap = () => {
+      const xNorm = Math.random();
+      const yNorm = Math.random();
+      applyAxesFromNorm(xNorm, yNorm);
     };
 
-    rafId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafId);
+    window.addEventListener("pointerdown", handleTap);
+    return () => {
+      window.removeEventListener("pointerdown", handleTap);
+    };
   }, [
-    enableTilt,
-    permissionDenied,
-    enableMobileAutoAnimate,  // <- NEW dependency
+    effectiveMinWidth,
+    effectiveMaxWidth,
+    effectiveMinSlant,
+    effectiveMaxSlant,
+  ]);
+
+  // 5) External trigger from parent (used by TraitDresser on mobile)
+  useEffect(() => {
+    if (randomizeOnMobileKey === undefined) return;
+    if (typeof window === "undefined") return;
+    if (!isMobile()) return;
+
+    const xNorm = Math.random();
+    const yNorm = Math.random();
+    applyAxesFromNorm(xNorm, yNorm);
+  }, [
+    randomizeOnMobileKey,
     effectiveMinWidth,
     effectiveMaxWidth,
     effectiveMinSlant,

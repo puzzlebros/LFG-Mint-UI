@@ -6,6 +6,8 @@ interface TraitDresserProps {
   skinSrc: string;
   skinSize?: number;
   traitPaths: Record<string, string[]>;
+  /** NEW: notify parent whenever we cycle a trait */
+  onCycle?: () => void;
 }
 
 interface Overlay {
@@ -19,6 +21,7 @@ export default function TraitDresser({
   skinSrc,
   skinSize = 300,
   traitPaths,
+  onCycle,
 }: TraitDresserProps) {
   const THRESHOLD = 50;
 
@@ -77,8 +80,13 @@ export default function TraitDresser({
 
   // Cycle logic
   function requestCycle() {
-    if (animating.current) queued.current = true;
-    else cycleTrait();
+    if (animating.current) {
+      queued.current = true;
+    } else {
+      cycleTrait();
+    }
+    // 🔔 Notify parent that we cycled (used to jiggle the MINT heading)
+    if (onCycle) onCycle();
   }
 
   function cycleTrait() {

@@ -51,6 +51,10 @@ export default function HomePage() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [hasShown, setHasShown] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [mintHeadingRandomKey, setMintHeadingRandomKey] = useState(0);
+
+  const bumpMintHeadingRandom = () =>
+  setMintHeadingRandomKey((k) => k + 1);
 
   const {
     isOpen: isEntryOpen,
@@ -640,96 +644,100 @@ const pulseClaim = keyframes`
 </Box>
         </Box>
 
-      {/** ——— Mint Section ——— **/}
-      <Box
-        as="section"
-        flex="none"
-        w="100%"
-        h="100vh"
-        scrollSnapAlign="start"
-        scrollSnapStop="always"
-        position="relative"
-        overflow="hidden"
-        overscrollBehaviorY="contain"
+{/** ——— Mint Section ——— **/}
+<Box
+  as="section"
+  flex="none"
+  w="100%"
+  h="100vh"
+  scrollSnapAlign="start"
+  scrollSnapStop="always"
+  position="relative"
+  overflow="hidden"
+  overscrollBehaviorY="contain"
+>
+  {/* Layer 1: background heading */}
+  <Box
+    position="absolute"
+    inset="0"
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    zIndex={0}
+    pointerEvents="none"
+    mt="-30"
+  >
+    <InteractiveHeading
+      minWidth={45}
+      maxWidth={85}
+      minSlant={-10}
+      maxSlant={30}
+      previewWidth={80}
+      previewSlant={0}
+      transitionDuration={0.2}
+      fontSize={mintBgSize}
+      fontWeight="normal"
+      letterSpacing="0.01em"
+      lineHeight=".75"
+      color="brand.Pink"
+      whiteSpace="pre"
+      // 👇 NEW: whenever this changes (on mobile) we randomize once
+      randomizeOnMobileKey={mintHeadingRandomKey}
+    >
+      {mintBgText}
+    </InteractiveHeading>
+  </Box>
+
+  {/* Layer 2: centered TraitDresser with button positioned relative */}
+  <Box
+    position="absolute"
+    inset="0"
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    zIndex={1}
+  >
+    <Box display="flex" flexDirection="column" alignItems="center" mt="10vh">
+      <TraitDresser
+        skinSrc="/images/skins/1.png"
+        skinSize={traitSize}
+        traitPaths={{
+          clothes: [
+            '/images/traits/clothes/1.png',
+            '/images/traits/clothes/2.png',
+            '/images/traits/clothes/3.png',
+          ],
+          beak: ['/images/traits/beak/1.png'],
+          eyes: [
+            '/images/traits/eyes/1.png',
+            '/images/traits/eyes/2.png',
+            '/images/traits/eyes/3.png',
+          ],
+          head: [
+            '/images/traits/head/1.png',
+            '/images/traits/head/2.png',
+            '/images/traits/head/3.png',
+          ],
+        }}
+        // 👇 NEW: every cycle (tap on mobile) bumps the heading random key
+        onCycle={bumpMintHeadingRandom}
+      />
+      <Button
+        mt={mintButtonMargin}
+        size="default"
+        onClick={() => (window.location.href = '/mint')}
       >
-        {/* Layer 1: background heading */}
-        <Box
-          position="absolute"
-          inset="0"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          zIndex={0}
-          pointerEvents="none"
-          mt="-30"
-        >
-          <InteractiveHeading
-            minWidth={45}
-            maxWidth={85}
-            minSlant={-10}
-            maxSlant={30}
-            previewWidth={80}
-            previewSlant={0}
-            transitionDuration={0.2}
-            fontSize={mintBgSize}
-            fontWeight="normal"
-            letterSpacing="0.01em"
-            lineHeight=".75"
-            color="brand.Pink"
-            whiteSpace="pre"
-          >
-            {mintBgText}
-          </InteractiveHeading>
-        </Box>
+        MINT
+      </Button>
+    </Box>
+  </Box>
 
-        {/* Layer 2: centered TraitDresser with button positioned relative */}
-        <Box
-          position="absolute"
-          inset="0"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          zIndex={1}
-        >
-          {/* Inner wrapper keeps dresser vertically centered, button spaced below */}
-          <Box display="flex" flexDirection="column" alignItems="center" mt="10vh">
-            <TraitDresser
-              skinSrc="/images/skins/1.png"
-              skinSize={traitSize}
-              traitPaths={{
-                clothes: [
-                  '/images/traits/clothes/1.png',
-                  '/images/traits/clothes/2.png',
-                  '/images/traits/clothes/3.png',
-                ],
-                beak: ['/images/traits/beak/1.png'],
-                eyes: [
-                  '/images/traits/eyes/1.png',
-                  '/images/traits/eyes/2.png',
-                  '/images/traits/eyes/3.png',
-                ],
-                head: [
-                  '/images/traits/head/1.png',
-                  '/images/traits/head/2.png',
-                  '/images/traits/head/3.png',
-                ],
-              }}
-            />
-            <Button
-              mt={mintButtonMargin}
-              size="default"
-              onClick={() => (window.location.href = '/mint')}
-            >
-              MINT
-            </Button>
-          </Box>
-        </Box>
+  {/* Layer 3: footer */}
+  <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
+    <Footer />
+  </Box>
+</Box>
 
-        {/* Layer 3: footer */}
-        <Box position="absolute" bottom="0" left="0" w="100%" zIndex="3">
-          <Footer />
-        </Box>
-        </Box>
 
       {/* Confetti overlay */}
       {isClient && showConfetti && (
