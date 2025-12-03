@@ -22,11 +22,112 @@ import {
   Signer,
   publicKey,
   BlockhashWithExpiryBlockHeight,
+  KeypairSigner
 } from "@metaplex-foundation/umi";
 import { GuardReturn } from "../metaplex/checkerHelper";
-import { Connection } from "@solana/web3.js";
+import {
+  Connection,
+  Keypair,
+  Transaction as LegacyTransaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import { setComputeUnitPrice, setComputeUnitLimit } from "@metaplex-foundation/mpl-toolbox";
 import { toWeb3JsTransaction } from "@metaplex-foundation/umi-web3js-adapters";
+import type { WalletContextState } from "@solana/wallet-adapter-react"; // 👈 new
+import { base58 } from "@metaplex-foundation/umi/serializers";         // 👈 new
+
+// -----------------------------------------------------------------------------
+// Joey / Phantom–compliant signing helper
+// Phantom wallet signs first, then local mint keypairs sign, then we send raw tx
+// -----------------------------------------------------------------------------
+
+type AnyWeb3Tx = LegacyTransaction | VersionedTransaction;
+
+export async function signAndSendWithWalletFirst(
+  umi: Umi,
+  wallet: WalletContextState,
+  mintTxs: { transaction: Transaction; signers: Signer[] }[]
+): Promise<Uint8Array[]> {
+  if (!wallet.publicKey) {
+    throw new Error("Wallet not connected");
+  }
+  if (!wallet.signAllTransactions && !wallet.signTransaction) {
+    throw new Error("Wallet does not support transaction signing");
+  }
+
+  // 1) Convert Umi transactions to web3.js transactions
+  const web3Txs: AnyWeb3Tx[] = mintTxs.map(({ transaction }) =>
+    toWeb3JsTransaction(transaction) as AnyWeb3Tx
+  );
+
+  // 2) Phantom wallet signs first
+  const walletSigned: AnyWeb3Tx[] = wallet.signAllTransactions
+    ? await wallet.signAllTransactions(web3Txs)
+    : await Promise.all(web3Txs.map((tx) => wallet.signTransaction!(tx)));
+
+  // 3) Local mint keypairs sign AFTER wallet
+  const fullySigned: AnyWeb3Tx[] = walletSigned.map((tx, index) => {
+    const { signers } = mintTxs[index];
+
+    const extraSigners = signers.filter(
+      (s) => s.publicKey.toString() !== wallet.publicKey!.toBase58()
+    ) as KeypairSigner[];
+
+    console.log(
+      "[signAndSendWithWalletFirst] tx",
+      index,
+      "wallet =",
+      wallet.publicKey?.toBase58(),
+      "extra signers =",
+      extraSigners.map((s) => s.publicKey.toString())
+    );
+
+    for (const extra of extraSigners) {
+      const kp = Keypair.fromSecretKey(extra.secretKey);
+
+      // LegacyTransaction has partialSign; VersionedTransaction has sign([kp])
+      if ("partialSign" in tx) {
+        (tx as LegacyTransaction).partialSign(kp);
+      } else if ("sign" in tx) {
+        (tx as VersionedTransaction).sign([kp]);
+      }
+    }
+
+    return tx;
+  });
+
+  // 4) Send raw transactions through a standard web3.js Connection
+  const connection = new Connection(umi.rpc.getEndpoint(), "finalized");
+  const signatures: Uint8Array[] = [];
+
+  for (let i = 0; i < fullySigned.length; i++) {
+    const tx = fullySigned[i];
+
+    // avoid TS complaining about versioned vs legacy here
+    const raw = (tx as any).serialize() as Buffer;
+
+    // IMPORTANT: sendRawTransaction returns a base58 *string*, NOT bytes
+    const sigStr = await connection.sendRawTransaction(raw, {
+      skipPreflight: false,
+      maxRetries: 1,
+    });
+
+    // 🔧 FIX: assert the tuple type instead of the element, using `any` to
+    //        bypass the weird serializer typing that mixes in `number`.
+    const [sigBytes] = (base58.serialize as any)(sigStr) as [
+      Uint8Array,
+      number
+    ];
+
+    console.log(
+      `[signAndSendWithWalletFirst] sent tx ${i + 1}/${fullySigned.length} → ${sigStr}`
+    );
+
+    signatures.push(sigBytes);
+  }
+
+  return signatures;
+}
 
 export interface GuardButtonList extends GuardReturn {
   header: string;
@@ -299,3 +400,4 @@ export const getRequiredCU = async (umi: Umi, transaction: Transaction) => {
   }
   return simulatedTx.value.unitsConsumed + 20_000 || defaultCU;
 };
+

@@ -6,7 +6,6 @@ import {
   Umi, 
   createBigInt,   
   generateSigner,
-  signAllTransactions,
   KeypairSigner,
   publicKey,
   PublicKey,
@@ -31,10 +30,11 @@ import {
   mintArgsBuilder,
   GuardButtonList,
   buildTxs,
-  sendAllowListProof
+  sendAllowListProof,
+  signAndSendWithWalletFirst,
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, WalletContextState } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
@@ -78,29 +78,48 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
 
 const mintClick = async (
   umi: Umi,
+  wallet: WalletContextState,
   guard: GuardReturn,
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
   mintAmount: number,
-setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined>>
-,
+  setMintsCreated: Dispatch<
+    SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined>
+  >,
   guardList: GuardReturn[],
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
 ) => {
+  const toast = createStandaloneToast();
+
+  if (!wallet.publicKey) {
+    toast.toast({
+      title: "Connect your wallet to mint",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+    return;
+  }
+
   const guardToUse = chooseGuardToUse(guard, candyGuard);
-  if (!candyGuard.groups.find(g => g.label === guardToUse.label)) {
+  if (!candyGuard.groups.find((g) => g.label === guardToUse.label)) {
     console.error(`Group label ${guardToUse.label} not found in candyGuard groups!`);
     return;
   }
 
-  console.log(`[mintClick] selected label="${guard.label}" → resolved group="${guardToUse.label}"`);
-console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`);
+  console.log(
+    `[mintClick] selected label="${guard.label}" → resolved group="${guardToUse.label}"`
+  );
+  console.log(
+    `[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`
+  );
 
-
-   try {
-    //find the guard by guardToUse.label and set minting to true
+  try {
+    // ──────────────────────────────────────────────────────────────
+    // 1) Mark this guard as "minting"
+    // ──────────────────────────────────────────────────────────────
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
     if (guardIndex === -1) {
       console.error("guard not found");
@@ -110,12 +129,18 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
+    // ──────────────────────────────────────────────────────────────
+    // 2) If allowList is active, ensure PDA proof exists first
+    //    This is still its own route tx, but wallet-only signed.
+    // ──────────────────────────────────────────────────────────────
     if (guardToUse.guards.allowList.__option === "Some") {
+      updateLoadingText("Authenticating...", guardList, guardToUse.label, setGuardList);
       await sendAllowListProof(umi, guardToUse, candyMachine);
-      updateLoadingText(`Authenticating...`, guardList, guardToUse.label, setGuardList);
     }
 
-    // fetch LUT
+    // ──────────────────────────────────────────────────────────────
+    // 3) Fetch LUT (if configured)
+    // ──────────────────────────────────────────────────────────────
     let tables: AddressLookupTableInput[] = [];
     const lut = process.env.NEXT_PUBLIC_LUT;
     if (lut) {
@@ -123,7 +148,7 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
       const fetchedLut = await fetchAddressLookupTable(umi, lutPubKey);
       tables = [fetchedLut];
     } else {
-      createStandaloneToast().toast({
+      toast.toast({
         title: "The developer should really set a lookup table!",
         status: "warning",
         duration: 900,
@@ -131,15 +156,22 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
       });
     }
 
-    let nftsigners = [] as KeypairSigner[];
-
+    // ──────────────────────────────────────────────────────────────
+    // 4) Create NFT mint keypairs for each mint
+    // ──────────────────────────────────────────────────────────────
+    const nftsigners: KeypairSigner[] = [];
     for (let i = 0; i < mintAmount; i++) {
       const nftMint = generateSigner(umi);
       nftsigners.push(nftMint);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // 5) Build mint args + txs (still Umi–style)
+    // ──────────────────────────────────────────────────────────────
     const mintArgsArray = mintArgsBuilder(guardToUse, mintAmount);
-    const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
+    const latestBlockhash = await umi.rpc.getLatestBlockhash({
+      commitment: "finalized",
+    });
 
     const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
       await buildTxs(
@@ -152,80 +184,42 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
         tables,
         latestBlockhash.blockhash
       );
+
     if (!mintTxs.length) {
       console.error("no mint tx built!");
       return;
     }
 
-    updateLoadingText(`Please sign...`, guardList, guardToUse.label, setGuardList);
+    updateLoadingText("Please sign...", guardList, guardToUse.label, setGuardList);
 
     // ──────────────────────────────────────────────────────────────
-    // Ensure Phantom (wallet) signs first, then additional signers
+    // 6) Joey / Phantom-compliant signing:
+    //    Phantom signs first → extra mint keypairs sign afterward →
+    //    send raw transaction bytes via web3.js Connection.
     // ──────────────────────────────────────────────────────────────
-    const walletSigner = umi.identity;
+    const signatures = await signAndSendWithWalletFirst(umi, wallet, mintTxs);
 
-    const mintTxsWithWalletFirst = mintTxs.map(({ transaction, signers }) => {
-      // Remove any existing instance of the wallet signer, then re-add it at the front
-      const otherSigners = signers.filter(
-        (s) => s.publicKey !== walletSigner.publicKey
-      );
-
-      return {
-        transaction,
-        signers: [walletSigner, ...otherSigners],
-      };
-    });
-
-    const signedTransactions = await signAllTransactions(mintTxsWithWalletFirst);
-
-
-    let signatures: Uint8Array[] = [];
-    let amountSent = 0;
-    const sendPromises = signedTransactions.map((tx, index) => {
-      return umi.rpc
-        .sendTransaction(tx, { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
-        .then((signature) => {
-          console.log(
-            `Transaction ${index + 1} resolved with signature: ${
-              base58.deserialize(signature)[0]
-            }`
-          );
-          amountSent = amountSent + 1;
-          signatures.push(signature);
-          return { status: "fulfilled", value: signature };
-        })
-        .catch((error) => {
-          console.error(`Transaction ${index + 1} failed:`, error);
-          return { status: "rejected", reason: error };
-        });
-    });
-
-    await Promise.allSettled(sendPromises);
-
-    if (!(await sendPromises[0]).status === true) {
-      // throw error that no tx was created
-      throw new Error("no tx was created");
-    }
-    updateLoadingText(
-      `Joining the flock`,
-      guardList,
-      guardToUse.label,
-      setGuardList
-    );
-
-    createStandaloneToast().toast({
-      title: `${signedTransactions.length} Transaction(s) sent!`,
+    toast.toast({
+      title: `${signatures.length} transaction(s) sent!`,
       status: "success",
       duration: 3000,
     });
-    const successfulMints = await verifyTx(umi, signatures, nftsigners, latestBlockhash, "finalized");
-    updateLoadingText(
-      "Fetching your LFG",
-      guardList,
-      guardToUse.label,
-      setGuardList
+
+    // ──────────────────────────────────────────────────────────────
+    // 7) Verify & fetch NFTs
+    // ──────────────────────────────────────────────────────────────
+    updateLoadingText("Joining the flock", guardList, guardToUse.label, setGuardList);
+
+    const successfulMints = await verifyTx(
+      umi,
+      signatures,
+      nftsigners,
+      latestBlockhash,
+      "finalized"
     );
-    // Filter out successful mints and map to fetch promises
+
+    updateLoadingText("Fetching your LFG", guardList, guardToUse.label, setGuardList);
+
     const fetchNftPromises = successfulMints.map((mintResult) =>
       fetchNft(umi, mintResult).then((nftData) => ({
         mint: mintResult,
@@ -234,20 +228,19 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     );
 
     const fetchedNftsResults = await Promise.all(fetchNftPromises);
-    // Prepare data for setting mintsCreated
-    let newMintsCreated: { mint: PublicKey; offChainMetadata: JsonMetadata }[] =
+
+    const newMintsCreated: { mint: PublicKey; offChainMetadata: JsonMetadata }[] =
       [];
-    fetchedNftsResults.map((acc) => {
+
+    fetchedNftsResults.forEach((acc) => {
       if (acc.nftData.digitalAsset && acc.nftData.jsonMetadata) {
         newMintsCreated.push({
           mint: acc.mint,
           offChainMetadata: acc.nftData.jsonMetadata,
         });
       }
-      return acc;
-    }, []);
+    });
 
-    // Update mintsCreated only if there are new mints
     if (newMintsCreated.length > 0) {
       setMintsCreated(newMintsCreated);
       onOpen();
@@ -262,7 +255,6 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
       isClosable: true,
     });
   } finally {
-    //find the guard by guardToUse.label and set minting to true
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
     if (guardIndex === -1) {
       console.error("guard not found");
@@ -275,6 +267,7 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     updateLoadingText(undefined, guardList, guardToUse.label, setGuardList);
   }
 };
+
 
 const Timer = ({
   solanaTime,
@@ -362,7 +355,8 @@ export function ButtonList({
   buttonProps,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey } = useWallet();
+  const wallet = useWallet();                      // 👈 grab full wallet context
+  const { publicKey: walletPublicKey } = wallet;
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -423,6 +417,7 @@ export function ButtonList({
     onClick={() =>
       mintClick(
         umi,
+        wallet,
         btn,
         candyMachine,
         candyGuard,
