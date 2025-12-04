@@ -1,11 +1,17 @@
 // components/mintButton.tsx
 import React, { useState, useEffect, Dispatch, SetStateAction } from "react";
-import { CandyGuard, CandyMachine } from "@metaplex-foundation/mpl-core-candy-machine";
+import {
+  CandyGuard,
+  CandyMachine,
+  GuardGroup,
+  DefaultGuardSet,
+} from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import { 
   Umi, 
   createBigInt,   
   generateSigner,
+  signAllTransactions,
   KeypairSigner,
   publicKey,
   PublicKey,
@@ -30,15 +36,15 @@ import {
   mintArgsBuilder,
   GuardButtonList,
   buildTxs,
-  sendAllowListProof,
-  signAndSendWithWalletFirst,
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
-import { useWallet, WalletContextState } from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
 import { createStandaloneToast } from "@chakra-ui/react";
+
+const toast = createStandaloneToast();
 
 const updateLoadingText = (
   loadingText: string | undefined,
@@ -78,10 +84,10 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
 
 const mintClick = async (
   umi: Umi,
-  wallet: WalletContextState,
   guard: GuardReturn,
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
+  ownedTokens: DigitalAssetWithToken[],
   mintAmount: number,
   setMintsCreated: Dispatch<
     SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined>
@@ -90,36 +96,18 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
+  ownedCoreAssets: DasApiAssetAndAssetMintLimit[]
 ) => {
-  const toast = createStandaloneToast();
-
-  if (!wallet.publicKey) {
-    toast.toast({
-      title: "Connect your wallet to mint",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-    return;
-  }
-
   const guardToUse = chooseGuardToUse(guard, candyGuard);
-  if (!candyGuard.groups.find((g) => g.label === guardToUse.label)) {
-    console.error(`Group label ${guardToUse.label} not found in candyGuard groups!`);
+  if (!guardToUse.guards) {
+    console.error("no guard defined!");
     return;
   }
+  const guardGroup = guardToUse as GuardGroup<DefaultGuardSet>;
 
-  console.log(
-    `[mintClick] selected label="${guard.label}" → resolved group="${guardToUse.label}"`
-  );
-  console.log(
-    `[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`
-  );
 
-  try {
-    // ──────────────────────────────────────────────────────────────
-    // 1) Mark this guard as "minting"
-    // ──────────────────────────────────────────────────────────────
+   try {
+    // mark guard as minting
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
     if (guardIndex === -1) {
       console.error("guard not found");
@@ -129,18 +117,37 @@ const mintClick = async (
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
-    // ──────────────────────────────────────────────────────────────
-    // 2) If allowList is active, ensure PDA proof exists first
-    //    This is still its own route tx, but wallet-only signed.
-    // ──────────────────────────────────────────────────────────────
-    if (guardToUse.guards.allowList.__option === "Some") {
-      updateLoadingText("Authenticating...", guardList, guardToUse.label, setGuardList);
-      await sendAllowListProof(umi, guardToUse, candyMachine);
+    // ─────────────────────────────
+    // 1) Allowlist route tx (if needed)
+    // ─────────────────────────────
+    let routeBuild = await routeBuilder(umi, guardGroup, candyMachine);
+
+    if (routeBuild) {
+      toast.toast({
+        title: "Allowlist detected. Please sign to be approved to mint.",
+        status: "info",
+        duration: 900,
+        isClosable: true,
+      });
+
+      const latestBlockhash = await umi.rpc.getLatestBlockhash({
+        commitment: "finalized",
+      });
+
+      routeBuild = routeBuild.setBlockhash(latestBlockhash);
+      const routeTx = routeBuild.build(umi);
+
+      await umi.rpc.sendTransaction(routeTx, {
+        skipPreflight: true,
+        maxRetries: 1,
+        preflightCommitment: "finalized",
+        commitment: "finalized",
+      });
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 3) Fetch LUT (if configured)
-    // ──────────────────────────────────────────────────────────────
+    // ─────────────────────────────
+    // 2) LUT fetch
+    // ─────────────────────────────
     let tables: AddressLookupTableInput[] = [];
     const lut = process.env.NEXT_PUBLIC_LUT;
     if (lut) {
@@ -156,23 +163,30 @@ const mintClick = async (
       });
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 4) Create NFT mint keypairs for each mint
-    // ──────────────────────────────────────────────────────────────
+    // ─────────────────────────────
+    // 3) Generate mint keypairs
+    // ─────────────────────────────
     const nftsigners: KeypairSigner[] = [];
     for (let i = 0; i < mintAmount; i++) {
       const nftMint = generateSigner(umi);
       nftsigners.push(nftMint);
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 5) Build mint args + txs (still Umi–style)
-    // ──────────────────────────────────────────────────────────────
-    const mintArgsArray = mintArgsBuilder(guardToUse, mintAmount);
+    // ─────────────────────────────
+    // 4) Mint args (allowList + others)
+    // ─────────────────────────────
+    const mintArgsArray = mintArgsBuilder(
+      guardGroup,
+      mintAmount
+    );
+
     const latestBlockhash = await umi.rpc.getLatestBlockhash({
       commitment: "finalized",
     });
 
+    // ─────────────────────────────
+    // 5) Build mint txs (Joey style)
+    // ─────────────────────────────
     const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
       await buildTxs(
         umi,
@@ -182,7 +196,7 @@ const mintClick = async (
         guardToUse,
         mintArgsArray,
         tables,
-        latestBlockhash.blockhash
+        latestBlockhash.blockhash,
       );
 
     if (!mintTxs.length) {
@@ -190,26 +204,66 @@ const mintClick = async (
       return;
     }
 
-    updateLoadingText("Please sign...", guardList, guardToUse.label, setGuardList);
+    updateLoadingText(
+      `Please sign`,
+      guardList,
+      guardToUse.label,
+      setGuardList
+    );
 
-    // ──────────────────────────────────────────────────────────────
-    // 6) Joey / Phantom-compliant signing:
-    //    Phantom signs first → extra mint keypairs sign afterward →
-    //    send raw transaction bytes via web3.js Connection.
-    // ──────────────────────────────────────────────────────────────
-    const signatures = await signAndSendWithWalletFirst(umi, wallet, mintTxs);
+    // ─────────────────────────────
+    // 6) Joey-style signing
+    // ─────────────────────────────
+    const signedTransactions = await signAllTransactions(mintTxs);
+
+    let signatures: Uint8Array[] = [];
+    let amountSent = 0;
+
+    const sendPromises = signedTransactions.map((tx, index) =>
+      umi.rpc
+        .sendTransaction(tx, {
+          skipPreflight: true,
+          maxRetries: 1,
+          preflightCommitment: "finalized",
+          commitment: "finalized",
+        })
+        .then((signature) => {
+          const sigString = base58.deserialize(signature)[0];
+          console.log(
+            `Transaction ${index + 1} resolved with signature: ${sigString}`
+          );
+          amountSent += 1;
+          signatures.push(signature);
+          return { status: "fulfilled", value: signature };
+        })
+        .catch((error) => {
+          console.error(`Transaction ${index + 1} failed:`, error);
+          return { status: "rejected", reason: error };
+        })
+    );
+
+    await Promise.allSettled(sendPromises);
+
+    if (!(await sendPromises[0]).status === true) {
+      throw new Error("no tx was created");
+    }
+
+    updateLoadingText(
+      `finalizing transaction(s)`,
+      guardList,
+      guardToUse.label,
+      setGuardList
+    );
 
     toast.toast({
-      title: `${signatures.length} transaction(s) sent!`,
+      title: `${signedTransactions.length} Transaction(s) sent!`,
       status: "success",
       duration: 3000,
     });
 
-    // ──────────────────────────────────────────────────────────────
-    // 7) Verify & fetch NFTs
-    // ──────────────────────────────────────────────────────────────
-    updateLoadingText("Joining the flock", guardList, guardToUse.label, setGuardList);
-
+    // ─────────────────────────────
+    // 7) Verify & fetch minted NFTs
+    // ─────────────────────────────
     const successfulMints = await verifyTx(
       umi,
       signatures,
@@ -218,7 +272,12 @@ const mintClick = async (
       "finalized"
     );
 
-    updateLoadingText("Fetching your LFG", guardList, guardToUse.label, setGuardList);
+    updateLoadingText(
+      "Fetching your NFT",
+      guardList,
+      guardToUse.label,
+      setGuardList
+    );
 
     const fetchNftPromises = successfulMints.map((mintResult) =>
       fetchNft(umi, mintResult).then((nftData) => ({
@@ -229,8 +288,10 @@ const mintClick = async (
 
     const fetchedNftsResults = await Promise.all(fetchNftPromises);
 
-    const newMintsCreated: { mint: PublicKey; offChainMetadata: JsonMetadata }[] =
-      [];
+    const newMintsCreated: {
+      mint: PublicKey;
+      offChainMetadata?: JsonMetadata;
+    }[] = [];
 
     fetchedNftsResults.forEach((acc) => {
       if (acc.nftData.digitalAsset && acc.nftData.jsonMetadata) {
@@ -247,7 +308,7 @@ const mintClick = async (
     }
   } catch (e) {
     console.error(`minting failed because of ${e}`);
-    createStandaloneToast().toast({
+    toast.toast({
       title: "Your mint failed!",
       description: "Please try again.",
       status: "error",
@@ -256,18 +317,15 @@ const mintClick = async (
     });
   } finally {
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
-    if (guardIndex === -1) {
-      console.error("guard not found");
-      return;
+    if (guardIndex !== -1) {
+      const newGuardList = [...guardList];
+      newGuardList[guardIndex].minting = false;
+      newGuardList[guardIndex].loadingText = undefined;
+      setGuardList(newGuardList);
     }
-    const newGuardList = [...guardList];
-    newGuardList[guardIndex].minting = false;
-    setGuardList(newGuardList);
     setCheckEligibility(true);
-    updateLoadingText(undefined, guardList, guardToUse.label, setGuardList);
   }
 };
-
 
 const Timer = ({
   solanaTime,
@@ -348,15 +406,17 @@ export function ButtonList({
   guardList,
   candyMachine,
   candyGuard,
+  ownedTokens = [],
+  ownedCoreAssets = [],
   setGuardList,
   setMintsCreated,
   onOpen,
   setCheckEligibility,
   buttonProps,
 }: Props): JSX.Element {
+
   const solanaTime = useSolanaTime();
-  const wallet = useWallet();                      // 👈 grab full wallet context
-  const { publicKey: walletPublicKey } = wallet;
+  const { publicKey: walletPublicKey } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -417,16 +477,17 @@ export function ButtonList({
     onClick={() =>
       mintClick(
         umi,
-        wallet,
-        btn,
+        btn,              // guard: GuardReturn
         candyMachine,
         candyGuard,
-        1,
+        ownedTokens,      // ⬅️ added, matches ownedTokens param
+        1,                // mintAmount
         setMintsCreated,
         guardList,
         setGuardList,
         onOpen,
-        setCheckEligibility
+        setCheckEligibility,
+        ownedCoreAssets   // ⬅️ added, matches ownedCoreAssets param
       ).catch((err) => {
         console.error("Unexpected mintClick error:", err);
       })
