@@ -382,3 +382,55 @@ export const getRequiredCU = async (
 
   return simulatedTx.value.unitsConsumed + 20_000 || defaultCU;
 };
+
+export async function debugSimulateSignedTx(
+  umi: Umi,
+  tx: Transaction,
+  label: string
+): Promise<any> {
+  try {
+    const web3tx = toWeb3JsTransaction(tx);
+    const connection = new Connection(umi.rpc.getEndpoint(), "processed");
+
+    const simulatedTx = await connection.simulateTransaction(web3tx, {
+      replaceRecentBlockhash: true,
+      sigVerify: false,
+    });
+
+    const value = simulatedTx.value;
+
+    if (value.err) {
+      console.error(
+        `[SIMULATION ERROR] ${label}`,
+        value.err,
+        "\nLogs:\n",
+        value.logs
+      );
+    } else {
+      console.log(
+        `[SIMULATION OK] ${label}`,
+        "unitsConsumed:",
+        value.unitsConsumed
+      );
+    }
+
+    return value;
+  } catch (e) {
+    console.error(`[SIMULATION EXCEPTION] ${label}`, e);
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Allowlist utilities
+// ──────────────────────────────────────────────────────────────
+
+export function getCurrentAllowlist(): string[] {
+  return [..._top10Wallets];
+}
+
+export function isWalletInAllowlist(wallet: string | undefined | null): boolean {
+  if (!wallet) return false;
+  return _top10Wallets.includes(wallet);
+}
+

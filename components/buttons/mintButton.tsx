@@ -36,6 +36,9 @@ import {
   mintArgsBuilder,
   GuardButtonList,
   buildTxs,
+  debugSimulateSignedTx,
+  isWalletInAllowlist,
+  getCurrentAllowlist,
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -96,7 +99,8 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  ownedCoreAssets: DasApiAssetAndAssetMintLimit[]
+  ownedCoreAssets: DasApiAssetAndAssetMintLimit[],
+  walletAddress: string | undefined,         // ⬅️ NEW
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
   if (!guardToUse.guards) {
@@ -105,8 +109,41 @@ const mintClick = async (
   }
   const guardGroup = guardToUse as GuardGroup<DefaultGuardSet>;
 
+  // Log identity vs wallet (important!)
+  console.log(
+    "[mintClick] umi.identity =", umi.identity.publicKey.toString(),
+    "wallet =", walletAddress
+  );
 
-   try {
+  // If allowList guard is active, enforce that:
+  if (guardGroup.guards.allowList.__option === "Some") {
+    const allowlist = getCurrentAllowlist();
+    console.log("[mintClick] current allowlist =", allowlist);
+
+    if (!allowlist.length) {
+      toast.toast({
+        title: "Allowlist not loaded",
+        description: "Please wait a moment and try again.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!isWalletInAllowlist(walletAddress)) {
+      toast.toast({
+        title: "Wallet not in Top 10",
+        description: "Only top 10 wallets on the leaderboard can mint right now.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+  }
+
+  try {
     // mark guard as minting
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
     if (guardIndex === -1) {
@@ -117,9 +154,7 @@ const mintClick = async (
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
-    // ─────────────────────────────
     // 1) Allowlist route tx (if needed)
-    // ─────────────────────────────
     let routeBuild = await routeBuilder(umi, guardGroup, candyMachine);
 
     if (routeBuild) {
@@ -131,23 +166,34 @@ const mintClick = async (
       });
 
       const latestBlockhash = await umi.rpc.getLatestBlockhash({
-        commitment: "finalized",
+        commitment: "confirmed",
       });
 
       routeBuild = routeBuild.setBlockhash(latestBlockhash);
       const routeTx = routeBuild.build(umi);
 
+      // Optional: simulate route before sending
+      const routeSim = await debugSimulateSignedTx(umi, routeTx, "allowList.route");
+      if (routeSim && routeSim.err) {
+        toast.toast({
+          title: "Allowlist route simulation failed",
+          description: "Check console logs for details.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        throw new Error("Allowlist route simulation failed");
+      }
+
       await umi.rpc.sendTransaction(routeTx, {
         skipPreflight: true,
         maxRetries: 1,
-        preflightCommitment: "finalized",
-        commitment: "finalized",
+        preflightCommitment: "confirmed",
+        commitment: "confirmed",
       });
     }
 
-    // ─────────────────────────────
     // 2) LUT fetch
-    // ─────────────────────────────
     let tables: AddressLookupTableInput[] = [];
     const lut = process.env.NEXT_PUBLIC_LUT;
     if (lut) {
@@ -163,30 +209,25 @@ const mintClick = async (
       });
     }
 
-    // ─────────────────────────────
     // 3) Generate mint keypairs
-    // ─────────────────────────────
     const nftsigners: KeypairSigner[] = [];
     for (let i = 0; i < mintAmount; i++) {
       const nftMint = generateSigner(umi);
       nftsigners.push(nftMint);
     }
 
-    // ─────────────────────────────
     // 4) Mint args (allowList + others)
-    // ─────────────────────────────
     const mintArgsArray = mintArgsBuilder(
       guardGroup,
       mintAmount
+      // (you can extend to pass ownedTokens / core assets again later)
     );
 
     const latestBlockhash = await umi.rpc.getLatestBlockhash({
-      commitment: "finalized",
+      commitment: "confirmed",
     });
 
-    // ─────────────────────────────
-    // 5) Build mint txs (Joey style)
-    // ─────────────────────────────
+    // 5) Build mint txs
     const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
       await buildTxs(
         umi,
@@ -211,10 +252,28 @@ const mintClick = async (
       setGuardList
     );
 
-    // ─────────────────────────────
     // 6) Joey-style signing
-    // ─────────────────────────────
     const signedTransactions = await signAllTransactions(mintTxs);
+
+    // 6.5) SIMULATE SIGNED TXS BEFORE SENDING
+    for (let i = 0; i < signedTransactions.length; i++) {
+      const simVal = await debugSimulateSignedTx(
+        umi,
+        signedTransactions[i],
+        `mint tx #${i + 1}`
+      );
+
+      if (simVal && simVal.err) {
+        toast.toast({
+          title: "Transaction simulation failed",
+          description: "Check console logs for on-chain error.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        throw new Error("Simulation failed before send");
+      }
+    }
 
     let signatures: Uint8Array[] = [];
     let amountSent = 0;
@@ -224,7 +283,7 @@ const mintClick = async (
         .sendTransaction(tx, {
           skipPreflight: true,
           maxRetries: 1,
-          preflightCommitment: "finalized",
+          preflightCommitment: "confirmed",
           commitment: "finalized",
         })
         .then((signature) => {
@@ -244,7 +303,7 @@ const mintClick = async (
 
     await Promise.allSettled(sendPromises);
 
-    if (!(await sendPromises[0]).status === true) {
+    if (!signatures.length) {
       throw new Error("no tx was created");
     }
 
@@ -256,14 +315,12 @@ const mintClick = async (
     );
 
     toast.toast({
-      title: `${signedTransactions.length} Transaction(s) sent!`,
+      title: `${signatures.length} Transaction(s) sent!`,
       status: "success",
       duration: 3000,
     });
 
-    // ─────────────────────────────
     // 7) Verify & fetch minted NFTs
-    // ─────────────────────────────
     const successfulMints = await verifyTx(
       umi,
       signatures,
@@ -310,9 +367,9 @@ const mintClick = async (
     console.error(`minting failed because of ${e}`);
     toast.toast({
       title: "Your mint failed!",
-      description: "Please try again.",
+      description: "Please check console logs and try again.",
       status: "error",
-      duration: 900,
+      duration: 9000,
       isClosable: true,
     });
   } finally {
@@ -416,7 +473,7 @@ export function ButtonList({
 }: Props): JSX.Element {
 
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey } = useWallet();
+const { publicKey: walletPublicKey } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -487,7 +544,9 @@ export function ButtonList({
         setGuardList,
         onOpen,
         setCheckEligibility,
-        ownedCoreAssets   // ⬅️ added, matches ownedCoreAssets param
+        ownedCoreAssets,   // ⬅️ added, matches ownedCoreAssets param
+            walletPublicKey?.toBase58() ?? undefined  // walletAddress (NEW)
+
       ).catch((err) => {
         console.error("Unexpected mintClick error:", err);
       })
