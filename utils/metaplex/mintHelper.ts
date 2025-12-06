@@ -536,14 +536,26 @@ export const buildTxs = async (
 
 export const getRequiredCU = async (umi: Umi, transaction: Transaction) => {
   const defaultCU = 800_000;
-  const web3tx = toWeb3JsTransaction(transaction);
-  let connection = new Connection(umi.rpc.getEndpoint(), "finalized");
-  const simulatedTx = await connection.simulateTransaction(web3tx, {
-    replaceRecentBlockhash: true,
-    sigVerify: false,
-  });
-  if (simulatedTx.value.err || !simulatedTx.value.unitsConsumed) {
+
+  try {
+    const web3tx = toWeb3JsTransaction(transaction);
+    const connection = new Connection(umi.rpc.getEndpoint(), "finalized");
+
+    const simulatedTx = await connection.simulateTransaction(web3tx, {
+      replaceRecentBlockhash: true,
+      sigVerify: false,
+    });
+
+    if (simulatedTx.value.err || !simulatedTx.value.unitsConsumed) {
+      console.warn("[getRequiredCU] simulation error or no unitsConsumed:", simulatedTx.value.err);
+      return defaultCU;
+    }
+
+    const units = simulatedTx.value.unitsConsumed + 20_000;
+    console.log("[getRequiredCU] unitsConsumed:", simulatedTx.value.unitsConsumed, "→ using:", units);
+    return units;
+  } catch (e) {
+    console.error("[getRequiredCU] simulateTransaction threw:", e);
     return defaultCU;
   }
-  return simulatedTx.value.unitsConsumed + 20_000 || defaultCU;
 };
