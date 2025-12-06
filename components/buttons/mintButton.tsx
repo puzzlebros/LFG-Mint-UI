@@ -31,7 +31,6 @@ import {
   mintArgsBuilder,
   GuardButtonList,
   buildTxs,
-  sendAllowListProof
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -39,6 +38,7 @@ import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
 import { createStandaloneToast } from "@chakra-ui/react";
+import type { MintedNft } from "@/utils/metaplex/types";
 
 const updateLoadingText = (
   loadingText: string | undefined,
@@ -76,18 +76,28 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   return { digitalAsset, jsonMetadata };
 };
 
+const [mintsCreated, setMintsCreated] = useState<MintedNft[]>();
+
+
 const mintClick = async (
   umi: Umi,
   guard: GuardReturn,
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
+  ownedTokens: DigitalAssetWithToken[],
   mintAmount: number,
-setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined>>
-,
+  mintsCreated:
+    | {
+        mint: PublicKey;
+        offChainMetadata: JsonMetadata | undefined;
+      }[]
+    | undefined,
+  setMintsCreated: Dispatch<SetStateAction<MintedNft[] | undefined>>,
   guardList: GuardReturn[],
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
+  ownedCoreAssets: DasApiAssetAndAssetMintLimit[]
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -115,9 +125,18 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
-    if (guardToUse.guards.allowList.__option === "Some") {
-      await sendAllowListProof(umi, guardToUse, candyMachine);
-      updateLoadingText(`Authenticating...`, guardList, guardToUse.label, setGuardList);
+    let routeBuild = await routeBuilder(umi, guardToUse, candyMachine);
+    if (routeBuild) {
+      createStandaloneToast().toast({
+        title: "Allowlist detected. Please sign to be approved to mint.",
+        status: "info",
+        duration: 900,
+        isClosable: true,
+      });
+      const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
+      routeBuild = routeBuild.setBlockhash(latestBlockhash)
+      await umi.rpc
+      .sendTransaction(routeBuild.build(umi), { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
     }
 
     // fetch LUT
@@ -143,7 +162,7 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
       nftsigners.push(nftMint);
     }
 
-    const mintArgsArray = mintArgsBuilder(guardToUse, mintAmount);
+    const mintArgsArray = mintArgsBuilder(guardToUse, ownedTokens, ownedCoreAssets, mintAmount);
     const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
 
     const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
@@ -155,17 +174,16 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
         guardToUse,
         mintArgsArray,
         tables,
-        latestBlockhash.blockhash
+        latestBlockhash.blockhash,
       );
     if (!mintTxs.length) {
       console.error("no mint tx built!");
       return;
     }
 
-    updateLoadingText(`Please sign...`, guardList, guardToUse.label, setGuardList);
-
-const signedTransactions = await signAllTransactions(mintTxs);
-
+    updateLoadingText(`Please sign`, guardList, guardToUse.label, setGuardList);
+    
+    const signedTransactions = await signAllTransactions(mintTxs);
 
     let signatures: Uint8Array[] = [];
     let amountSent = 0;
@@ -195,7 +213,7 @@ const signedTransactions = await signAllTransactions(mintTxs);
       throw new Error("no tx was created");
     }
     updateLoadingText(
-      `Joining the flock`,
+      `finalizing transaction(s)`,
       guardList,
       guardToUse.label,
       setGuardList
@@ -208,7 +226,7 @@ const signedTransactions = await signAllTransactions(mintTxs);
     });
     const successfulMints = await verifyTx(umi, signatures, nftsigners, latestBlockhash, "finalized");
     updateLoadingText(
-      "Fetching your LFG",
+      "Fetching your NFT",
       guardList,
       guardToUse.label,
       setGuardList
@@ -327,14 +345,20 @@ const Timer = ({
 type Props = {
   umi: Umi;
   guardList: GuardReturn[];
-  candyMachine?: CandyMachine;
-  candyGuard?: CandyGuard;
-  ownedTokens?: DigitalAssetWithToken[];
+  candyMachine: CandyMachine | undefined;
+  candyGuard: CandyGuard | undefined;
+  ownedTokens: DigitalAssetWithToken[] | undefined;
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>;
-  setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined>>;
+  mintsCreated:
+    | {
+        mint: PublicKey;
+        offChainMetadata: JsonMetadata | undefined;
+      }[]
+    | undefined;
+  setMintsCreated: Dispatch<SetStateAction<MintedNft[] | undefined>>;
   onOpen: () => void;
   setCheckEligibility: Dispatch<SetStateAction<boolean>>;
-  ownedCoreAssets?: DasApiAssetAndAssetMintLimit[];
+  ownedCoreAssets: DasApiAssetAndAssetMintLimit[] | undefined;
   buttonProps?: ButtonProps;
 };
 
@@ -343,11 +367,14 @@ export function ButtonList({
   guardList,
   candyMachine,
   candyGuard,
+  ownedTokens = [], // provide default empty array
   setGuardList,
+  mintsCreated,
   setMintsCreated,
   onOpen,
   setCheckEligibility,
-  buttonProps,
+  ownedCoreAssets = [],
+  buttonProps
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
   const { publicKey: walletPublicKey } = useWallet();
@@ -414,12 +441,15 @@ export function ButtonList({
         btn,
         candyMachine,
         candyGuard,
+        ownedTokens,
         1,
+        mintsCreated,
         setMintsCreated,
         guardList,
         setGuardList,
         onOpen,
-        setCheckEligibility
+        setCheckEligibility,
+        ownedCoreAssets
       ).catch((err) => {
         console.error("Unexpected mintClick error:", err);
       })
