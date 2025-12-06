@@ -48,7 +48,6 @@ import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 import { useWindowSize } from "../utils/useWindowSize";
 import Confetti from "react-confetti";
 import ShowNft from "../components/modals/showNft";
-import type { MintedNft } from "@/utils/metaplex/types";
 
 
 const pulseClaim = keyframes`
@@ -120,14 +119,13 @@ export default function MintPage() {
   const [loading, setLoading] = useState(true);
   const [guards, setGuards] = useState<GuardReturn[]>([]);
   const [isAllowed, setIsAllowed] = useState(false);
-  const [mintsCreated, setMintsCreated] = useState<MintedNft[]>();
+  const [mintsCreated, setMintsCreated] = useState<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[]>();
   const [ownedTokens, setOwnedTokens] = useState<DigitalAssetWithToken[]>();
   const [ownedCoreAssets, setOwnedCoreAssets] = useState<DasApiAssetAndAssetMintLimit[]>();
   const [checkEligibility, setCheckEligibility] = useState<boolean>(false);
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
   const { isFrozen } = useWeeklyCycle();
-  
 
   // wallet + CM
   const { publicKey: walletPublicKey, connected } = useWallet();
@@ -563,7 +561,6 @@ export default function MintPage() {
                   umi={umi}
                   ownedTokens={ownedTokens}
                   setGuardList={setGuards}
-                  mintsCreated={mintsCreated}
                   setMintsCreated={setMintsCreated}
                   onOpen={onShowNftOpen}
                   setCheckEligibility={setCheckEligibility}
