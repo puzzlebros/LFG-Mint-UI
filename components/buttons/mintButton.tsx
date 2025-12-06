@@ -96,7 +96,7 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
   }
 
   console.log(`[mintClick] selected label="${guard.label}" → resolved group="${guardToUse.label}"`);
-  console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`);
+console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`);
 
 
    try {
@@ -110,20 +110,11 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
-        let routeBuild = await routeBuilder(umi, guardToUse, candyMachine);
-    if (routeBuild) {
-      createStandaloneToast().toast({
-        title: "Allowlist detected. Please sign to be approved to mint.",
-        status: "info",
-        duration: 900,
-        isClosable: true,
-      });
-      const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
-      routeBuild = routeBuild.setBlockhash(latestBlockhash)
-      await umi.rpc
-      .sendTransaction(routeBuild.build(umi), { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
+    if (guardToUse.guards.allowList.__option === "Some") {
+      await sendAllowListProof(umi, guardToUse, candyMachine);
+      updateLoadingText(`Authenticating...`, guardList, guardToUse.label, setGuardList);
     }
-    
+
     // fetch LUT
     let tables: AddressLookupTableInput[] = [];
     const lut = process.env.NEXT_PUBLIC_LUT;
@@ -168,7 +159,25 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
 
     updateLoadingText(`Please sign...`, guardList, guardToUse.label, setGuardList);
 
-    const signedTransactions = await signAllTransactions(mintTxs);
+    // ──────────────────────────────────────────────────────────────
+    // Ensure Phantom (wallet) signs first, then additional signers
+    // ──────────────────────────────────────────────────────────────
+    const walletSigner = umi.identity;
+
+    const mintTxsWithWalletFirst = mintTxs.map(({ transaction, signers }) => {
+      // Remove any existing instance of the wallet signer, then re-add it at the front
+      const otherSigners = signers.filter(
+        (s) => s.publicKey !== walletSigner.publicKey
+      );
+
+      return {
+        transaction,
+        signers: [walletSigner, ...otherSigners],
+      };
+    });
+
+    const signedTransactions = await signAllTransactions(mintTxsWithWalletFirst);
+
 
     let signatures: Uint8Array[] = [];
     let amountSent = 0;
@@ -198,7 +207,7 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
       throw new Error("no tx was created");
     }
     updateLoadingText(
-      `finalizing transaction(s)`,
+      `Joining the flock`,
       guardList,
       guardToUse.label,
       setGuardList
@@ -211,7 +220,7 @@ setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: J
     });
     const successfulMints = await verifyTx(umi, signatures, nftsigners, latestBlockhash, "finalized");
     updateLoadingText(
-      "Fetching your NFT",
+      "Fetching your LFG",
       guardList,
       guardToUse.label,
       setGuardList
