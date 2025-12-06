@@ -76,9 +76,6 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   return { digitalAsset, jsonMetadata };
 };
 
-const [mintsCreated, setMintsCreated] = useState<MintedNft[]>();
-
-
 const mintClick = async (
   umi: Umi,
   guard: GuardReturn,
