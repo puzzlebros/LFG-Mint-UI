@@ -21,7 +21,7 @@ export function Footer() {
       <Flex align="center" justify="space-between">
         {/* left: legal text */}
         <Text fontSize="0.75rem">
-          {new Date().getFullYear()} ©LETSFLAMINGONFT
+          {new Date().getFullYear()} ©LFGNFT
         </Text>
 
         {/* right: social + marketplaces */}

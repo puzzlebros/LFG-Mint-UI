@@ -227,7 +227,7 @@ export default function Navbar() {
       py={2}
       position="relative"
     >
-      {/* Text takes full row width so it can sit flush left on mobile */}
+      {/* Text takes full row width so it can sit left on mobile */}
       <Box flex="1">
         <Text
           textAlign={{ base: "left", md: "center" }}
