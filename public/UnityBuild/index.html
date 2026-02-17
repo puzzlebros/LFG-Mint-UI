@@ -13,6 +13,12 @@
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
 
+    <!-- Preload inside the iframe document (preloads in parent Next document are often "unused") -->
+    <link rel="preload" href="Build/Jumper.loader.js" as="script" />
+    <link rel="preload" href="Build/Jumper.framework.js.br" as="fetch" crossorigin="anonymous" />
+    <link rel="preload" href="Build/Jumper.wasm.br" as="fetch" type="application/wasm" crossorigin="anonymous" />
+    <link rel="preload" href="Build/Jumper.data.br" as="fetch" crossorigin="anonymous" />
+
     <style>
       html,
       body,
@@ -55,7 +61,6 @@
 
       function focusCanvas() {
         try {
-          // Ensure focusable
           canvas.setAttribute("tabindex", "-1");
           canvas.focus({ preventScroll: true });
         } catch (e) {
@@ -67,31 +72,6 @@
       window.focusUnity = function () {
         focusCanvas();
       };
-
-      // Allow parent to request focus via postMessage
-      window.addEventListener("message", function (event) {
-        if (event.origin !== window.location.origin) return;
-
-        const data = event.data;
-        if (data && data.type === "focus") {
-          focusCanvas();
-          return;
-        }
-
-        // Wallet data forwarding (kept intact)
-        if (data?.type === "walletData" && typeof data.payload === "object") {
-          const jsonData = JSON.stringify(data.payload);
-          if (window.unityInstance) {
-            console.log("Forwarding walletData to Unity:", jsonData);
-            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-          } else {
-            // Unity not ready yet; ignore (parent will resend on load / Unity can request)
-            console.debug("walletData received but Unity instance not ready yet.");
-          }
-        } else if (data) {
-          console.debug("Ignored message:", data);
-        }
-      });
 
       // ─────────────────────────────────────────────────────────────
       // Unity Banner
@@ -168,6 +148,58 @@
       document.querySelector("#unity-loading-bar").style.display = "block";
 
       // ─────────────────────────────────────────────────────────────
+      // Interop: Wallet + Focus (postMessage)
+      // ─────────────────────────────────────────────────────────────
+      window.addEventListener("message", function (event) {
+        if (event.origin !== window.location.origin) return;
+
+        const data = event.data;
+
+        // Focus requests from parent
+        if (data && data.type === "focus") {
+          focusCanvas();
+          return;
+        }
+
+        // Wallet data forwarding to Unity
+        if (data?.type === "walletData" && typeof data.payload === "object") {
+          const jsonData = JSON.stringify(data.payload);
+          if (window.unityInstance) {
+            console.log("Forwarding walletData to Unity:", jsonData);
+            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
+          } else {
+            console.debug("walletData received but Unity instance not ready yet.");
+          }
+        } else if (data) {
+          console.debug("Ignored message:", data);
+        }
+      });
+
+      // Global function to be called by Unity when it is ready to receive wallet data.
+      window.requestWalletData = function () {
+        console.log("requestWalletData called by Unity.");
+        setTimeout(function () {
+          const source =
+            window.parent && window.parent !== window && window.parent.currentWalletData
+              ? window.parent.currentWalletData
+              : window.currentWalletData;
+
+          if (source) {
+            const jsonData = JSON.stringify(source);
+            console.log("Sending wallet data (via requestWalletData):", jsonData);
+
+            if (window.unityInstance) {
+              window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
+            } else {
+              console.warn("Unity instance is still not available.");
+            }
+          } else {
+            console.warn("No wallet data available (parent or local).");
+          }
+        }, 500);
+      };
+
+      // ─────────────────────────────────────────────────────────────
       // Boot Unity
       // ─────────────────────────────────────────────────────────────
       var script = document.createElement("script");
@@ -196,34 +228,6 @@
       };
 
       document.body.appendChild(script);
-
-      // ─────────────────────────────────────────────────────────────
-      // Wallet data request function (kept intact, but hardened)
-      // ─────────────────────────────────────────────────────────────
-      // Global function to be called by Unity when it is ready to receive wallet data.
-      window.requestWalletData = function () {
-        console.log("requestWalletData called by Unity.");
-        setTimeout(function () {
-          // Prefer parent if running inside iframe and parent has the data; fallback to local
-          const source =
-            window.parent && window.parent !== window && window.parent.currentWalletData
-              ? window.parent.currentWalletData
-              : window.currentWalletData;
-
-          if (source) {
-            const jsonData = JSON.stringify(source);
-            console.log("Sending wallet data (via requestWalletData):", jsonData);
-
-            if (window.unityInstance) {
-              window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-            } else {
-              console.warn("Unity instance is still not available.");
-            }
-          } else {
-            console.warn("No wallet data available (parent or local).");
-          }
-        }, 500);
-      };
     </script>
   </body>
 </html>
