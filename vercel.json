@@ -40,50 +40,6 @@
         { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
-    },
-   {
-      "source": "/UnityBuild/Build/(.*)\\.wasm\\.br",
-      "headers": [
-        { "key": "Content-Type", "value": "application/wasm" },
-        { "key": "Content-Encoding", "value": "br" },
-        { "key": "Cache-Control", "value": "no-store" },
-        { "key": "Vary", "value": "Accept-Encoding" },
-        { "key": "Content-Disposition", "value": "inline" }
-      ]
-    },
-    {
-      "source": "/UnityBuild/Build/(.*)\\.data\\.br",
-      "headers": [
-        { "key": "Content-Type", "value": "application/octet-stream" },
-        { "key": "Content-Encoding", "value": "br" },
-        { "key": "Cache-Control", "value": "no-store" },
-        { "key": "Vary", "value": "Accept-Encoding" },
-        { "key": "Content-Disposition", "value": "inline" }
-      ]
-    },
-    {
-      "source": "/UnityBuild/Build/(.*)\\.js\\.br",
-      "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
-        { "key": "Content-Encoding", "value": "br" },
-        { "key": "Cache-Control", "value": "no-store" },
-        { "key": "Vary", "value": "Accept-Encoding" },
-        { "key": "Content-Disposition", "value": "inline" }
-      ]
-    },
-    {
-      "source": "/UnityBuild/Build/(.*)\\.loader\\.js",
-      "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
-        { "key": "Cache-Control", "value": "no-store" }
-      ]
-    },
-    {
-      "source": "/UnityBuild/(.*)",
-      "headers": [
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
-      ]
     }
   ]
 }
