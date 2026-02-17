@@ -1,14 +1,23 @@
 <!DOCTYPE html>
 <html lang="en-us">
   <head>
-    <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Unity Web Player | Jumper</title>
-    <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+    <link rel="shortcut icon" href="TemplateData/favicon.ico" />
+    <link rel="stylesheet" href="TemplateData/style.css" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+
     <style>
-      html, body, #unity-container, #unity-canvas {
+      html,
+      body,
+      #unity-container,
+      #unity-canvas {
         margin: 0;
         padding: 0;
         width: 100%;
@@ -17,50 +26,109 @@
       }
     </style>
   </head>
+
   <body>
     <div id="unity-container" class="unity-desktop">
       <canvas id="unity-canvas" tabindex="-1"></canvas>
+
       <div id="unity-loading-bar">
         <div id="unity-logo"></div>
         <div id="unity-progress-bar-empty">
           <div id="unity-progress-bar-full"></div>
         </div>
       </div>
-      <div id="unity-warning"> </div>
+
+      <div id="unity-warning"></div>
+
       <div id="unity-footer">
         <div id="unity-logo-title-footer"></div>
         <div id="unity-fullscreen-button"></div>
         <div id="unity-build-title">Jumper</div>
       </div>
     </div>
+
     <script>
+      // ─────────────────────────────────────────────────────────────
+      // Canvas + Focus Utilities (iframe-friendly)
+      // ─────────────────────────────────────────────────────────────
       var canvas = document.querySelector("#unity-canvas");
 
+      function focusCanvas() {
+        try {
+          // Ensure focusable
+          canvas.setAttribute("tabindex", "-1");
+          canvas.focus({ preventScroll: true });
+        } catch (e) {
+          // Some webviews may throw; ignore.
+        }
+      }
+
+      // Expose focus hook so the parent page can request it
+      window.focusUnity = function () {
+        focusCanvas();
+      };
+
+      // Allow parent to request focus via postMessage
+      window.addEventListener("message", function (event) {
+        if (event.origin !== window.location.origin) return;
+
+        const data = event.data;
+        if (data && data.type === "focus") {
+          focusCanvas();
+          return;
+        }
+
+        // Wallet data forwarding (kept intact)
+        if (data?.type === "walletData" && typeof data.payload === "object") {
+          const jsonData = JSON.stringify(data.payload);
+          if (window.unityInstance) {
+            console.log("Forwarding walletData to Unity:", jsonData);
+            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
+          } else {
+            // Unity not ready yet; ignore (parent will resend on load / Unity can request)
+            console.debug("walletData received but Unity instance not ready yet.");
+          }
+        } else if (data) {
+          console.debug("Ignored message:", data);
+        }
+      });
+
+      // ─────────────────────────────────────────────────────────────
+      // Unity Banner
+      // ─────────────────────────────────────────────────────────────
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
+
         function updateBannerVisibility() {
-          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+          warningBanner.style.display = warningBanner.children.length ? "block" : "none";
         }
-        var div = document.createElement('div');
+
+        var div = document.createElement("div");
         div.innerHTML = msg;
         warningBanner.appendChild(div);
-        if (type == 'error') div.style = 'background: red; padding: 10px;';
+
+        if (type == "error") div.style = "background: red; padding: 10px;";
         else {
-          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
-            warningBanner.removeChild(div);
+          if (type == "warning") div.style = "background: yellow; padding: 10px;";
+          setTimeout(function () {
+            if (div.parentNode === warningBanner) warningBanner.removeChild(div);
             updateBannerVisibility();
           }, 5000);
         }
+
         updateBannerVisibility();
       }
 
+      // ─────────────────────────────────────────────────────────────
+      // Unity Loader Config (Brotli precompressed)
+      // ─────────────────────────────────────────────────────────────
       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/Jumper.loader.js";
 
       var config = {
         arguments: [],
-        // IMPORTANT: use .br filenames
+
+        // IMPORTANT: .br filenames
         dataUrl: buildUrl + "/Jumper.data.br",
         frameworkUrl: buildUrl + "/Jumper.framework.js.br",
         codeUrl: buildUrl + "/Jumper.wasm.br",
@@ -71,15 +139,20 @@
         productVersion: "1.0",
         showBanner: unityShowBanner,
 
-        // CRITICAL for precompressed Brotli
+        // CRITICAL: precompressed Brotli
         compressionFormat: "br",
       };
 
+      // ─────────────────────────────────────────────────────────────
+      // Mobile / Desktop layout tweaks (kept intact)
+      // ─────────────────────────────────────────────────────────────
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
+        var meta = document.createElement("meta");
+        meta.name = "viewport";
+        meta.content =
+          "width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes";
+        document.getElementsByTagName("head")[0].appendChild(meta);
+
         document.querySelector("#unity-container").className = "unity-mobile";
         canvas.className = "unity-mobile";
       } else {
@@ -88,64 +161,69 @@
       }
 
       // make sure it’s on `window`, so Unity’s extern call finds it:
-      window.navigateToRanking = function() {
-        // top‐level navigation into your Next.js index with a hash:
+      window.navigateToRanking = function () {
         window.top.location.href = window.location.origin + "/#ranking";
       };
 
       document.querySelector("#unity-loading-bar").style.display = "block";
 
+      // ─────────────────────────────────────────────────────────────
+      // Boot Unity
+      // ─────────────────────────────────────────────────────────────
       var script = document.createElement("script");
       script.src = loaderUrl;
+
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
-        }).then((unityInstance) => {
-          window.unityInstance = unityInstance;
-          document.querySelector("#unity-loading-bar").style.display = "none";
-          document.querySelector("#unity-fullscreen-button").onclick = () => {
-            unityInstance.SetFullscreen(1);
-          };
-        }).catch((message) => {
-          alert(message);
-        });
+          document.querySelector("#unity-progress-bar-full").style.width =
+            100 * progress + "%";
+        })
+          .then((unityInstance) => {
+            window.unityInstance = unityInstance;
+
+            document.querySelector("#unity-loading-bar").style.display = "none";
+            document.querySelector("#unity-fullscreen-button").onclick = () => {
+              unityInstance.SetFullscreen(1);
+            };
+
+            // Best-effort focus as soon as Unity is ready
+            focusCanvas();
+          })
+          .catch((message) => {
+            console.error("Unity failed to load:", message);
+            unityShowBanner(message, "error");
+          });
       };
+
       document.body.appendChild(script);
 
+      // ─────────────────────────────────────────────────────────────
+      // Wallet data request function (kept intact, but hardened)
+      // ─────────────────────────────────────────────────────────────
       // Global function to be called by Unity when it is ready to receive wallet data.
-      window.requestWalletData = function() {
+      window.requestWalletData = function () {
         console.log("requestWalletData called by Unity.");
-        setTimeout(function() {
-          // Instead of checking window.currentWalletData, we access the parent’s variable.
-          if (window.parent && window.parent.currentWalletData) {
-            const jsonData = JSON.stringify(window.parent.currentWalletData);
+        setTimeout(function () {
+          // Prefer parent if running inside iframe and parent has the data; fallback to local
+          const source =
+            window.parent && window.parent !== window && window.parent.currentWalletData
+              ? window.parent.currentWalletData
+              : window.currentWalletData;
+
+          if (source) {
+            const jsonData = JSON.stringify(source);
             console.log("Sending wallet data (via requestWalletData):", jsonData);
+
             if (window.unityInstance) {
               window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
             } else {
               console.warn("Unity instance is still not available.");
             }
           } else {
-            console.warn("No wallet data available on window.parent.currentWalletData.");
+            console.warn("No wallet data available (parent or local).");
           }
         }, 500);
       };
-
-      window.addEventListener("message", function(event) {
-        if (event.origin !== window.location.origin) return;
-
-        const data = event.data;
-        if (data?.type === "walletData" && typeof data.payload === "object") {
-          const jsonData = JSON.stringify(data.payload);
-          if (window.unityInstance) {
-            console.log("Forwarding walletData to Unity:", jsonData);
-            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-          }
-        } else {
-          // Ignore anything that's not walletData
-          console.debug("Ignored message:", data);
-        }
-      });
     </script>
   </body>
 </html>

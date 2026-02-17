@@ -8,5 +8,45 @@
       "path": "/api/cron/clear-allowlist",
       "schedule": "0 3 * * 0"
     }
+  ],
+  "headers": [
+    {
+      "source": "/UnityBuild/(.*)/Build/(.*)\\.wasm\\.br",
+      "headers": [
+        { "key": "Content-Type", "value": "application/wasm" },
+        { "key": "Content-Encoding", "value": "br" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/UnityBuild/(.*)/Build/(.*)\\.data\\.br",
+      "headers": [
+        { "key": "Content-Type", "value": "application/octet-stream" },
+        { "key": "Content-Encoding", "value": "br" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/UnityBuild/(.*)/Build/(.*)\\.js\\.br",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
+        { "key": "Content-Encoding", "value": "br" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/UnityBuild/(.*)/Build/(.*)\\.loader\\.js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/UnityBuild/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
+      ]
+    }
   ]
 }
