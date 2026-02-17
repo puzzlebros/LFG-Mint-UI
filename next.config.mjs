@@ -16,7 +16,6 @@ const versionedDir = path.join(unityRoot, buildId);
 /** ── Cleanup old numeric folders ── */
 for (const entry of fs.readdirSync(unityRoot)) {
   const entryPath = path.join(unityRoot, entry);
-  // if folder name is all digits (old build) and not the current build
   if (/^\d+$/.test(entry) && entry !== buildId && fs.lstatSync(entryPath).isDirectory()) {
     fs.rmSync(entryPath, { recursive: true, force: true });
   }
@@ -35,12 +34,9 @@ if (!fs.existsSync(versionedDir)) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /** Use our timestamped buildId */
   generateBuildId: async () => buildId,
-
   reactStrictMode: true,
 
-  /** Rewrite all UnityBuild requests to /UnityBuild/{buildId}/... */
   async rewrites() {
     return [
       {
@@ -50,21 +46,72 @@ const nextConfig = {
     ];
   },
 
-  /** Single header rule for the raw WebGL assets */
   async headers() {
+    const base = `/UnityBuild/${buildId}`;
+
     return [
+      // ─────────────────────────────────────────────────────────────
+      // COOP/COEP (IMPORTANT: apply to the HTML too, not just assets)
+      // ─────────────────────────────────────────────────────────────
+      // If you are NOT using WebGL threads / SharedArrayBuffer, you can remove this block.
       {
-        source: `/UnityBuild/${buildId}/Build/:path*`,
+        source: `${base}/:path*`,
         headers: [
-          // Required for SharedArrayBuffer, workers, etc.
           { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin' },
           { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
+        ],
+      },
 
-          // Cache busting via buildId in URL, long immutable cache
+      // ─────────────────────────────────────────────────────────────
+      // Precompressed BROTLI assets (Unity WebGL)
+      // Must set BOTH Content-Encoding and correct Content-Type.
+      // ─────────────────────────────────────────────────────────────
+
+      // WASM.BR
+      {
+        source: `${base}/Build/:path*\\.wasm\\.br`,
+        headers: [
+          { key: 'Content-Type', value: 'application/wasm' },
+          { key: 'Content-Encoding', value: 'br' },
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
 
-          // Let Vercel negotiate gzip/Brotli compression
-          { key: 'Vary', value: 'Accept-Encoding' },
+      // DATA.BR
+      {
+        source: `${base}/Build/:path*\\.data\\.br`,
+        headers: [
+          { key: 'Content-Type', value: 'application/octet-stream' },
+          { key: 'Content-Encoding', value: 'br' },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+
+      // JS.BR (framework)
+      {
+        source: `${base}/Build/:path*\\.js\\.br`,
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+          { key: 'Content-Encoding', value: 'br' },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+
+      // Loader JS (not brotli)
+      {
+        source: `${base}/Build/:path*\\.loader\\.js`,
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+          // keep loader less sticky than the big blobs if you want easy rollbacks
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+        ],
+      },
+
+      // Optional: everything else under Build (fallback cache policy)
+      {
+        source: `${base}/Build/:path*`,
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
     ];
