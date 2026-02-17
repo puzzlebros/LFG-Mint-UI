@@ -8,22 +8,16 @@
     <link rel="shortcut icon" href="TemplateData/favicon.ico" />
     <link rel="stylesheet" href="TemplateData/style.css" />
 
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 
-    <!-- Preload inside the iframe document (preloads in parent Next document are often "unused") -->
+    <!-- Preload inside the iframe document -->
     <link rel="preload" href="Build/Jumper.loader.js" as="script" />
     <link rel="preload" href="Build/Jumper.framework.js.br" as="fetch" crossorigin="anonymous" />
     <link rel="preload" href="Build/Jumper.wasm.br" as="fetch" type="application/wasm" crossorigin="anonymous" />
     <link rel="preload" href="Build/Jumper.data.br" as="fetch" crossorigin="anonymous" />
 
     <style>
-      html,
-      body,
-      #unity-container,
-      #unity-canvas {
+      html, body, #unity-container, #unity-canvas {
         margin: 0;
         padding: 0;
         width: 100%;
@@ -55,7 +49,7 @@
 
     <script>
       // ─────────────────────────────────────────────────────────────
-      // Canvas + Focus Utilities (iframe-friendly)
+      // Canvas + Focus Utilities
       // ─────────────────────────────────────────────────────────────
       var canvas = document.querySelector("#unity-canvas");
 
@@ -63,18 +57,15 @@
         try {
           canvas.setAttribute("tabindex", "-1");
           canvas.focus({ preventScroll: true });
-        } catch (e) {
-          // Some webviews may throw; ignore.
-        }
+        } catch (e) {}
       }
 
-      // Expose focus hook so the parent page can request it
       window.focusUnity = function () {
         focusCanvas();
       };
 
       // ─────────────────────────────────────────────────────────────
-      // Unity Banner
+      // Banner
       // ─────────────────────────────────────────────────────────────
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
@@ -87,44 +78,45 @@
         div.innerHTML = msg;
         warningBanner.appendChild(div);
 
-        if (type == "error") div.style = "background: red; padding: 10px;";
+        if (type === "error") div.style = "background: red; padding: 10px;";
         else {
-          if (type == "warning") div.style = "background: yellow; padding: 10px;";
+          if (type === "warning") div.style = "background: yellow; padding: 10px;";
           setTimeout(function () {
             if (div.parentNode === warningBanner) warningBanner.removeChild(div);
             updateBannerVisibility();
           }, 5000);
         }
-
         updateBannerVisibility();
       }
 
       // ─────────────────────────────────────────────────────────────
-      // Unity Loader Config (Brotli precompressed)
+      // Unity config (Brotli precompressed)
+      // Optional cache-bust query while debugging: add ?v=123 to index.html
       // ─────────────────────────────────────────────────────────────
       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/Jumper.loader.js";
 
+      var BUILD_QUERY = "";
+      try {
+        var v = new URLSearchParams(window.location.search).get("v");
+        if (v) BUILD_QUERY = "?v=" + encodeURIComponent(v);
+      } catch (e) {}
+
       var config = {
         arguments: [],
-
-        // IMPORTANT: .br filenames
-        dataUrl: buildUrl + "/Jumper.data.br",
-        frameworkUrl: buildUrl + "/Jumper.framework.js.br",
-        codeUrl: buildUrl + "/Jumper.wasm.br",
-
+        dataUrl: buildUrl + "/Jumper.data.br" + BUILD_QUERY,
+        frameworkUrl: buildUrl + "/Jumper.framework.js.br" + BUILD_QUERY,
+        codeUrl: buildUrl + "/Jumper.wasm.br" + BUILD_QUERY,
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Jumper",
         productVersion: "1.0",
         showBanner: unityShowBanner,
-
-        // CRITICAL: precompressed Brotli
         compressionFormat: "br",
       };
 
       // ─────────────────────────────────────────────────────────────
-      // Mobile / Desktop layout tweaks (kept intact)
+      // Mobile / Desktop layout
       // ─────────────────────────────────────────────────────────────
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         var meta = document.createElement("meta");
@@ -140,7 +132,7 @@
         canvas.style.height = "100%";
       }
 
-      // make sure it’s on `window`, so Unity’s extern call finds it:
+      // Unity extern bridge: ranking
       window.navigateToRanking = function () {
         window.top.location.href = window.location.origin + "/#ranking";
       };
@@ -148,67 +140,52 @@
       document.querySelector("#unity-loading-bar").style.display = "block";
 
       // ─────────────────────────────────────────────────────────────
-      // Interop: Wallet + Focus (postMessage)
+      // Interop: focus + wallet (postMessage)
       // ─────────────────────────────────────────────────────────────
       window.addEventListener("message", function (event) {
         if (event.origin !== window.location.origin) return;
 
         const data = event.data;
 
-        // Focus requests from parent
         if (data && data.type === "focus") {
           focusCanvas();
           return;
         }
 
-        // Wallet data forwarding to Unity
         if (data?.type === "walletData" && typeof data.payload === "object") {
           const jsonData = JSON.stringify(data.payload);
           if (window.unityInstance) {
-            console.log("Forwarding walletData to Unity:", jsonData);
             window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-          } else {
-            console.debug("walletData received but Unity instance not ready yet.");
           }
-        } else if (data) {
-          console.debug("Ignored message:", data);
+          return;
         }
       });
 
-      // Global function to be called by Unity when it is ready to receive wallet data.
       window.requestWalletData = function () {
-        console.log("requestWalletData called by Unity.");
         setTimeout(function () {
           const source =
             window.parent && window.parent !== window && window.parent.currentWalletData
               ? window.parent.currentWalletData
               : window.currentWalletData;
 
-          if (source) {
-            const jsonData = JSON.stringify(source);
-            console.log("Sending wallet data (via requestWalletData):", jsonData);
+          if (!source) return;
 
-            if (window.unityInstance) {
-              window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-            } else {
-              console.warn("Unity instance is still not available.");
-            }
-          } else {
-            console.warn("No wallet data available (parent or local).");
+          const jsonData = JSON.stringify(source);
+          if (window.unityInstance) {
+            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
           }
         }, 500);
       };
 
       // ─────────────────────────────────────────────────────────────
-      // Boot Unity
+      // Boot
       // ─────────────────────────────────────────────────────────────
       var script = document.createElement("script");
-      script.src = loaderUrl;
+      script.src = loaderUrl + BUILD_QUERY;
 
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width =
-            100 * progress + "%";
+          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
         })
           .then((unityInstance) => {
             window.unityInstance = unityInstance;
@@ -218,7 +195,6 @@
               unityInstance.SetFullscreen(1);
             };
 
-            // Best-effort focus as soon as Unity is ready
             focusCanvas();
           })
           .catch((message) => {
