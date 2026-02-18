@@ -1,72 +1,65 @@
 // pages/game.tsx
-
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
-import axios from "axios";
 import TutorialPopup from "../components/modals/TutorialPopup";
 
 export default function GamePage() {
-
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { isFrozen, next } = useWeeklyCycle();
   const { publicKey, connected } = useWallet();
 
-  // Whenever connection or publicKey changes, push walletData to Unity
+  const unityBuildId = process.env.NEXT_PUBLIC_UNITY_BUILD_ID;
+
+  const iframeSrc = useMemo(() => {
+    if (!unityBuildId) return null;
+    // bust UnityCache keys + ensure versioned path
+    return `/UnityBuild/${unityBuildId}/index.html?v=${encodeURIComponent(unityBuildId)}`;
+  }, [unityBuildId]);
+
+  // Keep window.currentWalletData consistent with your global.d.ts: object | null
   useEffect(() => {
     if (publicKey) {
-      // ❶ populate the global
       window.currentWalletData = {
         walletAddress: publicKey.toBase58(),
         userName: "",
       };
+    } else {
+      window.currentWalletData = null;
     }
-    if (connected && iframeRef.current?.contentWindow) {
-      const message = {
-        type: "walletData",
-        payload: window.currentWalletData,
-      };
-      iframeRef.current.contentWindow.postMessage(message, window.location.origin);
+
+    if (
+      connected &&
+      iframeRef.current?.contentWindow &&
+      window.currentWalletData !== null
+    ) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "walletData", payload: window.currentWalletData },
+        window.location.origin
+      );
     }
   }, [connected, publicKey]);
 
-  // Start a session on our backend whenever the user enters the game
-  const startSession = async () => {
-    if (connected && publicKey) {
-      try {
-        const res = await axios.post("/api/game/start", {
-          walletAddress: publicKey.toBase58(),
-          userName: "",
-        });
-        console.log("Session started on server:", res.data);
-      } catch (error) {
-        console.error("Failed to start session:", error);
-      }
-    }
-  };
-
-  // Send walletData to the iframe manually
   const sendWalletData = () => {
-    if (iframeRef.current && publicKey) {
-      const messageData = {
-        walletAddress: publicKey.toBase58(),
-        userName: "",
-      };
-      const message = { type: "walletData", payload: messageData };
-      iframeRef.current.contentWindow?.postMessage(message, window.location.origin);
-      console.log("Sending wallet data to Unity:", message);
-    } else {
-      console.warn("sendWalletData: Wallet not connected or iframe not available.");
-    }
+    if (!iframeRef.current?.contentWindow) return;
+    if (window.currentWalletData === null) return;
+
+    iframeRef.current.contentWindow.postMessage(
+      { type: "walletData", payload: window.currentWalletData },
+      window.location.origin
+    );
   };
 
-  // Called once when the iframe finishes loading
+  const focusUnity = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage({ type: "focus" }, window.location.origin);
+  };
+
   const handleIframeLoad = () => {
     console.log("Iframe loaded.");
-    if (connected && publicKey) {
-      sendWalletData();
-    }
+    focusUnity();
+    if (connected && publicKey) sendWalletData();
   };
 
   if (isFrozen) {
@@ -81,15 +74,27 @@ export default function GamePage() {
     );
   }
 
+  if (!iframeSrc) {
+    return (
+      <Center h="100vh" p={4}>
+        <Text textStyle="copy" color="red.500">
+          Missing NEXT_PUBLIC_UNITY_BUILD_ID.
+          <br />
+          Set it in Vercel (Production/Preview) and redeploy.
+        </Text>
+      </Center>
+    );
+  }
+
   return (
     <Box width="100%" height="100%" overflow="hidden">
       <TutorialPopup />
       <iframe
         ref={iframeRef}
-        src="/UnityBuild/index.html"
+        src={iframeSrc}
         style={{ width: "100%", height: "100%", border: "none" }}
         scrolling="no"
-        frameBorder="0"
+        frameBorder={0}
         allowFullScreen
         onLoad={handleIframeLoad}
       />

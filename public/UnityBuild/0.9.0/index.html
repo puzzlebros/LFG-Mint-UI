@@ -93,9 +93,10 @@
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Jumper",
-        productVersion: "1.0",
+        productVersion: "0.9.0",
         showBanner: unityShowBanner,
-        compressionFormat: "br"
+        compressionFormat: "br",
+        cacheControl: function (url) { return "no-store"; }
       };
 
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {

@@ -5,40 +5,43 @@
   ],
   "headers": [
     {
-      "source": "/UnityBuild/(.*)/Build/(.*)\\.wasm\\.br",
+      "source": "/UnityBuild/(.*)/Build/(.*).wasm.br",
       "headers": [
         { "key": "Content-Type", "value": "application/wasm" },
         { "key": "Content-Encoding", "value": "br" },
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
         { "key": "Vary", "value": "Accept-Encoding" },
-        { "key": "Content-Disposition", "value": "inline" }
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "source": "/UnityBuild/(.*)/Build/(.*)\\.data\\.br",
+      "source": "/UnityBuild/(.*)/Build/(.*).data.br",
       "headers": [
         { "key": "Content-Type", "value": "application/octet-stream" },
         { "key": "Content-Encoding", "value": "br" },
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
         { "key": "Vary", "value": "Accept-Encoding" },
-        { "key": "Content-Disposition", "value": "inline" }
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "source": "/UnityBuild/(.*)/Build/(.*)\\.js\\.br",
+      "source": "/UnityBuild/(.*)/Build/(.*).js.br",
       "headers": [
         { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
         { "key": "Content-Encoding", "value": "br" },
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
         { "key": "Vary", "value": "Accept-Encoding" },
-        { "key": "Content-Disposition", "value": "inline" }
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "source": "/UnityBuild/(.*)/Build/(.*)\\.loader\\.js",
+      "source": "/UnityBuild/(.*)/Build/(.*).loader.js",
       "headers": [
         { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/UnityBuild/Build/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
       ]
     }
   ]
