@@ -11,14 +11,25 @@ import theme from "@/styles/theme";
 
 import type { WalletAdapter } from "@solana/wallet-adapter-base";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
-import {
-  ConnectionProvider,
-  WalletProvider
-} from "@solana/wallet-adapter-react";
+import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
 
-import { useMemo, useEffect } from "react";
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  CoinbaseWalletAdapter,
+  LedgerWalletAdapter,
+  // Keep adding ONLY adapters that your installed version actually exports.
+} from "@solana/wallet-adapter-wallets";
+
+import {
+  SolanaMobileWalletAdapter,
+  createDefaultAddressSelector,
+  createDefaultAuthorizationResultCache,
+  createDefaultWalletNotFoundHandler,
+} from "@solana-mobile/wallet-adapter-mobile";
+
+import { useMemo } from "react";
 
 import { UmiProvider } from "../utils/metaplex/UmiProvider";
 import { SolanaTimeProvider } from "@/utils/metaplex/SolanaTimeContext";
@@ -35,16 +46,46 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   }
 
   // RPC endpoint
-  const endpoint =
-    process.env.NEXT_PUBLIC_RPC ?? "https://api.devnet.solana.com";
+  const endpoint = process.env.NEXT_PUBLIC_RPC ?? "https://api.devnet.solana.com";
 
-  // only Phantom adapter everywhere
-  const wallets = useMemo<WalletAdapter[]>(
-    () => [new PhantomWalletAdapter()],
-    [network]
-  );
+  // For mobile adapter config
+  const cluster =
+    network === WalletAdapterNetwork.Mainnet ? "mainnet-beta" : "devnet";
 
-  // support per-page layouts
+  // Use a real app URL (recommended). Falls back safely.
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (typeof window !== "undefined" ? window.location.origin : "https://example.com");
+
+  const wallets = useMemo<WalletAdapter[]>(() => {
+    // prevent SSR crashes (wallets touch `window`)
+    if (typeof window === "undefined") return [];
+
+    const list: WalletAdapter[] = [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter({ network }),
+      new CoinbaseWalletAdapter(),
+      new LedgerWalletAdapter(),
+    ];
+
+    // Mobile Wallet Adapter (MWA)
+    list.push(
+      new SolanaMobileWalletAdapter({
+        addressSelector: createDefaultAddressSelector(),
+        authorizationResultCache: createDefaultAuthorizationResultCache(),
+        cluster,
+        appIdentity: {
+          name: headerText ?? "LFG",
+          uri: appUrl,
+          icon: `${appUrl}/apple-touch-icon.png`,
+        },
+        onWalletNotFound: createDefaultWalletNotFoundHandler(),
+      })
+    );
+
+    return list;
+  }, [network, cluster, appUrl]);
+
   const getLayout =
     (Component as any).getLayout ||
     ((page: React.ReactNode) => <Layout>{page}</Layout>);
@@ -52,7 +93,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
-        {/* SEO / OG */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content={headerText} />
         <meta property="og:description" content={description} />
@@ -61,7 +101,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{headerText}</title>
 
-        {/* Favicons & PWA */}
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
         <link rel="shortcut icon" href="/favicon.ico" />

@@ -18,6 +18,8 @@ import LogoImage from "./fx/LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
 import { CustomWalletButton } from "./buttons/CustomWalletButton";
 import { formatRemaining } from '../utils/leaderboard/formatRemaining';
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletContextGuard } from "../utils/useWalletContextGuard";
 
 // Variants for fade in/out
 const iconVariants = {
@@ -32,6 +34,10 @@ export default function Navbar() {
   const [visible, setVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+
+  const { connected, publicKey } = useWallet();
+  const { isStale } = useWalletContextGuard({ enabled: true });
+
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Mount + Unity iframe visibility logic

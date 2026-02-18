@@ -348,6 +348,9 @@ type Props = {
   setCheckEligibility: Dispatch<SetStateAction<boolean>>;
   ownedCoreAssets?: DasApiAssetAndAssetMintLimit[];
   buttonProps?: ButtonProps;
+
+  // ✅ NEW
+  onBeforeMint?: () => Promise<void>;
 };
 
 export function ButtonList({
@@ -360,6 +363,9 @@ export function ButtonList({
   onOpen,
   setCheckEligibility,
   buttonProps,
+
+  // ✅ NEW
+  onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
   const { publicKey: walletPublicKey } = useWallet();
@@ -398,7 +404,6 @@ export function ButtonList({
         const timerTarget = isClaim ? btn.endTime : btn.startTime;
         return (
           <VStack key={idx} spacing={1} align="center" w="full">
-            {/* Show the claim countdown if configured */}
             {isClaim && timerTarget > BigInt(0) && (
               <>
                 <Text fontSize="sm" fontWeight="bold">
@@ -413,51 +418,53 @@ export function ButtonList({
             )}
 
             <Tooltip label={!walletPublicKey ? "Log in to mint" : btn.tooltip}>
-  <Button
-    size="default"
-    mt="2"
-    {...buttonProps}
-    isDisabled={!walletPublicKey || !btn.allowed}
-    isLoading={guardList.find((g) => g.label === btn.label)?.minting}
-    loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
-    onClick={() =>
-      mintClick(
-        umi,
-        btn,
-        candyMachine,
-        candyGuard,
-        1,
-        setMintsCreated,
-        guardList,
-        setGuardList,
-        onOpen,
-        setCheckEligibility
-      ).catch((err) => {
-        console.error("Unexpected mintClick error:", err);
-      })
-    }
-  >
-    {btn.label === "OG" ? (
-      <Text as="span">
-        {/* main label in default button style */}
-        MINT{" "}
-        {/* price in copyLight */}
-        <Text
-          as="span"
-          textStyle="copy"
-          color="white"
-          fontSize="1rem"
-          letterSpacing="-0.01em"
-          textTransform="none"
-        >
-          (<b>0.05</b> sol)
-        </Text>
-      </Text>
-    ) : (
-      // other guards (e.g. LFG) still use the setting-based label
-      btn.buttonLabel
-    )}
-  </Button>
+              <Button
+                size="default"
+                mt="2"
+                {...buttonProps}
+                isDisabled={!walletPublicKey || !btn.allowed}
+                isLoading={guardList.find((g) => g.label === btn.label)?.minting}
+                loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
+                onClick={async () => {
+                  try {
+                    // ✅ NEW: preflight gate (e.g. wallet context guard)
+                    if (onBeforeMint) await onBeforeMint();
+
+                    await mintClick(
+                      umi,
+                      btn,
+                      candyMachine,
+                      candyGuard,
+                      1,
+                      setMintsCreated,
+                      guardList,
+                      setGuardList,
+                      onOpen,
+                      setCheckEligibility
+                    );
+                  } catch (err) {
+                    console.error("Mint blocked/failed:", err);
+                  }
+                }}
+              >
+                {btn.label === "OG" ? (
+                  <Text as="span">
+                    MINT{" "}
+                    <Text
+                      as="span"
+                      textStyle="copy"
+                      color="white"
+                      fontSize="1rem"
+                      letterSpacing="-0.01em"
+                      textTransform="none"
+                    >
+                      (<b>0.05</b> sol)
+                    </Text>
+                  </Text>
+                ) : (
+                  btn.buttonLabel
+                )}
+              </Button>
             </Tooltip>
 
             <Divider w="full" borderColor="transparent" />

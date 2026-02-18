@@ -48,6 +48,7 @@ import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
 import { useWindowSize } from "../utils/useWindowSize";
 import Confetti from "react-confetti";
 import ShowNft from "../components/modals/showNft";
+import { useWalletContextGuard } from "../utils/useWalletContextGuard";
 
 
 const pulseClaim = keyframes`
@@ -128,13 +129,27 @@ export default function MintPage() {
   const { isFrozen } = useWeeklyCycle();
 
   // wallet + CM
-  const { publicKey: walletPublicKey, connected } = useWallet();
+  const wallet = useWallet();
+  const { publicKey: walletPublicKey, connected } = wallet;
   const [candyMachine, setCandyMachine] = useState<CandyMachine>();
   const [candyGuard, setCandyGuard] = useState<CandyGuard>();
 
   const windowSize = useWindowSize();
   const [showConfetti, setShowConfetti] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
+
+  const { blocked, preflight } = useWalletContextGuard({
+  enabled: !isDemo,
+  onStale: (reason) => {
+    toast({
+      title: "Wallet disconnected",
+      description: reason,
+      status: "warning",
+      duration: 6000,
+      isClosable: true,
+    });
+  },
+});
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -338,7 +353,7 @@ export default function MintPage() {
     const allowGuard = guards.find(g => g.label === allowListLabel);
 
     // states
-    const showLogin = !connected;
+    const showLogin = !connected || !walletPublicKey || blocked;
     const showClaim = Boolean(
       walletPublicKey &&
       allowGuard?.allowed &&
@@ -547,7 +562,7 @@ export default function MintPage() {
           )}
 
           {/* Button + price under image */}
-          {walletPublicKey ? (
+          {walletPublicKey  && !blocked ? (
             (!candyMachine || !candyGuard || loading) ? (
               <Center w="full">
                 <Skeleton h="48px" w="200px" />
@@ -566,6 +581,10 @@ export default function MintPage() {
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
                   buttonProps={claimButtonProps}
+                  onBeforeMint={async () => {
+                    const res = await preflight();
+                    if (!res.ok) throw new Error(res.reason);
+                  }}
                 />
               </Center>
             )

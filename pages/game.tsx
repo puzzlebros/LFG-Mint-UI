@@ -41,7 +41,6 @@ async function probeUrl(url: string, log: (m: string, o?: any) => void) {
       "x-matched-path": xmp,
     });
 
-    // first 24 bytes check (detect HTML being returned)
     const buf = await res.clone().arrayBuffer();
     const bytes = new Uint8Array(buf.slice(0, 24));
     const ascii = Array.from(bytes)
@@ -81,21 +80,30 @@ export default function GamePage() {
   }, []);
 
   const mlog = params.get("mlog") === "1";
+
+  // Toggle mode from query so you can debug on mobile easily:
+  // /game?mlog=1&unity=uncompressed
+  const unityMode = params.get("unity") || "br"; // "br" | "uncompressed"
+
+  // For versioned mode only
   const buildId = process.env.NEXT_PUBLIC_UNITY_BUILD_ID || "0.9.0";
 
   const { lines, hidden, push, clear, toggleHidden } = useMobileLog(mlog);
 
   const iframeSrc = useMemo(() => {
-    // Always hit versioned folder directly to avoid rewrite ambiguity
-    // Add v + mlog so cache is separated per build and iframe can also log
-    const v = encodeURIComponent(buildId);
     const logFlag = mlog ? "&mlog=1" : "";
+    if (unityMode === "uncompressed") {
+      // unversioned + uncompressed
+      const v = encodeURIComponent(buildId);
+      return `/UnityBuild/index.html?v=${v}${logFlag}`;
+    }
+    // versioned + br (your current)
+    const v = encodeURIComponent(buildId);
     return `/UnityBuild/${buildId}/index.html?v=${v}${logFlag}`;
-  }, [buildId, mlog]);
+  }, [buildId, mlog, unityMode]);
 
-  // Expose wallet data globally for iframe to read (your existing pattern)
+  // Expose wallet data globally (consistent: object or null)
   useEffect(() => {
-    // Ensure consistent type: null or object (never undefined)
     if (publicKey) {
       window.currentWalletData = { walletAddress: publicKey.toBase58(), userName: "" };
       push("wallet set", window.currentWalletData);
@@ -105,14 +113,14 @@ export default function GamePage() {
     }
   }, [publicKey, push]);
 
-  // Send walletData to iframe
+  // Send walletData to iframe (FIXED deps)
   useEffect(() => {
     const hasFrame = !!iframeRef.current?.contentWindow;
-    const hasWallet = !!window.currentWalletData;
+    const hasWallet = !!publicKey && !!window.currentWalletData;
 
     push("wallet effect", { connected, hasFrame, hasWallet });
 
-    if (!connected || !hasFrame || !hasWallet) {
+    if (!connected || !hasFrame || !window.currentWalletData) {
       push("Not posting walletData (effect)");
       return;
     }
@@ -120,9 +128,9 @@ export default function GamePage() {
     const message = { type: "walletData", payload: window.currentWalletData };
     iframeRef.current!.contentWindow!.postMessage(message, window.location.origin);
     push("Posted walletData -> iframe", message);
-  }, [connected, push]);
+  }, [connected, publicKey, push]);
 
-  // Parent-side probes (critical for mobile where iframe fails early)
+  // Parent-side probes
   useEffect(() => {
     if (!mlog) return;
 
@@ -130,19 +138,33 @@ export default function GamePage() {
     push("UA " + navigator.userAgent);
     push("Origin " + window.location.origin);
     push("NEXT_PUBLIC_UNITY_BUILD_ID " + buildId);
+    push("unityMode " + unityMode);
     push("iframeSrc " + iframeSrc);
 
-    const base = `${window.location.origin}/UnityBuild/${buildId}/Build`;
+    const base =
+      unityMode === "uncompressed"
+        ? `${window.location.origin}/UnityBuild/Build`
+        : `${window.location.origin}/UnityBuild/${buildId}/Build`;
 
     (async () => {
       push("PROBE START (parent)");
+
+      // loader is always raw .js
       await probeUrl(`${base}/Jumper.loader.js?v=${encodeURIComponent(buildId)}`, push);
-      await probeUrl(`${base}/Jumper.framework.js.br?v=${encodeURIComponent(buildId)}`, push);
-      await probeUrl(`${base}/Jumper.wasm.br?v=${encodeURIComponent(buildId)}`, push);
-      await probeUrl(`${base}/Jumper.data.br?v=${encodeURIComponent(buildId)}`, push);
+
+      if (unityMode === "uncompressed") {
+        await probeUrl(`${base}/Jumper.framework.js?v=${encodeURIComponent(buildId)}`, push);
+        await probeUrl(`${base}/Jumper.wasm?v=${encodeURIComponent(buildId)}`, push);
+        await probeUrl(`${base}/Jumper.data?v=${encodeURIComponent(buildId)}`, push);
+      } else {
+        await probeUrl(`${base}/Jumper.framework.js.br?v=${encodeURIComponent(buildId)}`, push);
+        await probeUrl(`${base}/Jumper.wasm.br?v=${encodeURIComponent(buildId)}`, push);
+        await probeUrl(`${base}/Jumper.data.br?v=${encodeURIComponent(buildId)}`, push);
+      }
+
       push("PROBE END (parent)");
     })();
-  }, [mlog, buildId, iframeSrc, push]);
+  }, [mlog, buildId, iframeSrc, unityMode, push]);
 
   const startSession = async () => {
     if (connected && publicKey) {
@@ -176,15 +198,16 @@ export default function GamePage() {
   const handleIframeLoad = () => {
     push("Iframe loaded event fired");
 
-    // Ask iframe to focus its canvas
     iframeRef.current?.contentWindow?.postMessage({ type: "focus" }, window.location.origin);
     push("Posting focus -> iframe");
 
-    // Ask iframe to run its internal probes and report back to parent
     iframeRef.current?.contentWindow?.postMessage({ type: "probe" }, window.location.origin);
     push("Posting probe -> iframe");
 
     if (connected && publicKey) sendWalletData();
+
+    // keep session logic intact
+    startSession();
   };
 
   // Receive logs + probe results from iframe
@@ -195,14 +218,12 @@ export default function GamePage() {
       const data: any = event.data;
       if (!data || typeof data !== "object") return;
 
-      if (data.type === "iframeLog") {
-        push(`IFRAME: ${String(data.msg || "")}`, data.obj);
-      }
-      if (data.type === "iframeProbe") {
-        push(`IFRAME PROBE: ${String(data.msg || "")}`, data.obj);
-      }
-      if (data.type === "iframeUnity") {
-        push(`UNITY: ${String(data.msg || "")}`, data.obj);
+      if (data.type === "iframeLog") push(`IFRAME: ${String(data.msg || "")}`, data.obj);
+      if (data.type === "iframeProbe") push(`IFRAME PROBE: ${String(data.msg || "")}`, data.obj);
+      if (data.type === "iframeUnity") push(`UNITY: ${String(data.msg || "")}`, data.obj);
+      if (data.type === "mlog") {
+        // if you migrate iframe to the {type:"mlog"} format, show it too
+        push(`IFRAME: ${String(data.payload?.message || "")}`, data.payload?.data);
       }
     };
 
