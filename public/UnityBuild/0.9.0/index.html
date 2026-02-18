@@ -10,7 +10,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 
-    <!-- Keep only loader preload (low risk). Avoid preloading large .br blobs while debugging cache/header issues. -->
+    <!-- Low-risk preload -->
     <link rel="preload" href="Build/Jumper.loader.js" as="script" />
 
     <style>
@@ -45,8 +45,87 @@
     </div>
 
     <script>
-      var canvas = document.querySelector("#unity-canvas");
+      // ------------------------------------------------------------
+      // Query params
+      // ------------------------------------------------------------
+      function qp(name) {
+        try { return new URLSearchParams(location.search).get(name); } catch (e) { return null; }
+      }
+      var MLOG = qp("mlog") === "1";
+      var V = qp("v");
+      var BUILD_QUERY = V ? ("?v=" + encodeURIComponent(V)) : "";
 
+      // ------------------------------------------------------------
+      // Mobile on-screen log (enabled with ?mlog=1)
+      // ------------------------------------------------------------
+      (function () {
+        if (!MLOG) return;
+
+        var panel = document.createElement("div");
+        panel.id = "__mlog";
+        panel.style.cssText =
+          "position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;" +
+          "background:rgba(0,0,0,.88);color:#7CFC00;padding:10px;z-index:2147483647;" +
+          "font:12px/1.35 monospace;white-space:pre-wrap;word-break:break-word";
+
+        var head = document.createElement("div");
+        head.style.cssText = "color:#fff;margin-bottom:6px;font-weight:bold";
+        head.textContent = "Mobile Log enabled";
+        panel.appendChild(head);
+
+        var pre = document.createElement("pre");
+        pre.style.margin = "0";
+        panel.appendChild(pre);
+
+        function write(line) {
+          pre.textContent += line + "\n";
+          panel.scrollTop = panel.scrollHeight;
+        }
+        function ts() { return new Date().toISOString(); }
+
+        var orig = { log: console.log, warn: console.warn, error: console.error, debug: console.debug };
+        ["log","warn","error","debug"].forEach(function (k) {
+          console[k] = function () {
+            try {
+              write("[" + ts() + "] " + k.toUpperCase() + ": " + Array.prototype.map.call(arguments, String).join(" "));
+            } catch (e) {}
+            orig[k].apply(console, arguments);
+          };
+        });
+
+        window.addEventListener("error", function (e) {
+          write("[" + ts() + "] WINDOW.ERROR: " + (e.message || "unknown"));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          write("[" + ts() + "] UNHANDLED.REJECTION: " + String((e.reason && e.reason.message) ? e.reason.message : e.reason));
+        });
+
+        window.__probe = async function (url) {
+          try {
+            console.log("PROBE", url);
+            var r = await fetch(url, { cache: "no-store" });
+            console.log("status", r.status, r.statusText);
+            console.log("content-type", r.headers.get("content-type") || "");
+            console.log("content-encoding", r.headers.get("content-encoding") || "");
+            console.log("cache-control", r.headers.get("cache-control") || "");
+            console.log("vary", r.headers.get("vary") || "");
+            var buf = await r.arrayBuffer();
+            console.log("bytes", buf.byteLength);
+          } catch (err) {
+            console.error("PROBE_FAIL", err && err.message ? err.message : String(err));
+          }
+        };
+
+        document.addEventListener("DOMContentLoaded", function () {
+          document.body.appendChild(panel);
+          console.log("index.html loaded", location.href);
+        });
+      })();
+
+      // ------------------------------------------------------------
+      // Canvas focus
+      // ------------------------------------------------------------
+      var canvas = document.querySelector("#unity-canvas");
       function focusCanvas() {
         try {
           canvas.setAttribute("tabindex", "-1");
@@ -55,6 +134,9 @@
       }
       window.focusUnity = function () { focusCanvas(); };
 
+      // ------------------------------------------------------------
+      // Banner
+      // ------------------------------------------------------------
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
@@ -75,15 +157,11 @@
         updateBannerVisibility();
       }
 
+      // ------------------------------------------------------------
+      // Unity config (explicit .br URLs; rely on server Content-Encoding: br)
+      // ------------------------------------------------------------
       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/Jumper.loader.js";
-
-      // Optional debug cache-bust: /index.html?v=123
-      var BUILD_QUERY = "";
-      try {
-        var v = new URLSearchParams(window.location.search).get("v");
-        if (v) BUILD_QUERY = "?v=" + encodeURIComponent(v);
-      } catch (e) {}
 
       var config = {
         arguments: [],
@@ -94,9 +172,10 @@
         companyName: "DefaultCompany",
         productName: "Jumper",
         productVersion: "0.9.0",
-        showBanner: unityShowBanner,
+        showBanner: unityShowBanner
       };
 
+      // Mobile/desktop class
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         var meta = document.createElement("meta");
         meta.name = "viewport";
@@ -111,65 +190,80 @@
         canvas.style.height = "100%";
       }
 
+      // Ranking bridge
       window.navigateToRanking = function () {
         window.top.location.href = window.location.origin + "/#ranking";
       };
 
       document.querySelector("#unity-loading-bar").style.display = "block";
 
+      // Messages from parent
       window.addEventListener("message", function (event) {
         if (event.origin !== window.location.origin) return;
-
-        const data = event.data;
+        var data = event.data;
 
         if (data && data.type === "focus") {
           focusCanvas();
           return;
         }
 
-        if (data?.type === "walletData" && typeof data.payload === "object") {
-          const jsonData = JSON.stringify(data.payload);
+        if (data && data.type === "walletData" && typeof data.payload === "object") {
+          var jsonData = JSON.stringify(data.payload);
           if (window.unityInstance) {
             window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
           }
         }
       });
 
+      // Unity calls this
       window.requestWalletData = function () {
         setTimeout(function () {
-          const source =
+          var source =
             window.parent && window.parent !== window && window.parent.currentWalletData
               ? window.parent.currentWalletData
               : window.currentWalletData;
 
           if (!source) return;
 
-          const jsonData = JSON.stringify(source);
+          var jsonData = JSON.stringify(source);
           if (window.unityInstance) {
             window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
           }
         }, 500);
       };
 
+      // ------------------------------------------------------------
+      // (Mobile debug) Probe headers before boot when ?mlog=1
+      // ------------------------------------------------------------
+      if (MLOG && window.__probe) {
+        window.__probe(buildUrl + "/Jumper.framework.js.br" + BUILD_QUERY);
+        window.__probe(buildUrl + "/Jumper.wasm.br" + BUILD_QUERY);
+        window.__probe(buildUrl + "/Jumper.data.br" + BUILD_QUERY);
+      }
+
+      // ------------------------------------------------------------
+      // Boot
+      // ------------------------------------------------------------
       var script = document.createElement("script");
       script.src = loaderUrl + BUILD_QUERY;
 
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+      script.onload = function () {
+        createUnityInstance(canvas, config, function (progress) {
+          document.querySelector("#unity-progress-bar-full").style.width = (100 * progress) + "%";
         })
-          .then((unityInstance) => {
-            window.unityInstance = unityInstance;
-            document.querySelector("#unity-loading-bar").style.display = "none";
-            document.querySelector("#unity-fullscreen-button").onclick = () => {
-              unityInstance.SetFullscreen(1);
-            };
-            focusCanvas();
-          })
-          .catch((message) => {
-            console.error("Unity failed to load:", message);
-            unityShowBanner(message, "error");
-          });
+        .then(function (unityInstance) {
+          window.unityInstance = unityInstance;
+          document.querySelector("#unity-loading-bar").style.display = "none";
+          document.querySelector("#unity-fullscreen-button").onclick = function () {
+            unityInstance.SetFullscreen(1);
+          };
+          focusCanvas();
+          if (MLOG) console.log("Unity instance ready");
+        })
+        .catch(function (message) {
+          console.error("Unity failed to load:", message);
+          unityShowBanner(String(message), "error");
+        });
       };
 
       document.body.appendChild(script);
