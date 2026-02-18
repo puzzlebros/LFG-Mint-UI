@@ -1,5 +1,5 @@
-// pages/game.tsx (or pages/game/index.tsx) — UPDATED
-import { useEffect, useMemo, useRef } from "react";
+// pages/game.tsx — UPDATED (fix hydration mismatch by client-only iframe)
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
@@ -7,6 +7,12 @@ import axios from "axios";
 import TutorialPopup from "../components/modals/TutorialPopup";
 import MobileLogOverlay from "@/utils/MobileLogOverlay";
 import { useMobileLog } from "../utils/useMobileLog";
+
+declare global {
+  interface Window {
+    currentWalletData: { walletAddress: string; userName: string } | null;
+  }
+}
 
 function safeHeader(res: Response, key: string) {
   try {
@@ -71,52 +77,17 @@ async function probeUrl(url: string, log: (m: string, o?: any) => void) {
   }
 }
 
-type UnityMode = "br" | "raw";
-
-// Centralize Unity path building here so you never chase it in 5 places again.
-function getUnityPaths(opts: {
-  origin: string;
-  mode: UnityMode;
-  buildId?: string;
-  productName: string; // "Jumper"
-}) {
-  const { origin, mode, buildId, productName } = opts;
-
-  if (mode === "raw") {
-    // ✅ UNVERSIONED + UNCOMPRESSED (your new desired state)
-    // Put the Unity WebGL build under: /public/UnityBuild/...
-    // e.g.
-    // /public/UnityBuild/index.html
-    // /public/UnityBuild/Build/Jumper.loader.js
-    // /public/UnityBuild/Build/Jumper.framework.js
-    // /public/UnityBuild/Build/Jumper.wasm
-    // /public/UnityBuild/Build/Jumper.data
-    const basePath = "/UnityBuild";
-    return {
-      iframeSrc: `${basePath}/index.html?mlog=1`, // mlog handled by page param below; we keep this simple
-      buildBaseAbs: `${origin}${basePath}/Build`,
-      buildBaseRel: `${basePath}/Build`,
-      files: {
-        loader: `${basePath}/Build/${productName}.loader.js`,
-        framework: `${basePath}/Build/${productName}.framework.js`,
-        wasm: `${basePath}/Build/${productName}.wasm`,
-        data: `${basePath}/Build/${productName}.data`,
-      },
-    };
-  }
-
-  // ✅ VERSIONED + BROTLI (your old state)
-  const v = encodeURIComponent(buildId || "");
-  const basePath = `/UnityBuild/${buildId}`;
+// RAW / UNVERSIONED Unity path builder
+function getUnityPathsRaw(opts: { origin: string; productName: string }) {
+  const { origin, productName } = opts;
+  const basePath = "/UnityBuild";
   return {
-    iframeSrc: `${basePath}/index.html?v=${v}`,
-    buildBaseAbs: `${origin}${basePath}/Build`,
-    buildBaseRel: `${basePath}/Build`,
+    iframeSrc: `${basePath}/index.html`,
     files: {
-      loader: `${basePath}/Build/${productName}.loader.js?v=${v}`,
-      framework: `${basePath}/Build/${productName}.framework.js.br?v=${v}`,
-      wasm: `${basePath}/Build/${productName}.wasm.br?v=${v}`,
-      data: `${basePath}/Build/${productName}.data.br?v=${v}`,
+      loader: `${basePath}/Build/${productName}.loader.js`,
+      framework: `${basePath}/Build/${productName}.framework.js`,
+      wasm: `${basePath}/Build/${productName}.wasm`,
+      data: `${basePath}/Build/${productName}.data`,
     },
   };
 }
@@ -127,45 +98,39 @@ export default function GamePage() {
   const { isFrozen, next } = useWeeklyCycle();
   const { publicKey, connected } = useWallet();
 
+  // ✅ Prevent SSR/CSR mismatch: don't render iframe until mounted
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Query params only matter client-side; keep safe for SSR
   const params = useMemo(() => {
     if (typeof window === "undefined") return new URLSearchParams();
     return new URLSearchParams(window.location.search);
   }, []);
 
-  const mlog = params.get("mlog") === "1";
-
-  // Keep env var available for versioned mode, but don't force it.
-  const buildId = process.env.NEXT_PUBLIC_UNITY_BUILD_ID || "0.9.0";
-
-  // ✅ control mode from query OR env (query wins)
-  const unityMode = (params.get("unityMode") as UnityMode) || ((process.env.NEXT_PUBLIC_UNITY_MODE as UnityMode) || "raw");
-
+  const mlog = mounted && params.get("mlog") === "1";
   const { lines, hidden, push, clear, toggleHidden } = useMobileLog(mlog);
 
   const unity = useMemo(() => {
-    if (typeof window === "undefined") {
-      return {
-        iframeSrc: "",
-        files: { loader: "", framework: "", wasm: "", data: "" },
-      } as any;
+    if (!mounted) {
+      return { iframeSrc: "", files: { loader: "", framework: "", wasm: "", data: "" } };
     }
-    return getUnityPaths({
+    return getUnityPathsRaw({
       origin: window.location.origin,
-      mode: unityMode,
-      buildId,
       productName: "Jumper",
     });
-  }, [unityMode, buildId]);
+  }, [mounted]);
 
   const iframeSrc = useMemo(() => {
-    if (!unity.iframeSrc) return "";
-    // append mlog flag consistently
+    if (!mounted || !unity.iframeSrc) return "";
     const join = unity.iframeSrc.includes("?") ? "&" : "?";
     return mlog ? `${unity.iframeSrc}${join}mlog=1` : unity.iframeSrc;
-  }, [unity.iframeSrc, mlog]);
+  }, [mounted, unity.iframeSrc, mlog]);
 
-  // Expose wallet data globally for iframe to read (your existing pattern)
+  // Expose wallet data globally for iframe to read
   useEffect(() => {
+    if (!mounted) return;
+
     if (publicKey) {
       window.currentWalletData = { walletAddress: publicKey.toBase58(), userName: "" };
       push("wallet set", window.currentWalletData);
@@ -173,10 +138,12 @@ export default function GamePage() {
       window.currentWalletData = null;
       push("wallet cleared (publicKey null)");
     }
-  }, [publicKey, push]);
+  }, [mounted, publicKey, push]);
 
   // Send walletData to iframe
   useEffect(() => {
+    if (!mounted) return;
+
     const hasFrame = !!iframeRef.current?.contentWindow;
     const hasWallet = !!window.currentWalletData;
 
@@ -190,18 +157,17 @@ export default function GamePage() {
     const message = { type: "walletData", payload: window.currentWalletData };
     iframeRef.current!.contentWindow!.postMessage(message, window.location.origin);
     push("Posted walletData -> iframe", message);
-  }, [connected, push]);
+  }, [mounted, connected, push]);
 
-  // Parent-side probes
+  // Parent-side probes (only when mlog enabled)
   useEffect(() => {
+    if (!mounted) return;
     if (!mlog) return;
     if (!iframeSrc) return;
 
     push("GamePage mounted");
     push("UA " + navigator.userAgent);
     push("Origin " + window.location.origin);
-    push("NEXT_PUBLIC_UNITY_BUILD_ID " + buildId);
-    push("unityMode " + unityMode);
     push("iframeSrc " + iframeSrc);
 
     (async () => {
@@ -212,7 +178,7 @@ export default function GamePage() {
       await probeUrl(`${window.location.origin}${unity.files.data}`, push);
       push("PROBE END (parent)");
     })();
-  }, [mlog, iframeSrc, buildId, unityMode, unity.files, push]);
+  }, [mounted, mlog, iframeSrc, unity.files, push]);
 
   const startSession = async () => {
     if (connected && publicKey) {
@@ -257,6 +223,8 @@ export default function GamePage() {
 
   // Receive logs + probe results from iframe
   useEffect(() => {
+    if (!mounted) return;
+
     const onMsg = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
 
@@ -266,11 +234,16 @@ export default function GamePage() {
       if (data.type === "iframeLog") push(`IFRAME: ${String(data.msg || "")}`, data.obj);
       if (data.type === "iframeProbe") push(`IFRAME PROBE: ${String(data.msg || "")}`, data.obj);
       if (data.type === "iframeUnity") push(`UNITY: ${String(data.msg || "")}`, data.obj);
+
+      // support your index.html "mlog" bridge too
+      if (data.type === "mlog" && data.payload?.message) {
+        push(`IFRAME: ${String(data.payload.message)}`, data.payload.data);
+      }
     };
 
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [push]);
+  }, [mounted, push]);
 
   if (isFrozen) {
     return (
@@ -279,6 +252,17 @@ export default function GamePage() {
           The game is currently locked while the leaderboard freezes.
           <br />
           It reopens at <b>{next.toLocaleString()}</b>.
+        </Text>
+      </Center>
+    );
+  }
+
+  // ✅ server + first client render: no iframe => no hydration mismatch
+  if (!mounted) {
+    return (
+      <Center h="100vh" p={4}>
+        <Text textStyle="copy" color="brand.DarkPurple">
+          Loading…
         </Text>
       </Center>
     );
@@ -298,7 +282,13 @@ export default function GamePage() {
         onLoad={handleIframeLoad}
       />
 
-      <MobileLogOverlay enabled={mlog} lines={lines} hidden={hidden} onClear={clear} onToggleHidden={toggleHidden} />
+      <MobileLogOverlay
+        enabled={mlog}
+        lines={lines}
+        hidden={hidden}
+        onClear={clear}
+        onToggleHidden={toggleHidden}
+      />
     </Box>
   );
 }

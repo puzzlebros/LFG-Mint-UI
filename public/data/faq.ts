@@ -39,7 +39,7 @@ export const faqs: Faq[] = [
   {
     question: "Are there plans for the future of this project?",
     answer:
-      "We are the creatives behind The Puzzle Bros. ",
+      "We are the creatives behind The Puzzle Bros. By supporting this project you become a supporter of an indie game studio that loves making games and want to deliver fun experiences for supporters just like you. We thank everyone that gets to be part of that journey and know that and we have big plans for our future. Stay tuned on Twitter and Discord.",
   },
   {
     question: "Is this a scam?",
