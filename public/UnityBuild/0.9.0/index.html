@@ -10,7 +10,6 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 
-    <!-- Low-risk preload -->
     <link rel="preload" href="Build/Jumper.loader.js" as="script" />
 
     <style>
@@ -45,121 +44,48 @@
     </div>
 
     <script>
-      // ------------------------------------------------------------
-      // Query params
-      // ------------------------------------------------------------
-      function qp(name) {
-        try { return new URLSearchParams(location.search).get(name); } catch (e) { return null; }
-      }
-      var MLOG = qp("mlog") === "1";
-      var V = qp("v");
-      var BUILD_QUERY = V ? ("?v=" + encodeURIComponent(V)) : "";
-
-      // ------------------------------------------------------------
-      // Parent bridge (send logs up to /game)
-      // ------------------------------------------------------------
-      function postToParent(type, payload) {
+      // ─────────────────────────────────────────────────────────────
+      // Iframe -> Parent unified logger
+      // ─────────────────────────────────────────────────────────────
+      function postToParent(type, msg, obj) {
         try {
           if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ type: type, payload: payload }, window.location.origin);
+            window.parent.postMessage({ type: type, msg: msg, obj: obj }, window.location.origin);
           }
         } catch (e) {}
       }
 
-      // ------------------------------------------------------------
-      // Mobile on-screen log (enabled with ?mlog=1)
-      // + mirrors console -> parent
-      // ------------------------------------------------------------
-      (function () {
-        if (!MLOG) return;
+      function ilog(msg, obj) { postToParent("iframeLog", msg, obj); }
+      function iprobe(msg, obj) { postToParent("iframeProbe", msg, obj); }
+      function iunity(msg, obj) { postToParent("iframeUnity", msg, obj); }
 
-        var panel = document.createElement("div");
-        panel.id = "__mlog_iframe";
-        panel.style.cssText =
-          "position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;" +
-          "background:rgba(0,0,0,.88);color:#7CFC00;padding:10px;z-index:2147483647;" +
-          "font:12px/1.35 monospace;white-space:pre-wrap;word-break:break-word";
+      // Capture errors inside iframe
+      window.addEventListener("error", function (e) {
+        ilog("window.error", { message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno });
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        ilog("unhandledrejection", { reason: e.reason ? String(e.reason) : "unknown" });
+      });
 
-        var head = document.createElement("div");
-        head.style.cssText = "color:#fff;margin-bottom:6px;font-weight:bold";
-        head.textContent = "Unity Iframe Log (mlog=1)";
-        panel.appendChild(head);
-
-        var pre = document.createElement("pre");
-        pre.style.margin = "0";
-        panel.appendChild(pre);
-
-        function ts() { return new Date().toISOString(); }
-        function write(line) {
-          pre.textContent += line + "\n";
-          panel.scrollTop = panel.scrollHeight;
-        }
-
-        // Patch console to write into panel + parent
-        var orig = { log: console.log, warn: console.warn, error: console.error, debug: console.debug };
-        ["log","warn","error","debug"].forEach(function (k) {
-          console[k] = function () {
-            var msg = "";
-            try { msg = Array.prototype.map.call(arguments, String).join(" "); } catch (e) {}
-            try { write("[" + ts() + "] " + k.toUpperCase() + ": " + msg); } catch (e) {}
-            postToParent("unity-log", { level: k, msg: msg });
-            orig[k].apply(console, arguments);
-          };
-        });
-
-        window.addEventListener("error", function (e) {
-          var m = (e && e.message) ? e.message : "unknown";
-          write("[" + ts() + "] WINDOW.ERROR: " + m);
-          postToParent("unity-error", { message: m, source: e && e.filename, line: e && e.lineno, col: e && e.colno });
-        });
-
-        window.addEventListener("unhandledrejection", function (e) {
-          var r = e && e.reason;
-          var m = (r && r.message) ? r.message : String(r);
-          write("[" + ts() + "] UNHANDLED.REJECTION: " + m);
-          postToParent("unity-error", { message: m, reason: String(r) });
-        });
-
-        // Probe helper visible in panel + parent
-        window.__probe = async function (url) {
-          try {
-            console.log("PROBE", url);
-            var r = await fetch(url, { cache: "no-store" });
-            console.log("status", r.status, r.statusText);
-            console.log("content-type", r.headers.get("content-type") || "");
-            console.log("content-encoding", r.headers.get("content-encoding") || "");
-            console.log("cache-control", r.headers.get("cache-control") || "");
-            console.log("vary", r.headers.get("vary") || "");
-            console.log("content-length", r.headers.get("content-length") || "");
-            var buf = await r.arrayBuffer();
-            console.log("bytes", buf.byteLength);
-          } catch (err) {
-            console.error("PROBE_FAIL", err && err.message ? err.message : String(err));
-          }
-        };
-
-        document.addEventListener("DOMContentLoaded", function () {
-          document.body.appendChild(panel);
-          console.log("index.html loaded", location.href);
-          console.log("UA", navigator.userAgent);
-        });
-      })();
-
-      // ------------------------------------------------------------
+      // ─────────────────────────────────────────────────────────────
       // Canvas focus
-      // ------------------------------------------------------------
+      // ─────────────────────────────────────────────────────────────
       var canvas = document.querySelector("#unity-canvas");
+
       function focusCanvas() {
         try {
           canvas.setAttribute("tabindex", "-1");
           canvas.focus({ preventScroll: true });
-        } catch (e) {}
+          ilog("focusCanvas() ok");
+        } catch (e) {
+          ilog("focusCanvas() failed", { err: String(e) });
+        }
       }
       window.focusUnity = function () { focusCanvas(); };
 
-      // ------------------------------------------------------------
-      // Banner
-      // ------------------------------------------------------------
+      // ─────────────────────────────────────────────────────────────
+      // Unity banner
+      // ─────────────────────────────────────────────────────────────
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
@@ -178,13 +104,102 @@
           }, 5000);
         }
         updateBannerVisibility();
+
+        // forward to parent log stream too
+        iunity("unityShowBanner", { type: type, msg: msg });
       }
 
-      // ------------------------------------------------------------
-      // Unity config (explicit .br URLs; rely on server Content-Encoding: br)
-      // ------------------------------------------------------------
+      // ─────────────────────────────────────────────────────────────
+      // Query flags
+      // ─────────────────────────────────────────────────────────────
+      var QS = "";
+      try { QS = window.location.search || ""; } catch (e) {}
+
+      function qget(key) {
+        try { return new URLSearchParams(window.location.search).get(key); } catch (e) { return null; }
+      }
+
+      var v = qget("v") || "";
+      var mlog = qget("mlog") === "1";
+
+      ilog("iframe boot", { href: window.location.href, v: v, mlog: mlog });
+
+      // ─────────────────────────────────────────────────────────────
+      // Probe helper inside iframe
+      // ─────────────────────────────────────────────────────────────
+      async function probe(url) {
+        try {
+          iprobe("fetch " + url);
+          var res = await fetch(url, { method: "GET", cache: "no-store" });
+
+          var headers = {
+            "content-type": res.headers.get("content-type"),
+            "content-encoding": res.headers.get("content-encoding"),
+            "cache-control": res.headers.get("cache-control"),
+            "vary": res.headers.get("vary"),
+            "etag": res.headers.get("etag"),
+            "content-length": res.headers.get("content-length"),
+            "x-vercel-cache": res.headers.get("x-vercel-cache"),
+            "x-matched-path": res.headers.get("x-matched-path"),
+          };
+
+          iprobe("result " + res.status + " " + res.statusText, { url: url, headers: headers });
+
+          // read small prefix to detect HTML being served
+          var buf = await res.clone().arrayBuffer();
+          var bytes = new Uint8Array(buf.slice(0, 24));
+          var ascii = Array.from(bytes).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : ".").join("");
+          iprobe("first24", { url: url, ascii: ascii });
+
+        } catch (e) {
+          iprobe("ERROR " + url, { err: String(e) });
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // Listen to parent messages
+      // ─────────────────────────────────────────────────────────────
+      window.addEventListener("message", function (event) {
+        if (event.origin !== window.location.origin) return;
+        var data = event.data;
+
+        if (!data || typeof data !== "object") return;
+
+        if (data.type === "focus") {
+          focusCanvas();
+          return;
+        }
+
+        if (data.type === "probe") {
+          // Probe the same URLs Unity will load
+          var buildUrl = "Build";
+          var suffix = v ? ("?v=" + encodeURIComponent(v)) : "";
+          probe(buildUrl + "/Jumper.loader.js" + suffix);
+          probe(buildUrl + "/Jumper.framework.js.br" + suffix);
+          probe(buildUrl + "/Jumper.wasm.br" + suffix);
+          probe(buildUrl + "/Jumper.data.br" + suffix);
+          return;
+        }
+
+        if (data.type === "walletData" && typeof data.payload === "object") {
+          var jsonData = JSON.stringify(data.payload);
+          if (window.unityInstance) {
+            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
+            ilog("walletData forwarded to Unity", { bytes: jsonData.length });
+          } else {
+            ilog("walletData received but unityInstance not ready yet");
+          }
+          return;
+        }
+      });
+
+      // ─────────────────────────────────────────────────────────────
+      // Unity config (Brotli precompressed)
+      // ─────────────────────────────────────────────────────────────
       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/Jumper.loader.js";
+
+      var BUILD_QUERY = v ? ("?v=" + encodeURIComponent(v)) : "";
 
       var config = {
         arguments: [],
@@ -194,11 +209,12 @@
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Jumper",
-        productVersion: "0.9.0",
-        showBanner: unityShowBanner
+        productVersion: v || "0.9.0",
+        showBanner: unityShowBanner,
+        compressionFormat: "br",
       };
 
-      // Mobile/desktop class
+      // Mobile / Desktop
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         var meta = document.createElement("meta");
         meta.name = "viewport";
@@ -220,86 +236,56 @@
 
       document.querySelector("#unity-loading-bar").style.display = "block";
 
-      // Messages from parent
-      window.addEventListener("message", function (event) {
-        if (event.origin !== window.location.origin) return;
-        var data = event.data;
-
-        if (data && data.type === "focus") {
-          if (MLOG) console.log("received focus");
-          focusCanvas();
-          return;
-        }
-
-        if (data && data.type === "walletData" && typeof data.payload === "object") {
-          if (MLOG) console.log("received walletData");
-          var jsonData = JSON.stringify(data.payload);
-          if (window.unityInstance) {
-            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-          }
-        }
-      });
-
-      // Unity calls this
-      window.requestWalletData = function () {
-        if (MLOG) console.log("requestWalletData called by Unity");
-        setTimeout(function () {
-          var source =
-            window.parent && window.parent !== window && window.parent.currentWalletData
-              ? window.parent.currentWalletData
-              : window.currentWalletData;
-
-          if (!source) {
-            if (MLOG) console.warn("no wallet data available");
-            return;
-          }
-
-          var jsonData = JSON.stringify(source);
-          if (window.unityInstance) {
-            window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
-          }
-        }, 250);
-      };
-
-      // ------------------------------------------------------------
-      // Probe headers before boot when ?mlog=1
-      // ------------------------------------------------------------
-      if (MLOG && window.__probe) {
-        window.__probe(buildUrl + "/Jumper.framework.js.br" + BUILD_QUERY);
-        window.__probe(buildUrl + "/Jumper.wasm.br" + BUILD_QUERY);
-        window.__probe(buildUrl + "/Jumper.data.br" + BUILD_QUERY);
-      }
-
-      // ------------------------------------------------------------
-      // Boot
-      // ------------------------------------------------------------
+      // Boot Unity
       var script = document.createElement("script");
       script.src = loaderUrl + BUILD_QUERY;
 
-      if (MLOG) console.log("loading loader", script.src);
-
       script.onload = function () {
-        if (MLOG) console.log("loader loaded, creating unity instance");
+        iunity("loader loaded", { src: script.src });
+
         createUnityInstance(canvas, config, function (progress) {
-          document.querySelector("#unity-progress-bar-full").style.width = (100 * progress) + "%";
+          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+          iunity("progress", { progress: progress });
         })
-        .then(function (unityInstance) {
-          window.unityInstance = unityInstance;
-          document.querySelector("#unity-loading-bar").style.display = "none";
-          document.querySelector("#unity-fullscreen-button").onclick = function () {
-            unityInstance.SetFullscreen(1);
-          };
-          focusCanvas();
-          if (MLOG) console.log("Unity instance ready");
-        })
-        .catch(function (message) {
-          console.error("Unity failed to load:", message);
-          unityShowBanner(String(message), "error");
-        });
+          .then(function (unityInstance) {
+            window.unityInstance = unityInstance;
+            document.querySelector("#unity-loading-bar").style.display = "none";
+            document.querySelector("#unity-fullscreen-button").onclick = function () {
+              unityInstance.SetFullscreen(1);
+            };
+
+            iunity("unity ready");
+            focusCanvas();
+
+            // Let Unity request wallet data if it wants
+            window.requestWalletData = function () {
+              setTimeout(function () {
+                var source =
+                  window.parent && window.parent !== window && window.parent.currentWalletData
+                    ? window.parent.currentWalletData
+                    : window.currentWalletData;
+
+                if (!source) {
+                  ilog("requestWalletData: no source");
+                  return;
+                }
+
+                var jsonData = JSON.stringify(source);
+                if (window.unityInstance) {
+                  window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
+                  ilog("requestWalletData -> Unity", { bytes: jsonData.length });
+                }
+              }, 500);
+            };
+          })
+          .catch(function (message) {
+            iunity("Unity failed to load", { message: String(message) });
+            unityShowBanner(String(message), "error");
+          });
       };
 
       script.onerror = function () {
-        console.error("failed to load loader script:", script.src);
+        iunity("loader failed to load", { src: script.src });
       };
 
       document.body.appendChild(script);

@@ -1,123 +1,214 @@
-import { useEffect, useMemo, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
+import axios from "axios";
 import TutorialPopup from "../components/modals/TutorialPopup";
+import MobileLogOverlay from "@/utils/MobileLogOverlay";
 import { useMobileLog } from "../utils/useMobileLog";
+
+function safeHeader(res: Response, key: string) {
+  try {
+    return res.headers.get(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+async function probeUrl(url: string, log: (m: string, o?: any) => void) {
+  try {
+    log(`PROBE fetch ${url}`);
+
+    const res = await fetch(url, { method: "GET", cache: "no-store" });
+
+    const ct = safeHeader(res, "content-type");
+    const ce = safeHeader(res, "content-encoding");
+    const cc = safeHeader(res, "cache-control");
+    const vary = safeHeader(res, "vary");
+    const etag = safeHeader(res, "etag");
+    const xvc = safeHeader(res, "x-vercel-cache");
+    const xmp = safeHeader(res, "x-matched-path");
+    const cl = safeHeader(res, "content-length");
+
+    log(`PROBE result: ${res.status} ${res.statusText}`, {
+      "content-type": ct,
+      "content-encoding": ce,
+      "cache-control": cc,
+      vary,
+      etag,
+      "content-length": cl,
+      "x-vercel-cache": xvc,
+      "x-matched-path": xmp,
+    });
+
+    // first 24 bytes check (detect HTML being returned)
+    const buf = await res.clone().arrayBuffer();
+    const bytes = new Uint8Array(buf.slice(0, 24));
+    const ascii = Array.from(bytes)
+      .map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : "."))
+      .join("");
+    const hex = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+
+    log(`PROBE first24 ascii="${ascii}" hex=${hex}`);
+
+    if (
+      ascii.toLowerCase().startsWith("<!do") ||
+      ascii.toLowerCase().startsWith("<html") ||
+      ct.includes("text/html")
+    ) {
+      log("PROBE WARNING: looks like HTML/route fallback returned for a Unity asset", {
+        url,
+        ct,
+        ascii,
+      });
+    }
+  } catch (e: any) {
+    log(`PROBE ERROR ${url}`, { message: String(e?.message || e), error: String(e) });
+  }
+}
 
 export default function GamePage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
   const { isFrozen, next } = useWeeklyCycle();
   const { publicKey, connected } = useWallet();
 
-  const { enabled: mlogEnabled, lines: mlogLines, log: mlog, clear: mlogClear, toggle: mlogToggle } =
-    useMobileLog();
-
-  const unityBuildId = process.env.NEXT_PUBLIC_UNITY_BUILD_ID;
-
-  const iframeSrc = useMemo(() => {
-    if (!unityBuildId) return null;
-
-    const params = new URLSearchParams();
-    params.set("v", unityBuildId);
-
-    // Forward ?mlog=1 from /game into the iframe so the probe runs there too.
-    if (typeof window !== "undefined") {
-      const pageParams = new URLSearchParams(window.location.search);
-      if (pageParams.get("mlog") === "1") params.set("mlog", "1");
-    }
-
-    // IMPORTANT: we intentionally use the *versioned* path.
-    return `/UnityBuild/${unityBuildId}/index.html?${params.toString()}`;
-  }, [unityBuildId]);
-
-  // One-time environment log
-  useEffect(() => {
-    mlog("GamePage mounted");
-    mlog("UA", navigator.userAgent);
-    mlog("Origin", window.location.origin);
-    mlog("NEXT_PUBLIC_UNITY_BUILD_ID", unityBuildId ?? "(missing)");
-    mlog("iframeSrc", iframeSrc ?? "(null)");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const params = useMemo(() => {
+    if (typeof window === "undefined") return new URLSearchParams();
+    return new URLSearchParams(window.location.search);
   }, []);
 
-  // Maintain wallet global (object | null)
+  const mlog = params.get("mlog") === "1";
+  const buildId = process.env.NEXT_PUBLIC_UNITY_BUILD_ID || "0.9.0";
+
+  const { lines, hidden, push, clear, toggleHidden } = useMobileLog(mlog);
+
+  const iframeSrc = useMemo(() => {
+    // Always hit versioned folder directly to avoid rewrite ambiguity
+    // Add v + mlog so cache is separated per build and iframe can also log
+    const v = encodeURIComponent(buildId);
+    const logFlag = mlog ? "&mlog=1" : "";
+    return `/UnityBuild/${buildId}/index.html?v=${v}${logFlag}`;
+  }, [buildId, mlog]);
+
+  // Expose wallet data globally for iframe to read (your existing pattern)
   useEffect(() => {
+    // Ensure consistent type: null or object (never undefined)
     if (publicKey) {
       window.currentWalletData = { walletAddress: publicKey.toBase58(), userName: "" };
-      mlog("Wallet set", window.currentWalletData);
+      push("wallet set", window.currentWalletData);
     } else {
       window.currentWalletData = null;
-      mlog("Wallet cleared (publicKey null)");
+      push("wallet cleared (publicKey null)");
     }
+  }, [publicKey, push]);
 
-    // Push walletData when possible
-    const win = iframeRef.current?.contentWindow;
-    if (connected && win && window.currentWalletData !== null) {
-      mlog("Posting walletData to iframe (effect)");
-      win.postMessage({ type: "walletData", payload: window.currentWalletData }, window.location.origin);
-    } else {
-      mlog("Not posting walletData (effect)", {
-        connected,
-        hasIframe: !!win,
-        hasWallet: window.currentWalletData !== null,
-      });
-    }
-  }, [connected, publicKey, mlog]);
-
-  // Listen for iframe messages (probe logs/errors)
+  // Send walletData to iframe
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const data = event.data;
+    const hasFrame = !!iframeRef.current?.contentWindow;
+    const hasWallet = !!window.currentWalletData;
 
-      if (data?.type === "unity-log") {
-        mlog("IFRAME", data.payload);
-      } else if (data?.type === "unity-error") {
-        mlog("IFRAME_ERROR", data.payload);
+    push("wallet effect", { connected, hasFrame, hasWallet });
+
+    if (!connected || !hasFrame || !hasWallet) {
+      push("Not posting walletData (effect)");
+      return;
+    }
+
+    const message = { type: "walletData", payload: window.currentWalletData };
+    iframeRef.current!.contentWindow!.postMessage(message, window.location.origin);
+    push("Posted walletData -> iframe", message);
+  }, [connected, push]);
+
+  // Parent-side probes (critical for mobile where iframe fails early)
+  useEffect(() => {
+    if (!mlog) return;
+
+    push("GamePage mounted");
+    push("UA " + navigator.userAgent);
+    push("Origin " + window.location.origin);
+    push("NEXT_PUBLIC_UNITY_BUILD_ID " + buildId);
+    push("iframeSrc " + iframeSrc);
+
+    const base = `${window.location.origin}/UnityBuild/${buildId}/Build`;
+
+    (async () => {
+      push("PROBE START (parent)");
+      await probeUrl(`${base}/Jumper.loader.js?v=${encodeURIComponent(buildId)}`, push);
+      await probeUrl(`${base}/Jumper.framework.js.br?v=${encodeURIComponent(buildId)}`, push);
+      await probeUrl(`${base}/Jumper.wasm.br?v=${encodeURIComponent(buildId)}`, push);
+      await probeUrl(`${base}/Jumper.data.br?v=${encodeURIComponent(buildId)}`, push);
+      push("PROBE END (parent)");
+    })();
+  }, [mlog, buildId, iframeSrc, push]);
+
+  const startSession = async () => {
+    if (connected && publicKey) {
+      try {
+        const res = await axios.post("/api/game/start", {
+          walletAddress: publicKey.toBase58(),
+          userName: "",
+        });
+        push("Session started on server", res.data);
+      } catch (error: any) {
+        push("Failed to start session", { message: String(error?.message || error) });
+      }
+    }
+  };
+
+  const sendWalletData = () => {
+    if (!iframeRef.current?.contentWindow) {
+      push("sendWalletData: iframe not available");
+      return;
+    }
+    if (!window.currentWalletData) {
+      push("sendWalletData: no wallet data (null)");
+      return;
+    }
+
+    const message = { type: "walletData", payload: window.currentWalletData };
+    iframeRef.current.contentWindow.postMessage(message, window.location.origin);
+    push("sendWalletData -> iframe", message);
+  };
+
+  const handleIframeLoad = () => {
+    push("Iframe loaded event fired");
+
+    // Ask iframe to focus its canvas
+    iframeRef.current?.contentWindow?.postMessage({ type: "focus" }, window.location.origin);
+    push("Posting focus -> iframe");
+
+    // Ask iframe to run its internal probes and report back to parent
+    iframeRef.current?.contentWindow?.postMessage({ type: "probe" }, window.location.origin);
+    push("Posting probe -> iframe");
+
+    if (connected && publicKey) sendWalletData();
+  };
+
+  // Receive logs + probe results from iframe
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      const data: any = event.data;
+      if (!data || typeof data !== "object") return;
+
+      if (data.type === "iframeLog") {
+        push(`IFRAME: ${String(data.msg || "")}`, data.obj);
+      }
+      if (data.type === "iframeProbe") {
+        push(`IFRAME PROBE: ${String(data.msg || "")}`, data.obj);
+      }
+      if (data.type === "iframeUnity") {
+        push(`UNITY: ${String(data.msg || "")}`, data.obj);
       }
     };
 
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [mlog]);
-
-  const postFocus = useCallback(() => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) {
-      mlog("focus: no iframe window yet");
-      return;
-    }
-    mlog("Posting focus -> iframe");
-    win.postMessage({ type: "focus" }, window.location.origin);
-  }, [mlog]);
-
-  const postWallet = useCallback(() => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) {
-      mlog("wallet: no iframe window yet");
-      return;
-    }
-    if (window.currentWalletData === null) {
-      mlog("wallet: currentWalletData is null");
-      return;
-    }
-    mlog("Posting walletData -> iframe (manual)");
-    win.postMessage({ type: "walletData", payload: window.currentWalletData }, window.location.origin);
-  }, [mlog]);
-
-  const handleIframeLoad = () => {
-    mlog("Iframe loaded event fired");
-
-    // Focus immediately, then retry a couple times (iOS sometimes needs a beat)
-    postFocus();
-    setTimeout(postFocus, 250);
-    setTimeout(postFocus, 750);
-
-    if (connected && publicKey) {
-      postWallet();
-    }
-  };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [push]);
 
   if (isFrozen) {
     return (
@@ -131,20 +222,8 @@ export default function GamePage() {
     );
   }
 
-  if (!iframeSrc) {
-    return (
-      <Center h="100vh" p={4}>
-        <Text textStyle="copy" color="red.500">
-          Missing NEXT_PUBLIC_UNITY_BUILD_ID.
-          <br />
-          Set it in Vercel and redeploy.
-        </Text>
-      </Center>
-    );
-  }
-
   return (
-    <Box width="100%" height="100%" overflow="hidden" position="relative">
+    <Box width="100%" height="100%" overflow="hidden">
       <TutorialPopup />
 
       <iframe
@@ -157,49 +236,13 @@ export default function GamePage() {
         onLoad={handleIframeLoad}
       />
 
-      {mlogEnabled && (
-        <Box
-          position="fixed"
-          left="0"
-          right="0"
-          bottom="0"
-          maxH="45vh"
-          overflowY="auto"
-          zIndex={999999}
-          bg="rgba(0,0,0,0.85)"
-          color="green.200"
-          fontFamily="mono"
-          fontSize="11px"
-          lineHeight="1.35"
-          p="10px"
-          borderTop="1px solid rgba(255,255,255,0.2)"
-        >
-          <Box display="flex" gap="8px" alignItems="center" mb="6px">
-            <Text color="white" fontWeight="bold" m={0}>
-              Mobile Log
-            </Text>
-            <Box as="button" onClick={mlogClear} style={btnStyle}>
-              Clear
-            </Box>
-            <Box as="button" onClick={mlogToggle} style={btnStyle}>
-              Hide
-            </Box>
-          </Box>
-
-          <Box whiteSpace="pre-wrap" wordBreak="break-word">
-            {mlogLines.join("\n")}
-          </Box>
-        </Box>
-      )}
+      <MobileLogOverlay
+        enabled={mlog}
+        lines={lines}
+        hidden={hidden}
+        onClear={clear}
+        onToggleHidden={toggleHidden}
+      />
     </Box>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  background: "#222",
-  color: "#fff",
-  border: "1px solid #555",
-  padding: "4px 8px",
-  borderRadius: "4px",
-  cursor: "pointer",
-};

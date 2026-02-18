@@ -1,58 +1,99 @@
-// components/useMobileLog.ts
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type MobileLog = {
-  enabled: boolean;
-  lines: string[];
-  log: (msg: string, data?: unknown) => void;
-  clear: () => void;
-  toggle: () => void;
-};
+function nowIso() {
+  return new Date().toISOString();
+}
 
-export function useMobileLog(): MobileLog {
-  const [enabled, setEnabled] = useState(false);
+function safeJson(x: any) {
+  try {
+    if (x === undefined) return "undefined";
+    if (x === null) return "null";
+    if (typeof x === "string") return x;
+    return JSON.stringify(x);
+  } catch {
+    return String(x);
+  }
+}
+
+export type MobileLogger = (msg: string, obj?: any) => void;
+
+export function useMobileLog(enabled: boolean) {
   const [lines, setLines] = useState<string[]>([]);
-  const linesRef = useRef<string[]>([]);
+  const [hidden, setHidden] = useState(false);
 
+  const push = useCallback<MobileLogger>(
+    (msg, obj) => {
+      if (!enabled) return;
+      const line =
+        obj !== undefined
+          ? `[${nowIso()}] ${msg}\n${safeJson(obj)}`
+          : `[${nowIso()}] ${msg}`;
+      setLines((prev) => [...prev, line]);
+    },
+    [enabled]
+  );
+
+  const clear = useCallback(() => setLines([]), []);
+
+  const toggleHidden = useCallback(() => setHidden((h) => !h), []);
+
+  // Hijack console + window errors so we see EVERYTHING
   useEffect(() => {
-    // Enable when ?mlog=1 is present, or on mobile by default if you prefer.
-    const params = new URLSearchParams(window.location.search);
-    const on = params.get("mlog") === "1";
-    setEnabled(on);
-  }, []);
+    if (!enabled) return;
 
-  const log = useCallback((msg: string, data?: unknown) => {
-    const ts = new Date().toISOString();
-    const extra =
-      data === undefined
-        ? ""
-        : " " +
-          (typeof data === "string"
-            ? data
-            : (() => {
-                try {
-                  return JSON.stringify(data);
-                } catch {
-                  return String(data);
-                }
-              })());
+    const orig = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+      info: console.info,
+      debug: console.debug,
+    };
 
-    const line = `[${ts}] ${msg}${extra}`;
+    const wrap =
+      (lvl: keyof typeof orig) =>
+      (...args: any[]) => {
+        try {
+          const joined = args.map((a) => safeJson(a)).join(" ");
+          push(`console.${lvl}: ${joined}`);
+        } catch {}
+        orig[lvl](...args);
+      };
 
-    linesRef.current = [...linesRef.current, line].slice(-300); // keep last 300 lines
-    setLines(linesRef.current);
+    console.log = wrap("log");
+    console.warn = wrap("warn");
+    console.error = wrap("error");
+    console.info = wrap("info");
+    console.debug = wrap("debug");
 
-    // Still log to console for desktop debugging
-    // eslint-disable-next-line no-console
-    console.log(line);
-  }, []);
+    const onError = (event: ErrorEvent) => {
+      push("window.onerror", {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error ? String(event.error) : null,
+      });
+    };
 
-  const clear = useCallback(() => {
-    linesRef.current = [];
-    setLines([]);
-  }, []);
+    const onRejection = (event: PromiseRejectionEvent) => {
+      push("window.unhandledrejection", {
+        reason: event.reason ? safeJson(event.reason) : "unknown",
+      });
+    };
 
-  const toggle = useCallback(() => setEnabled((v) => !v), []);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
 
-  return { enabled, lines, log, clear, toggle };
+    return () => {
+      console.log = orig.log;
+      console.warn = orig.warn;
+      console.error = orig.error;
+      console.info = orig.info;
+      console.debug = orig.debug;
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, [enabled, push]);
+
+  return { lines, hidden, push, clear, toggleHidden };
 }
