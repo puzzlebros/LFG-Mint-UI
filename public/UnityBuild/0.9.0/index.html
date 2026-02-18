@@ -56,13 +56,25 @@
       var BUILD_QUERY = V ? ("?v=" + encodeURIComponent(V)) : "";
 
       // ------------------------------------------------------------
+      // Parent bridge (send logs up to /game)
+      // ------------------------------------------------------------
+      function postToParent(type, payload) {
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: type, payload: payload }, window.location.origin);
+          }
+        } catch (e) {}
+      }
+
+      // ------------------------------------------------------------
       // Mobile on-screen log (enabled with ?mlog=1)
+      // + mirrors console -> parent
       // ------------------------------------------------------------
       (function () {
         if (!MLOG) return;
 
         var panel = document.createElement("div");
-        panel.id = "__mlog";
+        panel.id = "__mlog_iframe";
         panel.style.cssText =
           "position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;" +
           "background:rgba(0,0,0,.88);color:#7CFC00;padding:10px;z-index:2147483647;" +
@@ -70,36 +82,45 @@
 
         var head = document.createElement("div");
         head.style.cssText = "color:#fff;margin-bottom:6px;font-weight:bold";
-        head.textContent = "Mobile Log enabled";
+        head.textContent = "Unity Iframe Log (mlog=1)";
         panel.appendChild(head);
 
         var pre = document.createElement("pre");
         pre.style.margin = "0";
         panel.appendChild(pre);
 
+        function ts() { return new Date().toISOString(); }
         function write(line) {
           pre.textContent += line + "\n";
           panel.scrollTop = panel.scrollHeight;
         }
-        function ts() { return new Date().toISOString(); }
 
+        // Patch console to write into panel + parent
         var orig = { log: console.log, warn: console.warn, error: console.error, debug: console.debug };
         ["log","warn","error","debug"].forEach(function (k) {
           console[k] = function () {
-            try {
-              write("[" + ts() + "] " + k.toUpperCase() + ": " + Array.prototype.map.call(arguments, String).join(" "));
-            } catch (e) {}
+            var msg = "";
+            try { msg = Array.prototype.map.call(arguments, String).join(" "); } catch (e) {}
+            try { write("[" + ts() + "] " + k.toUpperCase() + ": " + msg); } catch (e) {}
+            postToParent("unity-log", { level: k, msg: msg });
             orig[k].apply(console, arguments);
           };
         });
 
         window.addEventListener("error", function (e) {
-          write("[" + ts() + "] WINDOW.ERROR: " + (e.message || "unknown"));
-        });
-        window.addEventListener("unhandledrejection", function (e) {
-          write("[" + ts() + "] UNHANDLED.REJECTION: " + String((e.reason && e.reason.message) ? e.reason.message : e.reason));
+          var m = (e && e.message) ? e.message : "unknown";
+          write("[" + ts() + "] WINDOW.ERROR: " + m);
+          postToParent("unity-error", { message: m, source: e && e.filename, line: e && e.lineno, col: e && e.colno });
         });
 
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e && e.reason;
+          var m = (r && r.message) ? r.message : String(r);
+          write("[" + ts() + "] UNHANDLED.REJECTION: " + m);
+          postToParent("unity-error", { message: m, reason: String(r) });
+        });
+
+        // Probe helper visible in panel + parent
         window.__probe = async function (url) {
           try {
             console.log("PROBE", url);
@@ -109,6 +130,7 @@
             console.log("content-encoding", r.headers.get("content-encoding") || "");
             console.log("cache-control", r.headers.get("cache-control") || "");
             console.log("vary", r.headers.get("vary") || "");
+            console.log("content-length", r.headers.get("content-length") || "");
             var buf = await r.arrayBuffer();
             console.log("bytes", buf.byteLength);
           } catch (err) {
@@ -119,6 +141,7 @@
         document.addEventListener("DOMContentLoaded", function () {
           document.body.appendChild(panel);
           console.log("index.html loaded", location.href);
+          console.log("UA", navigator.userAgent);
         });
       })();
 
@@ -203,11 +226,13 @@
         var data = event.data;
 
         if (data && data.type === "focus") {
+          if (MLOG) console.log("received focus");
           focusCanvas();
           return;
         }
 
         if (data && data.type === "walletData" && typeof data.payload === "object") {
+          if (MLOG) console.log("received walletData");
           var jsonData = JSON.stringify(data.payload);
           if (window.unityInstance) {
             window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
@@ -217,23 +242,27 @@
 
       // Unity calls this
       window.requestWalletData = function () {
+        if (MLOG) console.log("requestWalletData called by Unity");
         setTimeout(function () {
           var source =
             window.parent && window.parent !== window && window.parent.currentWalletData
               ? window.parent.currentWalletData
               : window.currentWalletData;
 
-          if (!source) return;
+          if (!source) {
+            if (MLOG) console.warn("no wallet data available");
+            return;
+          }
 
           var jsonData = JSON.stringify(source);
           if (window.unityInstance) {
             window.unityInstance.SendMessage("Game", "SetUserData", jsonData);
           }
-        }, 500);
+        }, 250);
       };
 
       // ------------------------------------------------------------
-      // (Mobile debug) Probe headers before boot when ?mlog=1
+      // Probe headers before boot when ?mlog=1
       // ------------------------------------------------------------
       if (MLOG && window.__probe) {
         window.__probe(buildUrl + "/Jumper.framework.js.br" + BUILD_QUERY);
@@ -247,7 +276,10 @@
       var script = document.createElement("script");
       script.src = loaderUrl + BUILD_QUERY;
 
+      if (MLOG) console.log("loading loader", script.src);
+
       script.onload = function () {
+        if (MLOG) console.log("loader loaded, creating unity instance");
         createUnityInstance(canvas, config, function (progress) {
           document.querySelector("#unity-progress-bar-full").style.width = (100 * progress) + "%";
         })
@@ -264,6 +296,10 @@
           console.error("Unity failed to load:", message);
           unityShowBanner(String(message), "error");
         });
+      };
+
+      script.onerror = function () {
+        console.error("failed to load loader script:", script.src);
       };
 
       document.body.appendChild(script);

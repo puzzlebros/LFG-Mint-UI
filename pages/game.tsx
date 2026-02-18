@@ -1,5 +1,4 @@
-// pages/game.tsx
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
@@ -18,21 +17,31 @@ export default function GamePage() {
 
   const iframeSrc = useMemo(() => {
     if (!unityBuildId) return null;
-    // Versioned path + cache key change for UnityCache
-    return `/UnityBuild/${unityBuildId}/index.html?v=${encodeURIComponent(unityBuildId)}`;
+
+    const params = new URLSearchParams();
+    params.set("v", unityBuildId);
+
+    // Forward ?mlog=1 from /game into the iframe so the probe runs there too.
+    if (typeof window !== "undefined") {
+      const pageParams = new URLSearchParams(window.location.search);
+      if (pageParams.get("mlog") === "1") params.set("mlog", "1");
+    }
+
+    // IMPORTANT: we intentionally use the *versioned* path.
+    return `/UnityBuild/${unityBuildId}/index.html?${params.toString()}`;
   }, [unityBuildId]);
 
-  // Log basic environment info once
+  // One-time environment log
   useEffect(() => {
     mlog("GamePage mounted");
     mlog("UA", navigator.userAgent);
     mlog("Origin", window.location.origin);
-    mlog("UNITY_BUILD_ID", unityBuildId ?? "(missing)");
+    mlog("NEXT_PUBLIC_UNITY_BUILD_ID", unityBuildId ?? "(missing)");
     mlog("iframeSrc", iframeSrc ?? "(null)");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep wallet data in global (object | null)
+  // Maintain wallet global (object | null)
   useEffect(() => {
     if (publicKey) {
       window.currentWalletData = { walletAddress: publicKey.toBase58(), userName: "" };
@@ -42,34 +51,30 @@ export default function GamePage() {
       mlog("Wallet cleared (publicKey null)");
     }
 
-    // Whenever wallet connects/changes, attempt to push to iframe
-    if (connected && iframeRef.current?.contentWindow && window.currentWalletData !== null) {
+    // Push walletData when possible
+    const win = iframeRef.current?.contentWindow;
+    if (connected && win && window.currentWalletData !== null) {
       mlog("Posting walletData to iframe (effect)");
-      iframeRef.current.contentWindow.postMessage(
-        { type: "walletData", payload: window.currentWalletData },
-        window.location.origin
-      );
+      win.postMessage({ type: "walletData", payload: window.currentWalletData }, window.location.origin);
     } else {
       mlog("Not posting walletData (effect)", {
         connected,
-        hasIframe: !!iframeRef.current?.contentWindow,
+        hasIframe: !!win,
         hasWallet: window.currentWalletData !== null,
       });
     }
   }, [connected, publicKey, mlog]);
 
-  // Receive messages from iframe (optional: add more if you emit them from Unity/index.html)
+  // Listen for iframe messages (probe logs/errors)
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const data = event.data;
 
-      // If you add postMessage logs from iframe, you’ll see them here.
       if (data?.type === "unity-log") {
-        mlog("IFRAME unity-log", data.payload);
-      }
-      if (data?.type === "unity-error") {
-        mlog("IFRAME unity-error", data.payload);
+        mlog("IFRAME", data.payload);
+      } else if (data?.type === "unity-error") {
+        mlog("IFRAME_ERROR", data.payload);
       }
     };
 
@@ -77,34 +82,41 @@ export default function GamePage() {
     return () => window.removeEventListener("message", onMessage);
   }, [mlog]);
 
-  const focusUnity = () => {
+  const postFocus = useCallback(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) {
-      mlog("focusUnity: no contentWindow yet");
+      mlog("focus: no iframe window yet");
       return;
     }
-    mlog("Posting focus to iframe");
+    mlog("Posting focus -> iframe");
     win.postMessage({ type: "focus" }, window.location.origin);
-  };
+  }, [mlog]);
 
-  const sendWalletData = () => {
+  const postWallet = useCallback(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) {
-      mlog("sendWalletData: no contentWindow");
+      mlog("wallet: no iframe window yet");
       return;
     }
     if (window.currentWalletData === null) {
-      mlog("sendWalletData: walletData is null");
+      mlog("wallet: currentWalletData is null");
       return;
     }
-    mlog("Posting walletData to iframe (manual)");
+    mlog("Posting walletData -> iframe (manual)");
     win.postMessage({ type: "walletData", payload: window.currentWalletData }, window.location.origin);
-  };
+  }, [mlog]);
 
   const handleIframeLoad = () => {
     mlog("Iframe loaded event fired");
-    focusUnity();
-    if (connected && publicKey) sendWalletData();
+
+    // Focus immediately, then retry a couple times (iOS sometimes needs a beat)
+    postFocus();
+    setTimeout(postFocus, 250);
+    setTimeout(postFocus, 750);
+
+    if (connected && publicKey) {
+      postWallet();
+    }
   };
 
   if (isFrozen) {
@@ -145,7 +157,6 @@ export default function GamePage() {
         onLoad={handleIframeLoad}
       />
 
-      {/* On-screen mobile logger (enable with ?mlog=1) */}
       {mlogEnabled && (
         <Box
           position="fixed"
