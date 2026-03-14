@@ -55,7 +55,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   // Use a real app URL (recommended). Falls back safely.
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "https://example.com");
+    (typeof window !== "undefined" ? window.location.origin : "https://letsflamingo.gg");
 
   const wallets = useMemo<WalletAdapter[]>(() => {
     // prevent SSR crashes (wallets touch `window`)
