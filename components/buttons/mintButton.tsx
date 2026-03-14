@@ -139,7 +139,9 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     }
 
     const mintArgsArray = mintArgsBuilder(guardToUse, mintAmount);
-    const latestBlockhash = (await umi.rpc.getLatestBlockhash({commitment: "finalized"}));
+const latestBlockhash = await umi.rpc.getLatestBlockhash({
+  commitment: "confirmed",
+});
 
     const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
       await buildTxs(
@@ -181,24 +183,39 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
 
     let signatures: Uint8Array[] = [];
     let amountSent = 0;
-    const sendPromises = signedTransactions.map((tx, index) => {
-      return umi.rpc
-        .sendTransaction(tx, { skipPreflight:true, maxRetries: 1, preflightCommitment: "finalized", commitment: "finalized" })
-        .then((signature) => {
-          console.log(
-            `Transaction ${index + 1} resolved with signature: ${
-              base58.deserialize(signature)[0]
-            }`
-          );
-          amountSent = amountSent + 1;
-          signatures.push(signature);
-          return { status: "fulfilled", value: signature };
-        })
-        .catch((error) => {
-          console.error(`Transaction ${index + 1} failed:`, error);
-          return { status: "rejected", reason: error };
-        });
+const sendPromises = signedTransactions.map((tx, index) => {
+  return umi.rpc
+    .sendTransaction(tx, {
+      skipPreflight: false,
+      maxRetries: 3,
+      preflightCommitment: "confirmed",
+      commitment: "confirmed",
+    })
+    .then((signature) => {
+      console.log(
+        `Transaction ${index + 1} resolved with signature: ${
+          base58.deserialize(signature)[0]
+        }`
+      );
+      amountSent = amountSent + 1;
+      signatures.push(signature);
+      return { status: "fulfilled", value: signature };
+    })
+    .catch(async (error: any) => {
+      console.error(`Transaction ${index + 1} failed:`, error);
+
+      if (typeof error?.getLogs === "function") {
+        try {
+          const logs = await error.getLogs();
+          console.error(`Transaction ${index + 1} logs:`, logs);
+        } catch (logErr) {
+          console.error("Could not fetch tx logs:", logErr);
+        }
+      }
+
+      return { status: "rejected", reason: error };
     });
+});
 
     await Promise.allSettled(sendPromises);
 
