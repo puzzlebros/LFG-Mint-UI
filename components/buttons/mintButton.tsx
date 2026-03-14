@@ -110,10 +110,10 @@ console.log(`[mintClick] guards: allowList=${guardToUse.guards.allowList.__optio
     newGuardList[guardIndex].minting = true;
     setGuardList(newGuardList);
 
-    if (guardToUse.guards.allowList.__option === "Some") {
-      await sendAllowListProof(umi, guardToUse, candyMachine);
-      updateLoadingText(`Authenticating...`, guardList, guardToUse.label, setGuardList);
-    }
+if (guardToUse.guards.allowList.__option === "Some") {
+  updateLoadingText(`Authenticating...`, guardList, guardToUse.label, setGuardList);
+  await sendAllowListProof(umi, guardToUse, candyMachine);
+}
 
     // fetch LUT
     let tables: AddressLookupTableInput[] = [];
@@ -182,26 +182,30 @@ const latestBlockhash = await umi.rpc.getLatestBlockhash({
 
 
     let signatures: Uint8Array[] = [];
-    let amountSent = 0;
-const sendPromises = signedTransactions.map((tx, index) => {
-  return umi.rpc
-    .sendTransaction(tx, {
-      skipPreflight: false,
-      maxRetries: 3,
-      preflightCommitment: "confirmed",
-      commitment: "confirmed",
-    })
-    .then((signature) => {
+
+const sendResults = await Promise.all(
+  signedTransactions.map(async (tx, index) => {
+    try {
+      const signature = await umi.rpc.sendTransaction(tx, {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed",
+        commitment: "confirmed",
+      });
+
       console.log(
         `Transaction ${index + 1} resolved with signature: ${
           base58.deserialize(signature)[0]
         }`
       );
-      amountSent = amountSent + 1;
+
       signatures.push(signature);
-      return { status: "fulfilled", value: signature };
-    })
-    .catch(async (error: any) => {
+
+      return {
+        status: "fulfilled" as const,
+        value: signature,
+      };
+    } catch (error: any) {
       console.error(`Transaction ${index + 1} failed:`, error);
 
       if (typeof error?.getLogs === "function") {
@@ -213,16 +217,18 @@ const sendPromises = signedTransactions.map((tx, index) => {
         }
       }
 
-      return { status: "rejected", reason: error };
-    });
-});
-
-    await Promise.allSettled(sendPromises);
-
-    if (!(await sendPromises[0]).status === true) {
-      // throw error that no tx was created
-      throw new Error("no tx was created");
+      return {
+        status: "rejected" as const,
+        reason: error,
+      };
     }
+  })
+);
+
+if (!sendResults.some((r) => r.status === "fulfilled")) {
+  throw new Error("No mint transaction was sent successfully.");
+}
+
     updateLoadingText(
       `Joining the flock`,
       guardList,
@@ -269,16 +275,17 @@ const sendPromises = signedTransactions.map((tx, index) => {
       setMintsCreated(newMintsCreated);
       onOpen();
     }
-  } catch (e) {
-    console.error(`minting failed because of ${e}`);
-    createStandaloneToast().toast({
-      title: "Your mint failed!",
-      description: "Please try again.",
-      status: "error",
-      duration: 900,
-      isClosable: true,
-    });
-  } finally {
+} catch (e: any) {
+  console.error("minting failed", e);
+
+  createStandaloneToast().toast({
+    title: "Your mint failed!",
+    description: e?.message ?? "Please try again.",
+    status: "error",
+    duration: 2000,
+    isClosable: true,
+  });
+} finally {
     //find the guard by guardToUse.label and set minting to true
     const guardIndex = guardList.findIndex((g) => g.label === guardToUse.label);
     if (guardIndex === -1) {

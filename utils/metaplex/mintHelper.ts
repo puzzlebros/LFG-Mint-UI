@@ -48,7 +48,7 @@ export const chooseGuardToUse = (
 // Called on mint once
 let _top10Wallets: string[] = []
 export function cacheLeaderboard(wallets: string[]) {
-  _top10Wallets = wallets
+  _top10Wallets = [...wallets].map((w) => w.trim());
 }
 
 export const mintArgsBuilder = (
@@ -60,14 +60,11 @@ export const mintArgsBuilder = (
   for (let i = 0; i < amount; i++) {
     const args: Partial<DefaultGuardSetMintArgs> = {};
     
-    if (guards.allowList.__option === "Some") {
-    const allowlist = [..._top10Wallets];
-    if (!allowlist) {
-      console.error(`allowlist for guard ${guardToUse.label} not found!`);
-    } else {
-      args.allowList = some({ merkleRoot: getMerkleRoot(allowlist) });
-    }
-    }
+if (guards.allowList.__option === "Some") {
+  args.allowList = some({
+    merkleRoot: guards.allowList.value.merkleRoot,
+  });
+}
     // Handling mintLimit guard
     if (guards.mintLimit.__option === 'Some') {
       args.mintLimit = some({ id: guards.mintLimit.value.id });
@@ -90,12 +87,27 @@ export async function sendAllowListProof(
 ) {
   if (guardToUse.guards.allowList.__option !== "Some") return;
 
-  const allowlist = [..._top10Wallets];
+  const allowlist = [..._top10Wallets].map((w) => w.trim());
+  if (allowlist.length === 0) {
+    throw new Error("cached allowlist is empty");
+  }
+
+  const user = umi.identity.publicKey.toString();
+  if (!allowlist.includes(user)) {
+    throw new Error(`Wallet ${user} is not present in cached allowlist`);
+  }
+
+  const merkleRoot = guardToUse.guards.allowList.value.merkleRoot;
+
+  console.log("[allowlist] on-chain root:", merkleRoot);
+  console.log("[allowlist] computed root:", getMerkleRoot(allowlist));
+  console.log("[allowlist] wallet:", user);
+  console.log("[allowlist] cached count:", allowlist.length);
 
   const existing = await safeFetchAllowListProofFromSeeds(umi, {
     candyGuard: candyMachine.mintAuthority,
     candyMachine: candyMachine.publicKey,
-    merkleRoot: getMerkleRoot(allowlist),
+    merkleRoot,
     user: umi.identity.publicKey,
   });
 
@@ -104,12 +116,10 @@ export async function sendAllowListProof(
       guard: "allowList",
       candyMachine: candyMachine.publicKey,
       candyGuard: candyMachine.mintAuthority,
-      group: guardToUse.label === "default"
-        ? none()
-        : some(guardToUse.label),
+      group: guardToUse.label === "default" ? none() : some(guardToUse.label),
       routeArgs: {
         path: "proof",
-        merkleRoot: getMerkleRoot(allowlist),
+        merkleRoot,
         merkleProof: getMerkleProof(allowlist, umi.identity.publicKey),
       },
     }).sendAndConfirm(umi);
@@ -121,38 +131,44 @@ export const routeBuilder = async (
   guardToUse: GuardGroup<DefaultGuardSet>,
   candyMachine: CandyMachine
 ) => {
-  let tx2 = transactionBuilder();
+  let tx = transactionBuilder();
 
-  if (guardToUse.guards.allowList.__option === "Some") {
-  const allowlist = [..._top10Wallets];
-  if (!allowlist || allowlist.length === 0) {
-      console.error("allowlist not found!");
-      return transactionBuilder();
-    }
-    const allowListProof = await safeFetchAllowListProofFromSeeds(umi, {
-      candyGuard: candyMachine.mintAuthority,
-      candyMachine: candyMachine.publicKey,
-      merkleRoot: getMerkleRoot(allowlist),
-      user: publicKey(umi.identity),
-    });
-    if (allowListProof === null) {
-      tx2 = tx2.add(
-        route(umi, {
-          guard: "allowList",
-          candyMachine: candyMachine.publicKey,
-          candyGuard: candyMachine.mintAuthority,
-          group:
-            guardToUse.label === "default" ? none() : some(guardToUse.label),
-          routeArgs: {
-            path: "proof",
-            merkleRoot: getMerkleRoot(allowlist),
-            merkleProof: getMerkleProof(allowlist, publicKey(umi.identity)),
-          },
-        })
-      );
-    }
-    return tx2;
+  if (guardToUse.guards.allowList.__option !== "Some") {
+    return tx;
   }
+
+  const allowlist = [..._top10Wallets].map((w) => w.trim());
+  if (allowlist.length === 0) {
+    console.error("allowlist not found!");
+    return tx;
+  }
+
+  const merkleRoot = guardToUse.guards.allowList.value.merkleRoot;
+
+  const allowListProof = await safeFetchAllowListProofFromSeeds(umi, {
+    candyGuard: candyMachine.mintAuthority,
+    candyMachine: candyMachine.publicKey,
+    merkleRoot,
+    user: umi.identity.publicKey,
+  });
+
+  if (allowListProof === null) {
+    tx = tx.add(
+      route(umi, {
+        guard: "allowList",
+        candyMachine: candyMachine.publicKey,
+        candyGuard: candyMachine.mintAuthority,
+        group: guardToUse.label === "default" ? none() : some(guardToUse.label),
+        routeArgs: {
+          path: "proof",
+          merkleRoot,
+          merkleProof: getMerkleProof(allowlist, umi.identity.publicKey),
+        },
+      })
+    );
+  }
+
+  return tx;
 };
 
 export const combineTransactions = (
