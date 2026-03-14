@@ -15,6 +15,7 @@ import {
   useDisclosure
 } from '@chakra-ui/react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletContextGuard } from "../utils/useWalletContextGuard";
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import ThemedModal from '../components/modals/ThemedModal';
 import { keyframes } from '@emotion/react'
@@ -41,8 +42,10 @@ const floatKeyframes = `
 `
 
 export default function HomePage() {
-  const { publicKey } = useWallet();
-  const myWallet      = publicKey?.toString();
+  useWalletContextGuard({ enabled: true });
+  const { publicKey, connected } = useWallet();
+  const myWallet = publicKey?.toString();
+  const hasWallet = !!myWallet && connected;
   const { setVisible } = useWalletModal();
   const router = useRouter();
 
@@ -103,7 +106,6 @@ export default function HomePage() {
   const now    = new Date()
   const diffMs = next.getTime() - now.getTime()
   const timeLeft = formatRemaining(diffMs);
-  const hasWallet = !!myWallet;
 
   useEffect(() => {
   function updateGame() {

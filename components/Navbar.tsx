@@ -18,6 +18,8 @@ import LogoImage from "./fx/LogoImage";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
 import { CustomWalletButton } from "./buttons/CustomWalletButton";
 import { formatRemaining } from '../utils/leaderboard/formatRemaining';
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletContextGuard } from "../utils/useWalletContextGuard";
 
 // Variants for fade in/out
 const iconVariants = {
@@ -32,6 +34,10 @@ export default function Navbar() {
   const [visible, setVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+
+  const { connected, publicKey } = useWallet();
+  const { isStale } = useWalletContextGuard({ enabled: true });
+
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Mount + Unity iframe visibility logic
@@ -227,7 +233,7 @@ export default function Navbar() {
       py={2}
       position="relative"
     >
-      {/* Text takes full row width so it can sit flush left on mobile */}
+      {/* Text takes full row width so it can sit left on mobile */}
       <Box flex="1">
         <Text
           textAlign={{ base: "left", md: "center" }}
@@ -301,14 +307,14 @@ export default function Navbar() {
                   ABOUT
                 </Button>
               {isMobile && (
-              <CustomWalletButton
-                style={{
-                  width: "100%",
-                  justifyContent: "center",
-                  paddingLeft: 0,
-                  paddingRight: 0,
-                }}
-              />
+<CustomWalletButton
+  className="isFullWidth"
+  style={{
+    justifyContent: "center",
+    paddingLeft: 0,
+    paddingRight: 0,
+  }}
+/>
               )}
             </Flex>
           </motion.div>

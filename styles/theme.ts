@@ -173,14 +173,32 @@ export default extendTheme({
       },
 
       // ─── Wallet adapter button default ───
-      "button.wallet-adapter-button-trigger-secondary": {
-        borderRadius:    0,
-        height:          "35px",
-        width:           "200px",
-        background:      "linear-gradient(to right,var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
-        color:           "white",
-        /* … */
-      },
+"button.wallet-adapter-button-trigger-secondary": {
+  borderRadius: 0,
+  height: { base: "40px", md: "35px" },
+
+  // ✅ default sizing (same “feel” as your other buttons)
+  width: { base: "275px", md: "200px" },
+  maxWidth: "100%",
+
+  // ✅ keep your original visuals
+  background:
+    "linear-gradient(to right,var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
+  color: "white",
+
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: "normal",
+  letterSpacing: "2.5px",
+  textTransform: "uppercase",
+  textAlign: "center",
+
+  // ✅ allow forcing full-width in mobile overlay by adding a class
+  "&.isFullWidth": {
+    width: "100%",
+  },
+},
 
       // ─── Wallet adapter button SECONDARY ───
       "button.wallet-adapter-button-trigger": {

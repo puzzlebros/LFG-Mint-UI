@@ -31,8 +31,13 @@ yarn-error.log*
 # vercel
 .vercel
 
-# unity
-/public/UnityBuild/[0-9]*/
+# unity (keep versioned build folders in git)
+# DO NOT ignore /public/UnityBuild/<version>/ because it must be deployed
+/public/UnityBuild/**/.DS_Store
+
+# (Optional) if you have Unity-generated temp files inside UnityBuild
+/public/UnityBuild/**/Logs/
+/public/UnityBuild/**/*.tmp
 
 # typescript
 *.tsbuildinfo
