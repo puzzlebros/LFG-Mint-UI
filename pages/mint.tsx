@@ -131,6 +131,15 @@ export default function MintPage() {
   // wallet + CM
   const wallet = useWallet();
   const { publicKey: walletPublicKey, connected } = wallet;
+
+  useEffect(() => {
+  console.log("ENVIRONMENT", process.env.NEXT_PUBLIC_ENVIRONMENT);
+  console.log("RPC", process.env.NEXT_PUBLIC_RPC);
+  console.log("CM", process.env.NEXT_PUBLIC_CANDY_MACHINE_ID);
+  console.log("LUT", process.env.NEXT_PUBLIC_LUT);
+  console.log("APP_URL", process.env.NEXT_PUBLIC_APP_URL);
+}, []);
+
   const [candyMachine, setCandyMachine] = useState<CandyMachine>();
   const [candyGuard, setCandyGuard] = useState<CandyGuard>();
 
