@@ -178,13 +178,13 @@ const mintClick = async (
             `[allowlist proof] sent: ${base58.deserialize(routeSig)[0]}`
           );
 
-await umi.rpc.confirmTransaction(routeSig, {
-  strategy: {
-    type: "blockhash",
-    ...routeBlockhash,
-  },
-  commitment: "confirmed",
-});
+        await umi.rpc.confirmTransaction(routeSig, {
+          strategy: {
+            type: "blockhash",
+            ...routeBlockhash,
+          },
+          commitment: "confirmed",
+        });
 
           console.log("[allowlist proof] confirmed");
         } catch (error: any) {
