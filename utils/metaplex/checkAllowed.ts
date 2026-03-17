@@ -473,31 +473,51 @@ export const guardChecker = async (
     ) {
       const solPayment = singleGuard.solPayment as Some<SolPayment>;
       const solFixedFee = singleGuard.solFixedFee as Some<SolFixedFee>;
-      let cost = 0;
-      let payableAmount = 0;
+
+      let costLamports = 0;
+
       if (
         singleGuard.solPayment.__option === "Some" &&
         solPayment.value.lamports.basisPoints !== BigInt(0)
       ) {
-        cost += Number(solPayment.value.lamports.basisPoints);
+        costLamports += Number(solPayment.value.lamports.basisPoints);
       }
+
       if (
         singleGuard.solFixedFee.__option === "Some" &&
         solFixedFee.value.lamports.basisPoints !== BigInt(0)
       ) {
-        cost += Number(solFixedFee.value.lamports.basisPoints);
+        costLamports += Number(solFixedFee.value.lamports.basisPoints);
       }
-      payableAmount = Number(solBalance.basisPoints) / cost;
-      mintableAmount = calculateMintable(mintableAmount, Number(payableAmount));
 
-      if (mintableAmount === 0) {
+      if (costLamports <= 0) {
         guardReturn.push({
           label: eachGuard.label,
           allowed: false,
-          reason: "Not enough SOL!",
+          reason: "Invalid SOL payment configuration",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} SolPayment not enough SOL!`);
+        console.info(`${eachGuard.label} invalid sol payment config`);
+        continue;
+      }
+
+      const walletLamports = Number(solBalance.basisPoints);
+
+      // Full whole mints only.
+      const affordableMints = Math.floor(walletLamports / costLamports);
+
+      mintableAmount = calculateMintable(mintableAmount, affordableMints);
+
+      if (affordableMints < 1 || mintableAmount < 1) {
+        guardReturn.push({
+          label: eachGuard.label,
+          allowed: false,
+          reason: `Not enough SOL! Need ${(costLamports / 1_000_000_000).toFixed(2)} SOL`,
+          maxAmount: 0,
+        });
+        console.info(
+          `${eachGuard.label} SolPayment not enough SOL! wallet=${walletLamports} required=${costLamports}`
+        );
         continue;
       }
     }
@@ -606,10 +626,23 @@ export const guardChecker = async (
         token2022Payment.value.amount / digitalAssetWithToken.token.amount;
       mintableAmount = calculateMintable(mintableAmount, Number(payableAmount));
     }
+    
+    const wholeMintableAmount = Math.floor(mintableAmount);
+
+    if (wholeMintableAmount < 1) {
+      guardReturn.push({
+        label: eachGuard.label,
+        allowed: false,
+        reason: "You are not eligible for a full mint",
+        maxAmount: 0,
+      });
+      continue;
+    }
+
     guardReturn.push({
       label: eachGuard.label,
       allowed: true,
-      maxAmount: mintableAmount,
+      maxAmount: wholeMintableAmount,
     });
   }
   return { guardReturn, ownedTokens, ownedCoreAssets };

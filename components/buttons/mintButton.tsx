@@ -6,7 +6,6 @@ import {
   Umi, 
   createBigInt,   
   generateSigner,
-  signAllTransactions,
   KeypairSigner,
   publicKey,
   PublicKey,
@@ -48,23 +47,6 @@ import {
   toWeb3JsKeypair,
 } from "@metaplex-foundation/umi-web3js-adapters";
 
-
-const updateLoadingText = (
-  loadingText: string | undefined,
-  guardList: GuardReturn[],
-  label: string,
-  setGuardList: Dispatch<SetStateAction<GuardReturn[]>>
-) => {
-  const guardIndex = guardList.findIndex((g) => g.label === label);
-  if (guardIndex === -1) {
-    console.error("guard not found");
-    return;
-  }
-  const newGuardList = [...guardList];
-  newGuardList[guardIndex].loadingText = loadingText;
-  setGuardList(newGuardList);
-};
-
 const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   let digitalAsset: AssetV1 | undefined;
   let jsonMetadata: JsonMetadata | undefined;
@@ -100,7 +82,18 @@ const simulateForWalletReview = async (
   });
 
   if (sim.value.err) {
-    console.error(`[${label}] simulation failed:`, sim.value.err, sim.value.logs);
+    const logs = sim.value.logs ?? [];
+    console.error(`[${label}] simulation failed:`, sim.value.err, logs);
+
+    const joined = logs.join(" | ");
+
+    if (
+      joined.includes("Not enough SOL to pay for the mint") ||
+      joined.includes("Require") && joined.includes("lamports")
+    ) {
+      throw new Error("Not enough SOL to pay for this mint.");
+    }
+
     throw new Error(`${label} simulation failed before wallet prompt.`);
   }
 };
@@ -186,7 +179,9 @@ const mintClick = async (
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
-  if (!candyGuard.groups.find((g) => g.label === guardToUse.label)) {
+  const isDefaultGroup = guardToUse.label === "default";
+
+  if (!isDefaultGroup && !candyGuard.groups.find((g) => g.label === guardToUse.label)) {
     console.error(`Group label ${guardToUse.label} not found in candyGuard groups!`);
     return;
   }
