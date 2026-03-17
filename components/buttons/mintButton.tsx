@@ -30,8 +30,7 @@ import {
   routeBuilder,
   mintArgsBuilder,
   GuardButtonList,
-  buildTxs,
-  sendAllowListProof
+  buildTxs
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -39,6 +38,16 @@ import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
 import { createStandaloneToast } from "@chakra-ui/react";
+import {
+  Connection,
+  Transaction as Web3Transaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
+import {
+  toWeb3JsTransaction,
+  toWeb3JsKeypair,
+} from "@metaplex-foundation/umi-web3js-adapters";
+
 
 const updateLoadingText = (
   loadingText: string | undefined,
@@ -76,6 +85,88 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   return { digitalAsset, jsonMetadata };
 };
 
+type WalletSignTransactionFn = (
+  tx: Web3Transaction | VersionedTransaction
+) => Promise<Web3Transaction | VersionedTransaction>;
+
+const simulateForWalletReview = async (
+  connection: Connection,
+  tx: Web3Transaction | VersionedTransaction,
+  label: string
+) => {
+  const sim = await connection.simulateTransaction(tx as any, {
+    replaceRecentBlockhash: true,
+    sigVerify: false,
+  });
+
+  if (sim.value.err) {
+    console.error(`[${label}] simulation failed:`, sim.value.err, sim.value.logs);
+    throw new Error(`${label} simulation failed before wallet prompt.`);
+  }
+};
+
+const addLocalSignatures = (
+  tx: Web3Transaction | VersionedTransaction,
+  localSigners: Signer[]
+) => {
+  if (!localSigners.length) return tx;
+
+  const keypairs = localSigners
+    .filter((s): s is KeypairSigner => "secretKey" in s)
+    .map((s) => toWeb3JsKeypair(s));
+
+  if (!keypairs.length) return tx;
+
+  if ("version" in tx) {
+    tx.sign(keypairs);
+  } else {
+    tx.partialSign(...keypairs);
+  }
+
+  return tx;
+};
+
+const walletFirstSignSendConfirm = async ({
+  umi,
+  tx,
+  localSigners,
+  walletSignTransaction,
+  latestBlockhash,
+  label,
+}: {
+  umi: Umi;
+  tx: Transaction;
+  localSigners: Signer[];
+  walletSignTransaction: WalletSignTransactionFn;
+  latestBlockhash: { blockhash: string; lastValidBlockHeight: number };
+  label: string;
+}) => {
+  const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
+  const web3Tx = toWeb3JsTransaction(tx);
+
+  await simulateForWalletReview(connection, web3Tx, label);
+
+  const walletSignedTx = await walletSignTransaction(web3Tx);
+  const fullySignedTx = addLocalSignatures(walletSignedTx, localSigners);
+
+  const signature = await connection.sendRawTransaction(fullySignedTx.serialize(), {
+    skipPreflight: false,
+    maxRetries: 3,
+    preflightCommitment: "confirmed",
+  });
+
+  await connection.confirmTransaction(
+    {
+      signature,
+      blockhash: latestBlockhash.blockhash,
+      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+    },
+    "confirmed"
+  );
+
+  return base58.serialize(signature);
+};
+
 const mintClick = async (
   umi: Umi,
   guard: GuardReturn,
@@ -91,12 +182,17 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
+  walletSignTransaction?: WalletSignTransactionFn,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
   if (!candyGuard.groups.find((g) => g.label === guardToUse.label)) {
     console.error(`Group label ${guardToUse.label} not found in candyGuard groups!`);
     return;
+  }
+
+  if (!walletSignTransaction) {
+    throw new Error("Wallet does not support signTransaction.");
   }
 
   const setMintingState = (minting: boolean) => {
@@ -135,15 +231,12 @@ const mintClick = async (
   try {
     setMintingState(true);
 
-    // ─────────────────────────────────────────────────────────────
-    // 1) Ensure allowlist proof exists and is CONFIRMED before mint
-    // ─────────────────────────────────────────────────────────────
+    // 1) Ensure allowlist proof exists and is confirmed before mint.
     if (guardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
 
       const routeTxBuilder = await routeBuilder(umi, guardToUse, candyMachine);
 
-      // Only send a route tx when the proof PDA still needs to be created.
       if (routeTxBuilder.getInstructions().length > 0) {
         const routeBlockhash = await umi.rpc.getLatestBlockhash({
           commitment: "confirmed",
@@ -153,52 +246,26 @@ const mintClick = async (
           .setBlockhash(routeBlockhash.blockhash)
           .build(umi);
 
-        const walletSigner = umi.identity;
         const routeSigners = routeTxBuilder.getSigners(umi);
-        const otherSigners = routeSigners.filter(
-          (s) => s.publicKey !== walletSigner.publicKey
+        const localRouteSigners = routeSigners.filter(
+          (s) => s.publicKey !== umi.identity.publicKey
         );
 
-        const [signedRouteTx] = await signAllTransactions([
-          {
-            transaction: routeTx,
-            signers: [walletSigner, ...otherSigners],
-          },
-        ]);
-
         try {
-          const routeSig = await umi.rpc.sendTransaction(signedRouteTx, {
-            skipPreflight: false,
-            maxRetries: 3,
-            preflightCommitment: "confirmed",
-            commitment: "confirmed",
+          const routeSig = await walletFirstSignSendConfirm({
+            umi,
+            tx: routeTx,
+            localSigners: localRouteSigners,
+            walletSignTransaction,
+            latestBlockhash: routeBlockhash,
+            label: "allowlist proof",
           });
 
           console.log(
-            `[allowlist proof] sent: ${base58.deserialize(routeSig)[0]}`
+            `[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`
           );
-
-        await umi.rpc.confirmTransaction(routeSig, {
-          strategy: {
-            type: "blockhash",
-            ...routeBlockhash,
-          },
-          commitment: "confirmed",
-        });
-
-          console.log("[allowlist proof] confirmed");
         } catch (error: any) {
           console.error("[allowlist proof] failed:", error);
-
-          if (typeof error?.getLogs === "function") {
-            try {
-              const logs = await error.getLogs();
-              console.error("[allowlist proof] logs:", logs);
-            } catch (logErr) {
-              console.error("[allowlist proof] could not fetch logs:", logErr);
-            }
-          }
-
           throw error;
         }
       } else {
@@ -206,9 +273,7 @@ const mintClick = async (
       }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 2) Fetch LUT
-    // ─────────────────────────────────────────────────────────────
+    // 2) Fetch LUT.
     let tables: AddressLookupTableInput[] = [];
     const lut = process.env.NEXT_PUBLIC_LUT;
 
@@ -225,17 +290,13 @@ const mintClick = async (
       });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 3) Generate mint signers
-    // ─────────────────────────────────────────────────────────────
+    // 3) Generate mint signers.
     const nftsigners: KeypairSigner[] = [];
     for (let i = 0; i < mintAmount; i++) {
       nftsigners.push(generateSigner(umi));
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 4) Build mint transactions
-    // ─────────────────────────────────────────────────────────────
+    // 4) Build mint transactions.
     const mintArgsArray = mintArgsBuilder(guardToUse, mintAmount);
     const latestBlockhash = await umi.rpc.getLatestBlockhash({
       commitment: "confirmed",
@@ -259,34 +320,23 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // Wallet first, then remaining signers.
-    const walletSigner = umi.identity;
-    const mintTxsWithWalletFirst = mintTxs.map(({ transaction, signers }) => {
-      const otherSigners = signers.filter(
-        (s) => s.publicKey !== walletSigner.publicKey
-      );
-
-      return {
-        transaction,
-        signers: [walletSigner, ...otherSigners],
-      };
-    });
-
-    const signedTransactions = await signAllTransactions(mintTxsWithWalletFirst);
-
-    // ─────────────────────────────────────────────────────────────
-    // 5) Send mint transactions
-    // ─────────────────────────────────────────────────────────────
+    // 5) Wallet-first signing, then local mint signer(s), then send.
     let signatures: Uint8Array[] = [];
 
     const sendResults = await Promise.all(
-      signedTransactions.map(async (tx, index) => {
+      mintTxs.map(async ({ transaction, signers }, index) => {
         try {
-          const signature = await umi.rpc.sendTransaction(tx, {
-            skipPreflight: false,
-            maxRetries: 3,
-            preflightCommitment: "confirmed",
-            commitment: "confirmed",
+          const localSigners = signers.filter(
+            (s) => s.publicKey !== umi.identity.publicKey
+          );
+
+          const signature = await walletFirstSignSendConfirm({
+            umi,
+            tx: transaction,
+            localSigners,
+            walletSignTransaction,
+            latestBlockhash,
+            label: `mint ${index + 1}`,
           });
 
           console.log(
@@ -333,9 +383,7 @@ const mintClick = async (
       duration: 3000,
     });
 
-    // ─────────────────────────────────────────────────────────────
-    // 6) Verify and fetch minted NFTs
-    // ─────────────────────────────────────────────────────────────
+    // 6) Verify and fetch minted NFTs.
     const successfulMints = await verifyTx(
       umi,
       signatures,
@@ -482,7 +530,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey } = useWallet();
+const { publicKey: walletPublicKey, signTransaction } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -541,9 +589,7 @@ export function ButtonList({
                 loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
                 onClick={async () => {
                   try {
-                    // ✅ NEW: preflight gate (e.g. wallet context guard)
                     if (onBeforeMint) await onBeforeMint();
-
                     await mintClick(
                       umi,
                       btn,
@@ -554,7 +600,8 @@ export function ButtonList({
                       guardList,
                       setGuardList,
                       onOpen,
-                      setCheckEligibility
+                      setCheckEligibility,
+                      signTransaction
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);
