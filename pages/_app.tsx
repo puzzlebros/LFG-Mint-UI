@@ -1,94 +1,60 @@
 // pages/_app.tsx
 import Head from "next/head";
 import type { AppProps } from "next/app";
+import type { ReactNode } from "react";
+import { useEffect, useMemo } from "react";
+
 import { Analytics } from "@vercel/analytics/next";
-import { image, headerText, description } from "@/settings";
 import { ChakraProvider } from "@chakra-ui/react";
 import { ParallaxProvider } from "react-scroll-parallax";
-import Layout from "../components/Layout";
-import "@solana/wallet-adapter-react-ui/styles.css";
-import theme from "@/styles/theme";
 
-import type { WalletAdapter } from "@solana/wallet-adapter-base";
+import "@solana/wallet-adapter-react-ui/styles.css";
+
+import type { Adapter } from "@solana/wallet-adapter-base";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-  CoinbaseWalletAdapter,
-  LedgerWalletAdapter,
-  // Keep adding ONLY adapters that your installed version actually exports.
-} from "@solana/wallet-adapter-wallets";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
+import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
+import { initializeWhenDetected as initializeMetaMaskWhenDetected } from "@solflare-wallet/metamask-wallet-standard";
 
-import {
-  SolanaMobileWalletAdapter,
-  createDefaultAddressSelector,
-  createDefaultAuthorizationResultCache,
-  createDefaultWalletNotFoundHandler,
-} from "@solana-mobile/wallet-adapter-mobile";
-
-import { useMemo } from "react";
-
+import { image, headerText, description } from "@/settings";
+import theme from "@/styles/theme";
+import Layout from "../components/Layout";
 import { UmiProvider } from "../utils/metaplex/UmiProvider";
 import { SolanaTimeProvider } from "@/utils/metaplex/SolanaTimeContext";
 import { LeaderboardProvider } from "../components/LeaderboardContext";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
-  // pick network
-  let network = WalletAdapterNetwork.Devnet;
-  if (
+  const network =
     process.env.NEXT_PUBLIC_ENVIRONMENT === "mainnet-beta" ||
     process.env.NEXT_PUBLIC_ENVIRONMENT === "mainnet"
-  ) {
-    network = WalletAdapterNetwork.Mainnet;
-  }
+      ? WalletAdapterNetwork.Mainnet
+      : WalletAdapterNetwork.Devnet;
 
-  // RPC endpoint
-  const endpoint = process.env.NEXT_PUBLIC_RPC ?? "https://api.devnet.solana.com";
+  const endpoint =
+    process.env.NEXT_PUBLIC_RPC || "https://api.devnet.solana.com";
 
-  // For mobile adapter config
-  const cluster =
-    network === WalletAdapterNetwork.Mainnet ? "mainnet-beta" : "devnet";
+  useEffect(() => {
+    // Registers MetaMask as a Wallet Standard-compatible Solana wallet when detected.
+    if (typeof window !== "undefined") {
+      initializeMetaMaskWhenDetected();
+    }
+  }, []);
 
-  // Use a real app URL (recommended). Falls back safely.
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "https://letsflamingo.gg");
-
-  const wallets = useMemo<WalletAdapter[]>(() => {
-    // prevent SSR crashes (wallets touch `window`)
+  const wallets = useMemo<Adapter[]>(() => {
     if (typeof window === "undefined") return [];
 
-    const list: WalletAdapter[] = [
+    return [
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter({ network }),
-      new CoinbaseWalletAdapter(),
-      new LedgerWalletAdapter(),
     ];
-
-    // Mobile Wallet Adapter (MWA)
-    list.push(
-      new SolanaMobileWalletAdapter({
-        addressSelector: createDefaultAddressSelector(),
-        authorizationResultCache: createDefaultAuthorizationResultCache(),
-        cluster,
-        appIdentity: {
-          name: headerText ?? "LFG",
-          uri: appUrl,
-          icon: `${appUrl}/apple-touch-icon.png`,
-        },
-        onWalletNotFound: createDefaultWalletNotFoundHandler(),
-      })
-    );
-
-    return list;
-  }, [network, cluster, appUrl]);
+  }, [network]);
 
   const getLayout =
-    (Component as any).getLayout ||
-    ((page: React.ReactNode) => <Layout>{page}</Layout>);
+    (Component as { getLayout?: (page: ReactNode) => ReactNode }).getLayout ??
+    ((page: ReactNode) => <Layout>{page}</Layout>);
 
   return (
     <>
@@ -126,6 +92,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           </ConnectionProvider>
         </ChakraProvider>
       </ParallaxProvider>
+
       <Analytics />
     </>
   );
