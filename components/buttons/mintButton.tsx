@@ -326,8 +326,8 @@ const mintClick = async (
       const proofData = await proofRes.json();
       console.log(
         proofData.alreadyExists
-          ? "[allowlist proof] already existed, skipping route tx"
-          : "[allowlist proof] proof created by backend"
+          ? `[allowlist proof] already existed (pda=${proofData.pda})`
+          : `[allowlist proof] created by backend (pda=${proofData.pda})`
       );
     }
 

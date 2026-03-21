@@ -21,6 +21,7 @@ import {
   getMerkleProof,
   route,
   safeFetchAllowListProofFromSeeds,
+  findAllowListProofPda,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 
 async function getTop10Wallets(): Promise<string[]> {
@@ -76,6 +77,7 @@ export default async function handler(
     }
 
     const merkleRoot = group.guards.allowList.value.merkleRoot;
+    const merkleRootB64 = Buffer.from(merkleRoot).toString("base64");
 
     // Fetch current top-10 from Supabase (source of truth for the allowlist)
     const top10 = await getTop10Wallets();
@@ -101,7 +103,20 @@ export default async function handler(
 
     const userPubKey = publicKey(wallet);
 
-    // Check if the proof PDA already exists (idempotent)
+    // Compute and log the exact PDA address for debugging
+    const [pdaAddress] = findAllowListProofPda(umi, {
+      candyGuard: cm.mintAuthority,
+      candyMachine: cm.publicKey,
+      merkleRoot,
+      user: userPubKey,
+    });
+    console.log(`[allowlist-proof] wallet=${wallet}`);
+    console.log(`[allowlist-proof] merkleRoot(b64)=${merkleRootB64}`);
+    console.log(`[allowlist-proof] pdaAddress=${pdaAddress}`);
+
+    // Fetch the existing proof PDA — check BOTH existence AND lamports.
+    // safeFetch can return a non-null "zombie" account (data present, 0 lamports,
+    // not yet GC'd). Treat 0-lamport accounts as non-existent so we re-create.
     const existing = await safeFetchAllowListProofFromSeeds(umi, {
       candyGuard: cm.mintAuthority,
       candyMachine: cm.publicKey,
@@ -109,9 +124,16 @@ export default async function handler(
       user: userPubKey,
     });
 
-    if (existing !== null) {
-      console.log(`[allowlist-proof] proof already exists for ${wallet}`);
-      return res.status(200).json({ success: true, alreadyExists: true });
+    const existingLamports = existing?.header?.lamports?.basisPoints ?? BigInt(0);
+    console.log(`[allowlist-proof] existing=${existing !== null}, lamports=${existingLamports}`);
+
+    if (existing !== null && existingLamports > BigInt(0)) {
+      console.log(`[allowlist-proof] valid proof exists for ${wallet}`);
+      return res.status(200).json({ success: true, alreadyExists: true, pda: pdaAddress });
+    }
+
+    if (existing !== null && existingLamports === BigInt(0)) {
+      console.warn(`[allowlist-proof] zombie PDA found (0 lamports) — will attempt re-creation`);
     }
 
     // Build and send route tx — admin keypair pays, PDA is created for the user
@@ -130,8 +152,22 @@ export default async function handler(
       confirm: { commitment: "confirmed" },
     });
 
-    console.log(`[allowlist-proof] proof created for ${wallet}`);
-    return res.status(200).json({ success: true });
+    // Verify the PDA was actually created with the correct lamports
+    const created = await safeFetchAllowListProofFromSeeds(umi, {
+      candyGuard: cm.mintAuthority,
+      candyMachine: cm.publicKey,
+      merkleRoot,
+      user: userPubKey,
+    });
+    const createdLamports = created?.header?.lamports?.basisPoints ?? BigInt(0);
+    console.log(`[allowlist-proof] post-create lamports=${createdLamports}`);
+
+    if (!created || createdLamports === BigInt(0)) {
+      throw new Error(`Route tx confirmed but PDA has ${createdLamports} lamports — creation may have failed`);
+    }
+
+    console.log(`[allowlist-proof] proof created for ${wallet} (${createdLamports} lamports)`);
+    return res.status(200).json({ success: true, pda: pdaAddress });
   } catch (err: any) {
     console.error("[allowlist-proof] error:", err);
     return res.status(500).json({ error: err?.message ?? "Internal server error" });
