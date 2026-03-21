@@ -26,7 +26,6 @@ import {
 } from "@chakra-ui/react";
 import {
   chooseGuardToUse,
-  routeBuilder,
   mintArgsBuilder,
   GuardButtonList,
   buildTxs
@@ -218,7 +217,6 @@ const mintClick = async (
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
   mintAmount: number,
-  allowlist: string[],
   setMintsCreated: Dispatch<
     SetStateAction<
       { mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined
@@ -278,30 +276,35 @@ const mintClick = async (
   try {
     setMintingState(true);
 
-    // 1) Ensure allowlist proof exists and is confirmed before mint.
-    // Uses sendAndConfirm with skipPreflight:true so Phantom's Lighthouse
-    // assertions run after the route instruction (not in preflight).
+    // 1) Ensure AllowListProof PDA exists before minting.
+    // The proof is created server-side using the admin deploy keypair so
+    // Phantom / Lighthouse is never involved in this step.
     if (guardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
 
-      const routeTxBuilder = await routeBuilder(umi, guardToUse, candyMachine, allowlist);
+      const walletAddress = umi.identity.publicKey.toString();
+      const proofRes = await fetch("/api/allowlist-proof", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: walletAddress }),
+      });
 
-      if (routeTxBuilder.getInstructions().length > 0) {
-        try {
-          const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
-            send: { skipPreflight: true },
-            confirm: { commitment: "confirmed" },
-          });
-          console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
-        } catch (error: any) {
-          console.error("[allowlist proof] failed:", error);
-          throw new Error(
-            "Allowlist proof failed. Make sure your wallet is on the current allowlist."
-          );
-        }
-      } else {
-        console.log("[allowlist proof] already exists, skipping route tx");
+      if (!proofRes.ok) {
+        const { error } = await proofRes.json().catch(() => ({ error: "Unknown error" }));
+        console.error("[allowlist proof] backend error:", error);
+        throw new Error(
+          error?.includes("not on the current allowlist")
+            ? "Your wallet is not on the current allowlist."
+            : `Allowlist proof failed: ${error}`
+        );
       }
+
+      const proofData = await proofRes.json();
+      console.log(
+        proofData.alreadyExists
+          ? "[allowlist proof] already existed, skipping route tx"
+          : "[allowlist proof] proof created by backend"
+      );
     }
 
     // 2) Fetch LUT.
@@ -525,7 +528,6 @@ type Props = {
   setCheckEligibility: Dispatch<SetStateAction<boolean>>;
   ownedCoreAssets?: DasApiAssetAndAssetMintLimit[];
   buttonProps?: ButtonProps;
-  top10Wallets: string[];
   onBeforeMint?: () => Promise<void>;
 };
 
@@ -539,7 +541,6 @@ export function ButtonList({
   onOpen,
   setCheckEligibility,
   buttonProps,
-  top10Wallets,
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
@@ -609,7 +610,6 @@ const { publicKey: walletPublicKey, signTransaction } = useWallet();
                       candyMachine,
                       candyGuard,
                       1,
-                      top10Wallets,
                       setMintsCreated,
                       setGuardList,
                       onOpen,

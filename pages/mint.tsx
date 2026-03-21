@@ -583,7 +583,6 @@ export default function MintPage() {
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
                   buttonProps={claimButtonProps}
-                  top10Wallets={top10Wallets}
                   onBeforeMint={async () => {
                     const res = await preflight();
                     if (!res.ok) throw new Error(res.reason);
