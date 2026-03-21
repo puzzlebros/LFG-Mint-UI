@@ -127,7 +127,7 @@ export async function sendAllowListProof(
       routeArgs: {
         path: "proof",
         merkleRoot,
-        merkleProof: getMerkleProof(allowlist, umi.identity.publicKey),
+        merkleProof: getMerkleProof(allowlist, wallet),
       },
     }).sendAndConfirm(umi);
   }
@@ -184,7 +184,7 @@ export const routeBuilder = async (
         routeArgs: {
           path: "proof",
           merkleRoot,
-          merkleProof: getMerkleProof(allowlist, umi.identity.publicKey),
+          merkleProof: getMerkleProof(allowlist, wallet),
         },
       })
     );
