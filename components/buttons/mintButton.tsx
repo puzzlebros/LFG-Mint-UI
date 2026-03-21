@@ -226,6 +226,7 @@ const walletSendConfirm = async ({
 
   const signature = await walletSendTransaction(walletTx, connection, {
     signers: localKeypairs,
+    skipPreflight: true,
   });
 
   console.log(`[${label}] tx broadcast: ${signature}`);
