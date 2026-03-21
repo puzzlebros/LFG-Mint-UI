@@ -6,11 +6,38 @@ import { WalletReadyState } from "@solana/wallet-adapter-base";
 import type { ComponentProps } from "react";
 
 const WalletMultiButtonDynamic = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
+  () =>
+    import("@solana/wallet-adapter-react-ui").then(
+      (mod) => mod.WalletMultiButton
+    ),
   { ssr: false }
 );
 
 type Props = ComponentProps<typeof WalletMultiButtonDynamic>;
+
+function cleanupDuplicateMetaMaskEntries() {
+  const modal = document.querySelector(".wallet-adapter-modal");
+  if (!modal) return;
+
+  const listItems = Array.from(
+    modal.querySelectorAll<HTMLLIElement>(".wallet-adapter-modal-list li")
+  );
+
+  if (!listItems.length) return;
+
+  const metaMaskItems = listItems.filter((li) => {
+    const text = li.textContent?.trim().toLowerCase() ?? "";
+    return text.includes("metamask");
+  });
+
+  // Keep only one MetaMask entry.
+  // In your current setup, the Solana MetaMask one is typically the last one rendered.
+  if (metaMaskItems.length > 1) {
+    metaMaskItems.slice(0, -1).forEach((li) => {
+      li.style.display = "none";
+    });
+  }
+}
 
 export function CustomWalletButton(props: Props) {
   const { connected, wallet, wallets, select } = useWallet();
@@ -29,15 +56,11 @@ export function CustomWalletButton(props: Props) {
     return entry?.readyState;
   }, [wallet?.adapter?.name, wallets]);
 
-  // ✅ BREAK THE LOOP:
   // If the user selected a wallet that is NotDetected, clear the selection.
-  // Then next click will open the modal with the list again instead of re-triggering install.
   useEffect(() => {
     if (!wallet?.adapter?.name) return;
 
     if (selectedReadyState === WalletReadyState.NotDetected) {
-      // Clear selection and disconnect defensively.
-      // select(null) works in wallet-adapter; TS sometimes wants `null as any`.
       try {
         select(null as any);
       } catch {
@@ -58,6 +81,25 @@ export function CustomWalletButton(props: Props) {
     btn.style.width = "100%";
     btn.style.justifyContent = "center";
   }, [wantsFullWidth, connected]);
+
+  // Preserve stock wallet-adapter modal and styling, but hide duplicate MetaMask entries.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const observer = new MutationObserver(() => {
+      cleanupDuplicateMetaMaskEntries();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Run once in case the modal already exists.
+    cleanupDuplicateMetaMaskEntries();
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div ref={rootRef} className="lfg-wallet">

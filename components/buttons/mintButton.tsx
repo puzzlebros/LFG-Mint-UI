@@ -71,6 +71,51 @@ type WalletSignTransactionFn = (
   tx: Web3Transaction | VersionedTransaction
 ) => Promise<Web3Transaction | VersionedTransaction>;
 
+const isVersionedTx = (
+  tx: Web3Transaction | VersionedTransaction
+): tx is VersionedTransaction => {
+  return "version" in tx;
+};
+
+const cloneWeb3Tx = (
+  tx: Web3Transaction | VersionedTransaction
+): Web3Transaction | VersionedTransaction => {
+  if (isVersionedTx(tx)) {
+    const cloned = new VersionedTransaction(tx.message);
+    cloned.signatures = [...tx.signatures];
+    return cloned;
+  }
+
+  return Web3Transaction.from(
+    tx.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false,
+    })
+  );
+};
+
+const extractLocalKeypairs = (localSigners: Signer[]) => {
+  return localSigners
+    .filter((s): s is KeypairSigner => "secretKey" in s)
+    .map((s) => toWeb3JsKeypair(s));
+};
+
+const addLocalSignatures = (
+  tx: Web3Transaction | VersionedTransaction,
+  localSigners: Signer[]
+): Web3Transaction | VersionedTransaction => {
+  const keypairs = extractLocalKeypairs(localSigners);
+  if (!keypairs.length) return tx;
+
+  if (isVersionedTx(tx)) {
+    tx.sign(keypairs);
+  } else {
+    tx.partialSign(...keypairs);
+  }
+
+  return tx;
+};
+
 const simulateForWalletReview = async (
   connection: Connection,
   tx: Web3Transaction | VersionedTransaction,
@@ -83,41 +128,35 @@ const simulateForWalletReview = async (
 
   if (sim.value.err) {
     const logs = sim.value.logs ?? [];
-    console.error(`[${label}] simulation failed err:`, JSON.stringify(sim.value.err));
+    console.error(`[${label}] simulation failed err:`, sim.value.err);
     console.error(`[${label}] simulation logs:`, logs);
 
     const joined = logs.join(" | ");
 
     if (
       joined.includes("Not enough SOL to pay for the mint") ||
-      (joined.includes("Require") && joined.includes("lamports"))
+      ((joined.includes("Require") || joined.includes("need")) &&
+        joined.includes("lamports")) ||
+      joined.includes("insufficient lamports")
     ) {
-      throw new Error("Not enough SOL to pay for this mint.");
+      throw new Error(
+        "Not enough SOL to complete this mint. You need more SOL for account creation and fees."
+      );
+    }
+
+    if (
+      joined.includes("Wallet not in allowlist") ||
+      joined.includes("allowlist") ||
+      joined.includes("merkle") ||
+      joined.includes("proof")
+    ) {
+      throw new Error(
+        "Allowlist proof failed. Your cached allowlist does not match the current on-chain allowlist."
+      );
     }
 
     throw new Error(`${label} simulation failed before wallet prompt.`);
   }
-};
-
-const addLocalSignatures = (
-  tx: Web3Transaction | VersionedTransaction,
-  localSigners: Signer[]
-): Web3Transaction | VersionedTransaction => {
-  if (!localSigners.length) return tx;
-
-  const keypairs = localSigners
-    .filter((s): s is KeypairSigner => "secretKey" in s)
-    .map((s) => toWeb3JsKeypair(s));
-
-  if (!keypairs.length) return tx;
-
-  if ("version" in tx) {
-    tx.sign(keypairs);
-  } else {
-    tx.partialSign(...keypairs);
-  }
-
-  return tx;
 };
 
 const walletFirstSignSendConfirm = async ({
@@ -137,25 +176,30 @@ const walletFirstSignSendConfirm = async ({
 }) => {
   const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
 
-  // Convert Umi tx -> web3 tx
-  const initialWeb3Tx = toWeb3JsTransaction(tx);
+  // Real transaction that will go to the wallet first.
+  const walletTx = toWeb3JsTransaction(tx);
 
-  // Add local non-wallet signatures first
-  const locallySignedTx = addLocalSignatures(initialWeb3Tx, localSigners);
+  // Separate copy only for simulation so we can reflect the final tx shape
+  // without pre-signing the real tx before wallet review.
+  const simulationTx = cloneWeb3Tx(walletTx);
+  addLocalSignatures(simulationTx, localSigners);
 
-  // Simulate the real tx shape before prompting the wallet
-  await simulateForWalletReview(connection, locallySignedTx, label);
+  await simulateForWalletReview(connection, simulationTx, label);
 
-  // Wallet signs last
-  const walletSignedTx = await walletSignTransaction(locallySignedTx);
+  // Wallet signs FIRST on the real tx.
+  const walletSignedTx = await walletSignTransaction(walletTx);
 
-  const raw = walletSignedTx.serialize();
+  // Local signers sign AFTER the wallet.
+  addLocalSignatures(walletSignedTx, localSigners);
 
-  const signature = await connection.sendRawTransaction(raw, {
-    skipPreflight: false,
-    maxRetries: 3,
-    preflightCommitment: "confirmed",
-  });
+  const signature = await connection.sendRawTransaction(
+    walletSignedTx.serialize(),
+    {
+      skipPreflight: false,
+      maxRetries: 3,
+      preflightCommitment: "confirmed",
+    }
+  );
 
   await connection.confirmTransaction(
     {
@@ -328,52 +372,36 @@ const mintClick = async (
     let signatures: Uint8Array[] = [];
 
     const sendResults = await Promise.all(
-      mintTxs.map(async ({ transaction, signers }, index) => {
-        try {
-          const localSigners = signers.filter(
-            (s) => s.publicKey !== umi.identity.publicKey
-          );
+  mintTxs.map(async ({ transaction, signers }, index) => {
+    try {
+      const localSigners = signers.filter(
+        (s) => s.publicKey !== umi.identity.publicKey
+      );
 
-          const signature = await walletFirstSignSendConfirm({
-            umi,
-            tx: transaction,
-            localSigners,
-            walletSignTransaction,
-            latestBlockhash,
-            label: `mint ${index + 1}`,
-          });
+      const signature = await walletFirstSignSendConfirm({
+        umi,
+        tx: transaction,
+        localSigners,
+        walletSignTransaction,
+        latestBlockhash,
+        label: `mint ${index + 1}`,
+      });
 
-          console.log(
-            `Transaction ${index + 1} resolved with signature: ${
-              base58.deserialize(signature)[0]
-            }`
-          );
+      signatures.push(signature);
 
-          signatures.push(signature);
-
-          return {
-            status: "fulfilled" as const,
-            value: signature,
-          };
-        } catch (error: any) {
-          console.error(`Transaction ${index + 1} failed:`, error);
-
-          if (typeof error?.getLogs === "function") {
-            try {
-              const logs = await error.getLogs();
-              console.error(`Transaction ${index + 1} logs:`, logs);
-            } catch (logErr) {
-              console.error("Could not fetch tx logs:", logErr);
-            }
-          }
-
-          return {
-            status: "rejected" as const,
-            reason: error,
-          };
-        }
-      })
-    );
+      return {
+        status: "fulfilled" as const,
+        value: signature,
+      };
+    } catch (error: any) {
+      console.error(`Transaction ${index + 1} failed:`, error);
+      return {
+        status: "rejected" as const,
+        reason: error,
+      };
+    }
+  })
+);
 
     if (!sendResults.some((r) => r.status === "fulfilled")) {
       throw new Error("No mint transaction was sent successfully.");

@@ -17,7 +17,6 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
-import { initializeWhenDetected as initializeMetaMaskWhenDetected } from "@solflare-wallet/metamask-wallet-standard";
 
 import { image, headerText, description } from "@/settings";
 import theme from "@/styles/theme";
@@ -35,13 +34,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
   const endpoint =
     process.env.NEXT_PUBLIC_RPC || "https://api.devnet.solana.com";
-
-  useEffect(() => {
-    // Registers MetaMask as a Wallet Standard-compatible Solana wallet when detected.
-    if (typeof window !== "undefined") {
-      initializeMetaMaskWhenDetected();
-    }
-  }, []);
 
   const wallets = useMemo<Adapter[]>(() => {
     if (typeof window === "undefined") return [];

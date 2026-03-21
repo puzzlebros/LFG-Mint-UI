@@ -87,33 +87,28 @@ export async function sendAllowListProof(
 ) {
   if (guardToUse.guards.allowList.__option !== "Some") return;
 
-const allowlist = [..._top10Wallets];
-const computedRoot = getMerkleRoot(allowlist);
-const onChainRoot = guardToUse.guards.allowList.value.merkleRoot;
+  const allowlist = [..._top10Wallets];
+  const merkleRoot = guardToUse.guards.allowList.value.merkleRoot;
+  const computedRoot = getMerkleRoot(allowlist);
+  const wallet = umi.identity.publicKey.toString();
 
-const rootsMatch =
-  computedRoot.length === onChainRoot.length &&
-  computedRoot.every((b, i) => b === onChainRoot[i]);
-
-if (!allowlist.includes(umi.identity.publicKey.toString())) {
-  throw new Error("Wallet is not present in cached allowlist.");
-}
-
-if (!rootsMatch) {
-  throw new Error("Cached allowlist does not match the on-chain allowlist root.");
-}
-  
-
-  const user = umi.identity.publicKey.toString();
-  if (!allowlist.includes(user)) {
-    throw new Error(`Wallet ${user} is not present in cached allowlist`);
+  if (!allowlist.includes(wallet)) {
+    throw new Error(`Wallet ${wallet} is not present in cached allowlist`);
   }
 
-  const merkleRoot = guardToUse.guards.allowList.value.merkleRoot;
+  const rootsMatch =
+    merkleRoot.length === computedRoot.length &&
+    merkleRoot.every((b, i) => b === computedRoot[i]);
+
+  if (!rootsMatch) {
+    throw new Error(
+      "Cached allowlist does not match the on-chain allowlist root"
+    );
+  }
 
   console.log("[allowlist] on-chain root:", merkleRoot);
   console.log("[allowlist] computed root:", getMerkleRoot(allowlist));
-  console.log("[allowlist] wallet:", user);
+  console.log("[allowlist] wallet:", wallet);
   console.log("[allowlist] cached count:", allowlist.length);
 
   const existing = await safeFetchAllowListProofFromSeeds(umi, {
