@@ -48,7 +48,7 @@ export const chooseGuardToUse = (
 // Called on mint once
 let _top10Wallets: string[] = []
 export function cacheLeaderboard(wallets: string[]) {
-  _top10Wallets = [...wallets].map((w) => w.trim());
+  _top10Wallets = [...wallets];
 }
 
 export const mintArgsBuilder = (
@@ -87,10 +87,22 @@ export async function sendAllowListProof(
 ) {
   if (guardToUse.guards.allowList.__option !== "Some") return;
 
-  const allowlist = [..._top10Wallets].map((w) => w.trim());
-  if (allowlist.length === 0) {
-    throw new Error("cached allowlist is empty");
-  }
+const allowlist = [..._top10Wallets];
+const computedRoot = getMerkleRoot(allowlist);
+const onChainRoot = guardToUse.guards.allowList.value.merkleRoot;
+
+const rootsMatch =
+  computedRoot.length === onChainRoot.length &&
+  computedRoot.every((b, i) => b === onChainRoot[i]);
+
+if (!allowlist.includes(umi.identity.publicKey.toString())) {
+  throw new Error("Wallet is not present in cached allowlist.");
+}
+
+if (!rootsMatch) {
+  throw new Error("Cached allowlist does not match the on-chain allowlist root.");
+}
+  
 
   const user = umi.identity.publicKey.toString();
   if (!allowlist.includes(user)) {
@@ -137,7 +149,7 @@ export const routeBuilder = async (
     return tx;
   }
 
-  const allowlist = [..._top10Wallets].map((w) => w.trim());
+const allowlist = [..._top10Wallets];
   if (allowlist.length === 0) {
     console.error("allowlist not found!");
     return tx;

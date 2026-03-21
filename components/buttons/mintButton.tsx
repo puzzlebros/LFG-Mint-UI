@@ -83,13 +83,14 @@ const simulateForWalletReview = async (
 
   if (sim.value.err) {
     const logs = sim.value.logs ?? [];
-    console.error(`[${label}] simulation failed:`, sim.value.err, logs);
+    console.error(`[${label}] simulation failed err:`, JSON.stringify(sim.value.err));
+    console.error(`[${label}] simulation logs:`, logs);
 
     const joined = logs.join(" | ");
 
     if (
       joined.includes("Not enough SOL to pay for the mint") ||
-      joined.includes("Require") && joined.includes("lamports")
+      (joined.includes("Require") && joined.includes("lamports"))
     ) {
       throw new Error("Not enough SOL to pay for this mint.");
     }
@@ -101,7 +102,7 @@ const simulateForWalletReview = async (
 const addLocalSignatures = (
   tx: Web3Transaction | VersionedTransaction,
   localSigners: Signer[]
-) => {
+): Web3Transaction | VersionedTransaction => {
   if (!localSigners.length) return tx;
 
   const keypairs = localSigners
@@ -135,14 +136,22 @@ const walletFirstSignSendConfirm = async ({
   label: string;
 }) => {
   const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
-  const web3Tx = toWeb3JsTransaction(tx);
 
-  await simulateForWalletReview(connection, web3Tx, label);
+  // Convert Umi tx -> web3 tx
+  const initialWeb3Tx = toWeb3JsTransaction(tx);
 
-  const walletSignedTx = await walletSignTransaction(web3Tx);
-  const fullySignedTx = addLocalSignatures(walletSignedTx, localSigners);
+  // Add local non-wallet signatures first
+  const locallySignedTx = addLocalSignatures(initialWeb3Tx, localSigners);
 
-  const signature = await connection.sendRawTransaction(fullySignedTx.serialize(), {
+  // Simulate the real tx shape before prompting the wallet
+  await simulateForWalletReview(connection, locallySignedTx, label);
+
+  // Wallet signs last
+  const walletSignedTx = await walletSignTransaction(locallySignedTx);
+
+  const raw = walletSignedTx.serialize();
+
+  const signature = await connection.sendRawTransaction(raw, {
     skipPreflight: false,
     maxRetries: 3,
     preflightCommitment: "confirmed",
