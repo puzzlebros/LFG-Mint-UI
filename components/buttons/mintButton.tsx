@@ -5,6 +5,7 @@ import {
   CandyMachine,
   fetchCandyMachine,
   fetchCandyGuard,
+  safeFetchMintCounterFromSeeds,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import { 
@@ -196,12 +197,14 @@ const walletSendConfirm = async ({
   tx,
   localSigners,
   walletSendTransaction,
+  skipPreflight,
   label,
 }: {
   umi: Umi;
   tx: Transaction;
   localSigners: Signer[];
   walletSendTransaction: WalletSendTransactionFn;
+  skipPreflight: boolean;
   label: string;
 }) => {
   const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
@@ -224,11 +227,11 @@ const walletSendConfirm = async ({
   // Extract local keypairs (NFT asset signer) to pass via options.signers.
   const localKeypairs = extractLocalKeypairs(localSigners);
 
-  // skipPreflight: true → Phantom skips its internal simulation, bypassing
-  // the Lighthouse injection that fails on the existing Candy Machine account.
+  // skipPreflight bypasses Phantom's internal simulation (and Lighthouse injection).
+  // Only used when strictly necessary — see caller for reasoning.
   const signature = await walletSendTransaction(walletTx, connection, {
     signers: localKeypairs,
-    skipPreflight: true,
+    skipPreflight,
   });
 
   console.log(`[${label}] tx broadcast: ${signature}`);
@@ -380,9 +383,31 @@ const mintClick = async (
       throw new Error("No mint transaction could be built.");
     }
 
+    // 6) Determine whether to skip Phantom's preflight simulation.
+    // Phantom has a bug where creating a new mintLimit counter PDA (owned by
+    // CMACYFENjoBMHzapRXyo1JZkVS6EtaDDzkjMrmQLvr4J) causes it to incorrectly
+    // assert data_length==0 for ALL accounts with that owner, including the
+    // existing Candy Machine (290,219 bytes). This only triggers when the
+    // counter PDA doesn't yet exist (i.e. the wallet's first mint for this group).
+    let skipPreflight = false;
+    if (freshGuardToUse.guards.mintLimit.__option === "Some") {
+      const counter = await safeFetchMintCounterFromSeeds(umi, {
+        id: freshGuardToUse.guards.mintLimit.value.id,
+        user: umi.identity.publicKey,
+        candyMachine: freshCandyMachine.publicKey,
+        candyGuard: freshCandyMachine.mintAuthority,
+      });
+      skipPreflight = counter === null;
+      if (skipPreflight) {
+        console.log(
+          "[mintClick] mintLimit counter not found — skipping Phantom preflight to avoid Lighthouse false-positive"
+        );
+      }
+    }
+
     setLoadingState("Please sign...");
 
-    // 6) Simulate, refresh blockhash, then wallet signs+sends via sendTransaction.
+    // 7) Simulate, refresh blockhash, then wallet signs+sends via sendTransaction.
     let signatures: Uint8Array[] = [];
 
     const sendResults = await Promise.all(
@@ -397,6 +422,7 @@ const mintClick = async (
         tx: transaction,
         localSigners,
         walletSendTransaction,
+        skipPreflight,
         label: `mint ${index + 1}`,
       });
 
