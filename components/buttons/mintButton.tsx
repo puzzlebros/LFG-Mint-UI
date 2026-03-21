@@ -195,9 +195,8 @@ const walletFirstSignSendConfirm = async ({
   const signature = await connection.sendRawTransaction(
     walletSignedTx.serialize(),
     {
-      skipPreflight: false,
+      skipPreflight: true,  // Lighthouse assertions run post-execution, not in preflight
       maxRetries: 3,
-      preflightCommitment: "confirmed",
     }
   );
 
@@ -280,41 +279,25 @@ const mintClick = async (
     setMintingState(true);
 
     // 1) Ensure allowlist proof exists and is confirmed before mint.
+    // Uses sendAndConfirm with skipPreflight:true so Phantom's Lighthouse
+    // assertions run after the route instruction (not in preflight).
     if (guardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
 
       const routeTxBuilder = await routeBuilder(umi, guardToUse, candyMachine);
 
       if (routeTxBuilder.getInstructions().length > 0) {
-        const routeBlockhash = await umi.rpc.getLatestBlockhash({
-          commitment: "confirmed",
-        });
-
-        const routeTx = routeTxBuilder
-          .setBlockhash(routeBlockhash.blockhash)
-          .build(umi);
-
-        const routeSigners = routeTxBuilder.getSigners(umi);
-        const localRouteSigners = routeSigners.filter(
-          (s) => s.publicKey !== umi.identity.publicKey
-        );
-
         try {
-          const routeSig = await walletFirstSignSendConfirm({
-            umi,
-            tx: routeTx,
-            localSigners: localRouteSigners,
-            walletSignTransaction,
-            latestBlockhash: routeBlockhash,
-            label: "allowlist proof",
+          const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
+            send: { skipPreflight: true },
+            confirm: { commitment: "confirmed" },
           });
-
-          console.log(
-            `[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`
-          );
+          console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
         } catch (error: any) {
           console.error("[allowlist proof] failed:", error);
-          throw error;
+          throw new Error(
+            "Allowlist proof failed. Make sure your wallet is on the current allowlist."
+          );
         }
       } else {
         console.log("[allowlist proof] already exists, skipping route tx");
