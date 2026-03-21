@@ -18,7 +18,7 @@ import {
   Transaction,
   Signer,
 } from "@metaplex-foundation/umi";
-import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
+
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../../settings";
 import {
@@ -347,22 +347,10 @@ const mintClick = async (
       }`
     );
 
-    // 3) Fetch LUT.
-    let tables: AddressLookupTableInput[] = [];
-    const lut = process.env.NEXT_PUBLIC_LUT;
-
-    if (lut) {
-      const lutPubKey = publicKey(lut);
-      const fetchedLut = await fetchAddressLookupTable(umi, lutPubKey);
-      tables = [fetchedLut];
-    } else {
-      createStandaloneToast().toast({
-        title: "The developer should really set a lookup table!",
-        status: "warning",
-        duration: 900,
-        isClosable: true,
-      });
-    }
+    // 3) Skip LUT — Phantom's Lighthouse guard incorrectly asserts data_length==0
+    //    for LUT-sourced writable accounts (e.g. the Candy Machine), causing the
+    //    tx to fail on-chain. Passing all accounts as static avoids this.
+    const tables: AddressLookupTableInput[] = [];
 
     // 4) Generate mint signers.
     const nftsigners: KeypairSigner[] = [];
