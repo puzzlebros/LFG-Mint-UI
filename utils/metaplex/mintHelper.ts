@@ -144,13 +144,28 @@ export const routeBuilder = async (
     return tx;
   }
 
-const allowlist = [..._top10Wallets];
+  const allowlist = [..._top10Wallets];
   if (allowlist.length === 0) {
-    console.error("allowlist not found!");
-    return tx;
+    throw new Error("Allowlist cache is empty.");
+  }
+
+  const wallet = umi.identity.publicKey.toString();
+  if (!allowlist.includes(wallet)) {
+    throw new Error(`Wallet ${wallet} is not present in cached allowlist`);
   }
 
   const merkleRoot = guardToUse.guards.allowList.value.merkleRoot;
+  const computedRoot = getMerkleRoot(allowlist);
+
+  const rootsMatch =
+    merkleRoot.length === computedRoot.length &&
+    merkleRoot.every((b, i) => b === computedRoot[i]);
+
+  if (!rootsMatch) {
+    throw new Error(
+      "Cached allowlist does not match the on-chain allowlist root"
+    );
+  }
 
   const allowListProof = await safeFetchAllowListProofFromSeeds(umi, {
     candyGuard: candyMachine.mintAuthority,
