@@ -158,8 +158,15 @@ export function useWalletContextGuard(opts?: {
 
     const adapter: any = w?.adapter;
     const onError = (e: any) => {
-      log("WALLET GUARD: adapter error", { message: String(e?.message || e), e });
-      if (connected) forceDisconnect("adapter emitted error", { message: String(e?.message || e) });
+      const msg = String(e?.message || e);
+      // User rejecting a transaction is intentional — not a stale context.
+      // Don't disconnect the wallet on rejection.
+      if (/user rejected|rejected the request/i.test(msg)) {
+        log("WALLET GUARD: ignoring user rejection error", { msg });
+        return;
+      }
+      log("WALLET GUARD: adapter error", { message: msg, e });
+      if (connected) forceDisconnect("adapter emitted error", { message: msg });
     };
 
     if (adapter?.on && adapter?.off) {

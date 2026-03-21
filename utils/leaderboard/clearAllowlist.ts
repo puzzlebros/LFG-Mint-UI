@@ -92,7 +92,6 @@ export async function clearAllowlistGuard(): Promise<void> {
             label: "LFG",
             guards: {
               allowList: some({ merkleRoot: emptyRoot }),
-              // mintLimit: some({ id: 1, limit: 1 }),
             },
           }
         : g

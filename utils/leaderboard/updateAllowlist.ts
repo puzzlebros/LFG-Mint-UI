@@ -91,10 +91,6 @@ export async function updateAllowlistGuard(): Promise<void> {
     Buffer.from(merkleRoot).toString("base64")
   );
 
-  const now = Math.floor(Date.now() / 1000);
-  const oneWeek = 7 * 24 * 60 * 60;
-  const windowId = Math.floor(now / oneWeek) % 256;
-
   // 6) Build updated groups array: replace only the LFG group, keep others intact
   const newGroups = guardData.groups.map((g) =>
     g.label === label
@@ -102,7 +98,6 @@ export async function updateAllowlistGuard(): Promise<void> {
           label,
           guards: {
             allowList: some({ merkleRoot }),
-            mintLimit: some({ id: windowId, limit: 1 }), // Ensure the mint limit stays as desired
           },
         }
       : g
@@ -117,7 +112,7 @@ export async function updateAllowlistGuard(): Promise<void> {
   })
     .sendAndConfirm(umi)
     .then(() => {
-      console.log("✅ On-chain allowList & mintLimit updated");
+      console.log("✅ On-chain allowList updated");
     })
     .catch((err) => {
       console.error("❌ Failed to update Candy Guard on-chain:", err);
