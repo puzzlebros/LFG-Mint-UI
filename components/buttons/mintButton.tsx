@@ -50,8 +50,24 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   let digitalAsset: AssetV1 | undefined;
   let jsonMetadata: JsonMetadata | undefined;
   try {
-    digitalAsset = await fetchAssetV1(umi, nftAdress);
-    jsonMetadata = await fetchJsonMetadata(umi, digitalAsset.uri);
+    // RPC may not index the new account immediately after finalization —
+    // retry up to 6 times with 2 s backoff before giving up.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        digitalAsset = await fetchAssetV1(umi, nftAdress);
+        break;
+      } catch (e: any) {
+        if (attempt < 5 && e?.name === "AccountNotFoundError") {
+          console.log(`[fetchNft] account not indexed yet, retrying (${attempt + 1}/6)…`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (digitalAsset) {
+      jsonMetadata = await fetchJsonMetadata(umi, digitalAsset.uri);
+    }
   } catch (e) {
     console.error(e);
     createStandaloneToast().toast({
@@ -163,14 +179,12 @@ const walletFirstSignSendConfirm = async ({
   tx,
   localSigners,
   walletSignTransaction,
-  latestBlockhash,
   label,
 }: {
   umi: Umi;
   tx: Transaction;
   localSigners: Signer[];
   walletSignTransaction: WalletSignTransactionFn;
-  latestBlockhash: { blockhash: string; lastValidBlockHeight: number };
   label: string;
 }) => {
   const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
@@ -185,7 +199,17 @@ const walletFirstSignSendConfirm = async ({
 
   await simulateForWalletReview(connection, simulationTx, label);
 
-  // Wallet signs FIRST on the real tx.
+  // Refresh the blockhash right before the wallet signs so it doesn't
+  // expire during the user's signing pause or the backend proof step.
+  const freshBlockhash = await connection.getLatestBlockhash("confirmed");
+  if (isVersionedTx(walletTx)) {
+    walletTx.message.recentBlockhash = freshBlockhash.blockhash;
+  } else {
+    // Legacy transaction (rare — Metaplex builds versioned txs when LUTs are used)
+    (walletTx as Web3Transaction).recentBlockhash = freshBlockhash.blockhash;
+  }
+
+  // Wallet signs FIRST on the real tx (with the fresh blockhash).
   const walletSignedTx = await walletSignTransaction(walletTx);
 
   // Local signers sign AFTER the wallet.
@@ -194,7 +218,7 @@ const walletFirstSignSendConfirm = async ({
   const signature = await connection.sendRawTransaction(
     walletSignedTx.serialize(),
     {
-      skipPreflight: true,  // Lighthouse assertions run post-execution, not in preflight
+      skipPreflight: true,
       maxRetries: 3,
     }
   );
@@ -202,8 +226,8 @@ const walletFirstSignSendConfirm = async ({
   await connection.confirmTransaction(
     {
       signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      blockhash: freshBlockhash.blockhash,
+      lastValidBlockHeight: freshBlockhash.lastValidBlockHeight,
     },
     "confirmed"
   );
@@ -369,7 +393,6 @@ const mintClick = async (
         tx: transaction,
         localSigners,
         walletSignTransaction,
-        latestBlockhash,
         label: `mint ${index + 1}`,
       });
 
