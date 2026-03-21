@@ -219,19 +219,14 @@ const walletFirstSignSendConfirm = async ({
     walletSignedTx.serialize(),
     {
       skipPreflight: true,
-      maxRetries: 3,
+      maxRetries: 5,
     }
   );
 
-  await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: freshBlockhash.blockhash,
-      lastValidBlockHeight: freshBlockhash.lastValidBlockHeight,
-    },
-    "confirmed"
-  );
-
+  // Don't wait on confirmTransaction here — it exits early when the
+  // blockhash lastValidBlockHeight is exceeded even if the tx is still
+  // in flight. verifyTx polls getTransaction directly and handles confirmation.
+  console.log(`[${label}] tx broadcast: ${signature}`);
   return base58.serialize(signature);
 };
 
@@ -397,6 +392,7 @@ const mintClick = async (
       });
 
       signatures.push(signature);
+      setLoadingState("Confirming...");
 
       return {
         status: "fulfilled" as const,

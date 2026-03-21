@@ -51,6 +51,11 @@ export const verifyTx = async (
       return { success: false, reason: "No TX found" };
     }
 
+    if (transaction.meta.err) {
+      console.error("[verifyTx] TX failed on-chain:", transaction.meta.err, "logs:", transaction.meta.logs);
+      return { success: false, reason: `Transaction failed on-chain: ${JSON.stringify(transaction.meta.err)}` };
+    }
+
     if (detectBotTax(transaction.meta.logs)) {
       console.error("[verifyTx] Bot tax detected in logs!");
       return { success: false, reason: "Bot Tax detected!" };
