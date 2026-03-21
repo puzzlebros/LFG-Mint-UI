@@ -45,7 +45,6 @@ import {
   Connection,
   Transaction as Web3Transaction,
   VersionedTransaction,
-  SendOptions,
 } from "@solana/web3.js";
 import {
   toWeb3JsTransaction,
@@ -88,14 +87,15 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   return { digitalAsset, jsonMetadata };
 };
 
-// sendTransaction from the wallet adapter: signs + sends in one Phantom call.
-// Passing skipPreflight: true tells Phantom to skip its internal preflight
-// simulation, which is what causes Lighthouse assertions to be injected.
-type WalletSendTransactionFn = (
-  tx: Web3Transaction | VersionedTransaction,
-  connection: Connection,
-  options?: { signers?: { publicKey: any; secretKey: Uint8Array }[]; skipPreflight?: boolean } & SendOptions
-) => Promise<string>;
+// Per Phantom docs: use signTransaction (not sendTransaction/signAndSendTransaction)
+// for multi-signer transactions. Phantom flags signAndSendTransaction with co-signers
+// as potentially malicious ("this app could be malicious").
+// Flow: pre-sign with local NFT keypair → wallet.signTransaction → sendRawTransaction.
+// Per Metaplex allowlist docs: the AllowListProof PDA must exist before the mint tx.
+// That is handled server-side (/api/allowlist-proof) before this function is ever called.
+type WalletSignTransactionFn = <T extends Web3Transaction | VersionedTransaction>(
+  tx: T
+) => Promise<T>;
 
 const isVersionedTx = (
   tx: Web3Transaction | VersionedTransaction
@@ -185,35 +185,35 @@ const simulateForWalletReview = async (
   }
 };
 
-// Use the wallet adapter's sendTransaction with skipPreflight: true.
-// This causes Phantom to skip its internal preflight simulation, which is
-// what injects Lighthouse assertions that incorrectly assert data_length==0
-// for the Candy Machine account (a pre-existing 290,219-byte account).
-// Local signers (the new NFT asset keypair) are passed via options.signers
-// so the wallet adapter partially signs them before Phantom adds its signature.
+// Per Phantom docs: split multi-signer flow into signTransaction + sendRawTransaction.
+// Phantom's "this app could be malicious" warning fires when signAndSendTransaction
+// (sendTransaction) is called with co-signers. Using signTransaction avoids that —
+// the wallet only sees its own signing step, and we broadcast the fully-signed tx
+// ourselves with skipPreflight:true so Lighthouse assertions don't fire on the
+// pre-existing 290 KB Candy Machine account.
 const walletSendConfirm = async ({
   umi,
   tx,
   localSigners,
-  walletSendTransaction,
+  walletSignTransaction,
   label,
 }: {
   umi: Umi;
   tx: Transaction;
   localSigners: Signer[];
-  walletSendTransaction: WalletSendTransactionFn;
+  walletSignTransaction: WalletSignTransactionFn;
   label: string;
 }) => {
   const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
   const walletTx = toWeb3JsTransaction(tx);
 
-  // Simulate with local sigs for early error detection (e.g. insufficient SOL,
-  // allowlist mismatch) before prompting the user to sign.
+  // Simulate with local sigs for early error detection (insufficient SOL,
+  // allowlist proof mismatch, etc.) before prompting the user to sign.
   const simulationTx = cloneWeb3Tx(walletTx);
   addLocalSignatures(simulationTx, localSigners);
   await simulateForWalletReview(connection, simulationTx, label);
 
-  // Refresh the blockhash right before sending so it doesn't expire.
+  // Refresh blockhash right before signing so it doesn't expire.
   const freshBlockhash = await connection.getLatestBlockhash("confirmed");
   if (isVersionedTx(walletTx)) {
     walletTx.message.recentBlockhash = freshBlockhash.blockhash;
@@ -221,11 +221,16 @@ const walletSendConfirm = async ({
     (walletTx as Web3Transaction).recentBlockhash = freshBlockhash.blockhash;
   }
 
-  // Extract local keypairs (NFT asset signer) to pass via options.signers.
-  const localKeypairs = extractLocalKeypairs(localSigners);
+  // Step 1: pre-sign with local keypairs (NFT asset signer).
+  addLocalSignatures(walletTx, localSigners);
 
-  const signature = await walletSendTransaction(walletTx, connection, {
-    signers: localKeypairs,
+  // Step 2: wallet signs only its own key — no co-signer exposure to Phantom.
+  const signedTx = await walletSignTransaction(walletTx);
+
+  // Step 3: broadcast raw with skipPreflight so Lighthouse doesn't inject
+  // incorrect data_length==0 assertions for the Candy Machine account.
+  const rawTx = signedTx.serialize();
+  const signature = await connection.sendRawTransaction(rawTx, {
     skipPreflight: true,
   });
 
@@ -247,7 +252,7 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  walletSendTransaction?: WalletSendTransactionFn,
+  walletSignTransaction?: WalletSignTransactionFn,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -258,8 +263,8 @@ const mintClick = async (
     return;
   }
 
-  if (!walletSendTransaction) {
-    throw new Error("Wallet does not support sendTransaction.");
+  if (!walletSignTransaction) {
+    throw new Error("Wallet does not support signTransaction.");
   }
 
   const setMintingState = (minting: boolean) => {
@@ -394,7 +399,7 @@ const mintClick = async (
         umi,
         tx: transaction,
         localSigners,
-        walletSendTransaction,
+        walletSignTransaction,
         label: `mint ${index + 1}`,
       });
 
@@ -582,7 +587,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-const { publicKey: walletPublicKey, sendTransaction } = useWallet();
+const { publicKey: walletPublicKey, signTransaction } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -652,7 +657,7 @@ const { publicKey: walletPublicKey, sendTransaction } = useWallet();
                       setGuardList,
                       onOpen,
                       setCheckEligibility,
-                      sendTransaction as WalletSendTransactionFn
+                      signTransaction as WalletSignTransactionFn
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);
