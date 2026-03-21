@@ -41,7 +41,6 @@ import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/che
 import { useWallet } from "@solana/wallet-adapter-react";
 import axios from "axios";
 import { useLeaderboard } from '../components/LeaderboardContext';
-import { cacheLeaderboard } from "../utils/metaplex/mintHelper"
 import { keyframes } from "@emotion/react";
 import { Footer } from '../components/Footer';
 import { useWeeklyCycle } from '../utils/leaderboard/useWeeklyCycle';
@@ -188,12 +187,6 @@ export default function MintPage() {
     setIsAllowed(top10Wallets.includes(walletPublicKey.toString()));
   }, [walletPublicKey, top10Wallets, isDemo]);
 
-  useEffect(() => {
-    if (isDemo) return;
-    if (top10Wallets.length > 0) {
-      cacheLeaderboard(top10Wallets);
-    }
-  }, [top10Wallets, isDemo]);
 
   // CM ID
   const candyMachineId = useMemo(() => {
@@ -590,6 +583,7 @@ export default function MintPage() {
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
                   buttonProps={claimButtonProps}
+                  top10Wallets={top10Wallets}
                   onBeforeMint={async () => {
                     const res = await preflight();
                     if (!res.ok) throw new Error(res.reason);

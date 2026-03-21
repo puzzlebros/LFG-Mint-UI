@@ -45,11 +45,6 @@ export const chooseGuardToUse = (
   return group ?? { label: 'default', guards: candyGuard.guards };
 };
 
-// Called on mint once
-let _top10Wallets: string[] = []
-export function cacheLeaderboard(wallets: string[]) {
-  _top10Wallets = [...wallets];
-}
 
 export const mintArgsBuilder = (
   guardToUse: GuardGroup<DefaultGuardSet>,
@@ -83,11 +78,11 @@ if (guards.allowList.__option === "Some") {
 export async function sendAllowListProof(
   umi: Umi,
   guardToUse: GuardGroup<DefaultGuardSet>,
-  candyMachine: CandyMachine
+  candyMachine: CandyMachine,
+  allowlist: string[]
 ) {
   if (guardToUse.guards.allowList.__option !== "Some") return;
 
-  const allowlist = [..._top10Wallets];
   const merkleRoot = guardToUse.guards.allowList.value.merkleRoot;
   const computedRoot = getMerkleRoot(allowlist);
   const wallet = umi.identity.publicKey.toString();
@@ -136,7 +131,8 @@ export async function sendAllowListProof(
 export const routeBuilder = async (
   umi: Umi,
   guardToUse: GuardGroup<DefaultGuardSet>,
-  candyMachine: CandyMachine
+  candyMachine: CandyMachine,
+  allowlist: string[]
 ) => {
   let tx = transactionBuilder();
 
@@ -144,9 +140,8 @@ export const routeBuilder = async (
     return tx;
   }
 
-  const allowlist = [..._top10Wallets];
   if (allowlist.length === 0) {
-    throw new Error("Allowlist cache is empty.");
+    throw new Error("Allowlist is empty — cannot build proof.");
   }
 
   const wallet = umi.identity.publicKey.toString();

@@ -218,12 +218,12 @@ const mintClick = async (
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
   mintAmount: number,
+  allowlist: string[],
   setMintsCreated: Dispatch<
     SetStateAction<
       { mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined
     >
   >,
-  guardList: GuardReturn[],
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
@@ -284,7 +284,7 @@ const mintClick = async (
     if (guardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
 
-      const routeTxBuilder = await routeBuilder(umi, guardToUse, candyMachine);
+      const routeTxBuilder = await routeBuilder(umi, guardToUse, candyMachine, allowlist);
 
       if (routeTxBuilder.getInstructions().length > 0) {
         try {
@@ -525,8 +525,7 @@ type Props = {
   setCheckEligibility: Dispatch<SetStateAction<boolean>>;
   ownedCoreAssets?: DasApiAssetAndAssetMintLimit[];
   buttonProps?: ButtonProps;
-
-  // ✅ NEW
+  top10Wallets: string[];
   onBeforeMint?: () => Promise<void>;
 };
 
@@ -540,8 +539,7 @@ export function ButtonList({
   onOpen,
   setCheckEligibility,
   buttonProps,
-
-  // ✅ NEW
+  top10Wallets,
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
@@ -611,8 +609,8 @@ const { publicKey: walletPublicKey, signTransaction } = useWallet();
                       candyMachine,
                       candyGuard,
                       1,
+                      top10Wallets,
                       setMintsCreated,
-                      guardList,
                       setGuardList,
                       onOpen,
                       setCheckEligibility,
