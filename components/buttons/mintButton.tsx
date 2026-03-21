@@ -221,15 +221,18 @@ const walletSendConfirm = async ({
     (walletTx as Web3Transaction).recentBlockhash = freshBlockhash.blockhash;
   }
 
-  // Step 1: pre-sign with local keypairs (NFT asset signer).
-  addLocalSignatures(walletTx, localSigners);
+  // Per Phantom team: wallet must sign FIRST, additional signers sign after.
+  // Reversing this order triggers the "request blocked" Lighthouse warning.
 
-  // Step 2: wallet signs only its own key — no co-signer exposure to Phantom.
-  const signedTx = await walletSignTransaction(walletTx);
+  // Step 1: wallet signs first.
+  const walletSigned = await walletSignTransaction(walletTx);
+
+  // Step 2: local keypairs (NFT asset signer) sign after the wallet.
+  addLocalSignatures(walletSigned, localSigners);
 
   // Step 3: broadcast raw with skipPreflight so Lighthouse doesn't inject
   // incorrect data_length==0 assertions for the Candy Machine account.
-  const rawTx = signedTx.serialize();
+  const rawTx = walletSigned.serialize();
   const signature = await connection.sendRawTransaction(rawTx, {
     skipPreflight: true,
   });
