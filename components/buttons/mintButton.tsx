@@ -1,6 +1,11 @@
 // components/mintButton.tsx
 import React, { useState, useEffect, Dispatch, SetStateAction } from "react";
-import { CandyGuard, CandyMachine } from "@metaplex-foundation/mpl-core-candy-machine";
+import {
+  CandyGuard,
+  CandyMachine,
+  fetchCandyMachine,
+  fetchCandyGuard,
+} from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import { 
   Umi, 
@@ -326,7 +331,23 @@ const mintClick = async (
       );
     }
 
-    // 2) Fetch LUT.
+    // 2) Re-fetch CandyMachine + CandyGuard from on-chain so mintArgs use the
+    //    current merkleRoot — stale React state would produce a wrong PDA
+    //    address, causing Lighthouse's pre-condition assertion to fail.
+    const [freshCandyMachine, freshCandyGuard] = await Promise.all([
+      fetchCandyMachine(umi, candyMachine.publicKey),
+      fetchCandyGuard(umi, candyMachine.mintAuthority),
+    ]);
+    const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
+    console.log(
+      `[mintClick] fresh merkleRoot: ${
+        freshGuardToUse.guards.allowList.__option === "Some"
+          ? Buffer.from(freshGuardToUse.guards.allowList.value.merkleRoot).toString("hex").slice(0, 12) + "…"
+          : "none"
+      }`
+    );
+
+    // 3) Fetch LUT.
     let tables: AddressLookupTableInput[] = [];
     const lut = process.env.NEXT_PUBLIC_LUT;
 
@@ -343,14 +364,14 @@ const mintClick = async (
       });
     }
 
-    // 3) Generate mint signers.
+    // 4) Generate mint signers.
     const nftsigners: KeypairSigner[] = [];
     for (let i = 0; i < mintAmount; i++) {
       nftsigners.push(generateSigner(umi));
     }
 
-    // 4) Build mint transactions.
-    const mintArgsArray = mintArgsBuilder(guardToUse, mintAmount);
+    // 5) Build mint transactions using fresh on-chain data.
+    const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
     const latestBlockhash = await umi.rpc.getLatestBlockhash({
       commitment: "confirmed",
     });
@@ -358,10 +379,10 @@ const mintClick = async (
     const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
       await buildTxs(
         umi,
-        candyMachine,
-        candyGuard,
+        freshCandyMachine,
+        freshCandyGuard,
         nftsigners,
-        guardToUse,
+        freshGuardToUse,
         mintArgsArray,
         tables,
         latestBlockhash.blockhash
@@ -373,7 +394,7 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // 5) Wallet-first signing, then local mint signer(s), then send.
+    // 6) Wallet-first signing, then local mint signer(s), then send.
     let signatures: Uint8Array[] = [];
 
     const sendResults = await Promise.all(
