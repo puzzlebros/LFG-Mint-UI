@@ -9,6 +9,7 @@ export const mintMessages: Record<DayBucket, string[]> = {
     "Let's get it!",
     "Let's FLAMINGO!",
     "Flock it",
+    "LFG",
   ],
   night: [
     'Night mint under neon lights 🌙',
@@ -19,4 +20,4 @@ export const mintMessages: Record<DayBucket, string[]> = {
   ],
 };
 
-export const defaultHashtags = ['#LetsFlamingo', '#SolanaNFT'];
+export const defaultHashtags = ['#LetsFlamingo', '#Solana'];

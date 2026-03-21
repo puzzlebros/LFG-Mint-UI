@@ -24,27 +24,22 @@ export const faqs: Faq[] = [
   {
     question: "How does the ranking work?",
     answer:
-      "The ranking freezes each Saturday. During that day, the top 10 players can claim their NFT. The ranking resets after that and starts all over again.",
+      "The ranking freezes each Saturday. During that day, the top 10 players can claim LFGNFT. The ranking resets after that and starts all over again.",
   },
   {
     question: "How do I know if I won?",
     answer:
-      "If you show up in the ranking by Saturday, you will see the CLAIM button for your FREE MINT.",
+      "If you show up in the ranking by Saturday, you will see the CLAIM button to FREE MINT.",
   },
   {
     question: "How many times can I win?",
     answer:
-      "Until the supply lasts, any week in which you rank in the top 10 by Saturday, you are eligible for a free mint.",
+      "Until the supply lasts, any week in which you rank in the top 10 by Saturday, you are eligible to mint for free.",
   },
   {
     question: "Are there plans for the future of this project?",
     answer:
-      "We are the creatives behind The Puzzle Bros. By supporting this project you become a supporter of an indie game studio that loves making games and want to deliver fun experiences for supporters just like you. We thank everyone that gets to be part of that journey and know that and we have big plans for our future. Stay tuned on Twitter and Discord.",
-  },
-  {
-    question: "Is this a scam?",
-    answer:
-      "No, we are game developers, art directors, artists and designers with based backgrounds wanting to adopt the web3 space as a way to connect with people interested in art, design and games.",
+      "We are the creatives behind The Puzzle Bros, and indie game development studio making passion projects that will hopefully entertain you. By supporting this project, you spark a chance for our projects to become possible.",
   },
   {
     question: "What else can I know about the collection?",

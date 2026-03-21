@@ -185,6 +185,9 @@ export default function MintPage() {
     if (isDemo) return;
     if (!walletPublicKey || !top10Wallets || top10Wallets.length === 0) return;
     setIsAllowed(top10Wallets.includes(walletPublicKey.toString()));
+    // If the leaderboard finished loading after guardChecker already ran with an
+    // empty list, re-trigger eligibility so allowList guards are re-evaluated.
+    setCheckEligibility(true);
   }, [walletPublicKey, top10Wallets, isDemo]);
 
 
@@ -298,10 +301,14 @@ export default function MintPage() {
   // after mint finishes & modal closes, refresh supply + guards
   const onNftModalClose = () => {
     onShowNftClose();
-    console.log("🔄 Re-fetching Candy Machine supply…");
+    console.log("🔄 Re-fetching Candy Machine & Guard…");
     setLoading(true);
     fetchCandyMachine(umi, candyMachineId)
-      .then((cm) => setCandyMachine(cm))
+      .then(async (cm) => {
+        setCandyMachine(cm);
+        const cg = await safeFetchCandyGuard(umi, cm.mintAuthority);
+        if (cg) setCandyGuard(cg);
+      })
       .catch((err) => {
         console.error(err);
         toast({ title: "Error updating supply", status: "error" });
