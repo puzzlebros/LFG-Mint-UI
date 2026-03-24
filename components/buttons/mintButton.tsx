@@ -7,16 +7,16 @@ import {
   fetchCandyGuard,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
-import { 
-  Umi, 
-  createBigInt,   
+import {
+  Umi,
+  createBigInt,
   generateSigner,
   KeypairSigner,
-  publicKey,
   PublicKey,
   AddressLookupTableInput,
   Transaction,
   Signer,
+  signAllTransactions,
 } from "@metaplex-foundation/umi";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
@@ -41,16 +41,6 @@ import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
 import { createStandaloneToast } from "@chakra-ui/react";
-import {
-  Connection,
-  Transaction as Web3Transaction,
-  VersionedTransaction,
-  SendOptions,
-} from "@solana/web3.js";
-import {
-  toWeb3JsTransaction,
-  toWeb3JsKeypair,
-} from "@metaplex-foundation/umi-web3js-adapters";
 
 const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   let digitalAsset: AssetV1 | undefined;
@@ -88,155 +78,6 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   return { digitalAsset, jsonMetadata };
 };
 
-// Use sendTransaction with skipPreflight:true.
-// Phantom's Lighthouse injects assertion instructions into the transaction ONLY when
-// signTransaction is used — those assertions run on-chain and fail with Custom(0x1900)
-// because the Candy Machine is a pre-existing 290 KB account, not a new empty account.
-// With sendTransaction + skipPreflight:true, Lighthouse only runs in Phantom's internal
-// simulation (which may show a warning popup) but is NOT written into the transaction
-// bytes, so the on-chain execution succeeds.
-// The popup warning is a Phantom domain-trust issue; the permanent fix is submitting
-// the domain for review at https://docs.google.com/forms/d/1JgIxdmolgh_80xMfQKBKx9-QPC7LRdN6LHpFFW8BlKM/viewform
-type WalletSendTransactionFn = (
-  tx: Web3Transaction | VersionedTransaction,
-  connection: Connection,
-  options?: { signers?: { publicKey: any; secretKey: Uint8Array }[] } & SendOptions
-) => Promise<string>;
-
-const isVersionedTx = (
-  tx: Web3Transaction | VersionedTransaction
-): tx is VersionedTransaction => {
-  return "version" in tx;
-};
-
-const cloneWeb3Tx = (
-  tx: Web3Transaction | VersionedTransaction
-): Web3Transaction | VersionedTransaction => {
-  if (isVersionedTx(tx)) {
-    const cloned = new VersionedTransaction(tx.message);
-    cloned.signatures = [...tx.signatures];
-    return cloned;
-  }
-
-  return Web3Transaction.from(
-    tx.serialize({
-      requireAllSignatures: false,
-      verifySignatures: false,
-    })
-  );
-};
-
-const extractLocalKeypairs = (localSigners: Signer[]) => {
-  return localSigners
-    .filter((s): s is KeypairSigner => "secretKey" in s)
-    .map((s) => toWeb3JsKeypair(s));
-};
-
-const addLocalSignatures = (
-  tx: Web3Transaction | VersionedTransaction,
-  localSigners: Signer[]
-): Web3Transaction | VersionedTransaction => {
-  const keypairs = extractLocalKeypairs(localSigners);
-  if (!keypairs.length) return tx;
-
-  if (isVersionedTx(tx)) {
-    tx.sign(keypairs);
-  } else {
-    tx.partialSign(...keypairs);
-  }
-
-  return tx;
-};
-
-const simulateForWalletReview = async (
-  connection: Connection,
-  tx: Web3Transaction | VersionedTransaction,
-  label: string
-) => {
-  const sim = await connection.simulateTransaction(tx as any, {
-    replaceRecentBlockhash: true,
-    sigVerify: false,
-  });
-
-  if (sim.value.err) {
-    const logs = sim.value.logs ?? [];
-    console.error(`[${label}] simulation failed err:`, sim.value.err);
-    console.error(`[${label}] simulation logs:`, logs);
-
-    const joined = logs.join(" | ");
-
-    if (
-      joined.includes("Not enough SOL to pay for the mint") ||
-      ((joined.includes("Require") || joined.includes("need")) &&
-        joined.includes("lamports")) ||
-      joined.includes("insufficient lamports")
-    ) {
-      throw new Error(
-        "Not enough SOL to complete this mint. You need more SOL for account creation and fees."
-      );
-    }
-
-    if (
-      joined.includes("Wallet not in allowlist") ||
-      joined.includes("allowlist") ||
-      joined.includes("merkle") ||
-      joined.includes("proof")
-    ) {
-      throw new Error(
-        "Allowlist proof failed. Your cached allowlist does not match the current on-chain allowlist."
-      );
-    }
-
-    throw new Error(`${label} simulation failed before wallet prompt.`);
-  }
-};
-
-// sendTransaction with skipPreflight:true keeps Lighthouse out of the tx bytes.
-// signTransaction causes Phantom to inject Lighthouse assertion instructions that
-// fail on-chain with Custom(0x1900) for the pre-existing Candy Machine account.
-const walletSendConfirm = async ({
-  umi,
-  tx,
-  localSigners,
-  walletSendTransaction,
-  label,
-}: {
-  umi: Umi;
-  tx: Transaction;
-  localSigners: Signer[];
-  walletSendTransaction: WalletSendTransactionFn;
-  label: string;
-}) => {
-  const connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
-  const walletTx = toWeb3JsTransaction(tx);
-
-  // Simulate with local sigs for early error detection (insufficient SOL,
-  // allowlist proof mismatch, etc.) before prompting the user to sign.
-  const simulationTx = cloneWeb3Tx(walletTx);
-  addLocalSignatures(simulationTx, localSigners);
-  await simulateForWalletReview(connection, simulationTx, label);
-
-  // Refresh blockhash right before sending so it doesn't expire.
-  const freshBlockhash = await connection.getLatestBlockhash("confirmed");
-  if (isVersionedTx(walletTx)) {
-    walletTx.message.recentBlockhash = freshBlockhash.blockhash;
-  } else {
-    (walletTx as Web3Transaction).recentBlockhash = freshBlockhash.blockhash;
-  }
-
-  const localKeypairs = extractLocalKeypairs(localSigners);
-
-  // skipPreflight:true tells Phantom to skip its internal simulation, which is
-  // what injects Lighthouse assertions into the transaction bytes. Without this,
-  // Lighthouse runs on-chain and fails with Custom(0x1900) for the CM account.
-  const signature = await walletSendTransaction(walletTx, connection, {
-    signers: localKeypairs,
-    skipPreflight: true,
-  });
-
-  console.log(`[${label}] tx broadcast: ${signature}`);
-  return base58.serialize(signature);
-};
 
 const mintClick = async (
   umi: Umi,
@@ -252,7 +93,6 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  walletSendTransaction?: WalletSendTransactionFn,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -261,10 +101,6 @@ const mintClick = async (
   if (!isDefaultGroup && !candyGuard.groups.find((g) => g.label === guardToUse.label)) {
     console.error(`Group label ${guardToUse.label} not found in candyGuard groups!`);
     return;
-  }
-
-  if (!walletSendTransaction) {
-    throw new Error("Wallet does not support sendTransaction.");
   }
 
   const setMintingState = (minting: boolean) => {
@@ -385,48 +221,36 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // 7) Simulate, refresh blockhash, then wallet signs+sends via sendTransaction.
+    // 7) Phantom signs first (via signAllTransactions — wallet + local keypairs
+    //    handled together by UMI), then each pre-signed transaction is submitted
+    //    via sendRawTransaction. skipPreflight keeps Lighthouse assertions out of
+    //    on-chain execution, following Phantom's recommended multi-signer flow.
+    const signedTxs = await signAllTransactions(mintTxs);
+
     let signatures: Uint8Array[] = [];
+    const sendPromises = signedTxs.map((tx, index) =>
+      umi.rpc
+        .sendTransaction(tx, {
+          skipPreflight: true,
+          maxRetries: 3,
+          preflightCommitment: "confirmed",
+          commitment: "confirmed",
+        })
+        .then((sig) => {
+          console.log(`[mint ${index + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
+          signatures.push(sig);
+          return { status: "fulfilled" as const, value: sig };
+        })
+        .catch((err) => {
+          console.error(`Transaction ${index + 1} failed:`, err);
+          return { status: "rejected" as const, reason: err };
+        })
+    );
 
-    const sendResults = await Promise.all(
-  mintTxs.map(async ({ transaction, signers }, index) => {
-    try {
-      const localSigners = signers.filter(
-        (s) => s.publicKey !== umi.identity.publicKey
-      );
+    await Promise.allSettled(sendPromises);
 
-      const signature = await walletSendConfirm({
-        umi,
-        tx: transaction,
-        localSigners,
-        walletSendTransaction,
-        label: `mint ${index + 1}`,
-      });
-
-      signatures.push(signature);
-      setLoadingState("Confirming...");
-
-      return {
-        status: "fulfilled" as const,
-        value: signature,
-      };
-    } catch (error: any) {
-      console.error(`Transaction ${index + 1} failed:`, error);
-      return {
-        status: "rejected" as const,
-        reason: error,
-      };
-    }
-  })
-);
-
-    if (!sendResults.some((r) => r.status === "fulfilled")) {
-      // Re-throw the original error so rejection vs real failure can be
-      // distinguished in the outer catch block.
-      const firstFailed = sendResults.find((r) => r.status === "rejected") as
-        | { status: "rejected"; reason: any }
-        | undefined;
-      throw firstFailed?.reason ?? new Error("No mint transaction was sent successfully.");
+    if (signatures.length === 0) {
+      throw new Error("No mint transaction was sent successfully.");
     }
 
     setLoadingState("Joining the flock");
@@ -587,7 +411,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-const { publicKey: walletPublicKey, sendTransaction } = useWallet();
+const { publicKey: walletPublicKey } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -657,7 +481,6 @@ const { publicKey: walletPublicKey, sendTransaction } = useWallet();
                       setGuardList,
                       onOpen,
                       setCheckEligibility,
-                      sendTransaction as WalletSendTransactionFn
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);
