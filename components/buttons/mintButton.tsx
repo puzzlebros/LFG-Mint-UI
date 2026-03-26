@@ -16,7 +16,6 @@ import {
   AddressLookupTableInput,
   Transaction,
   Signer,
-  signAllTransactions,
 } from "@metaplex-foundation/umi";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
@@ -186,9 +185,7 @@ const mintClick = async (
       }`
     );
 
-    // 3) Skip LUT — Phantom's Lighthouse guard incorrectly asserts data_length==0
-    //    for LUT-sourced writable accounts (e.g. the Candy Machine), causing the
-    //    tx to fail on-chain. Passing all accounts as static avoids this.
+    // 3) No LUTs — all accounts passed as static for simplicity.
     const tables: AddressLookupTableInput[] = [];
 
     // 4) Generate mint signers.
@@ -219,35 +216,44 @@ const mintClick = async (
       throw new Error("No mint transaction could be built.");
     }
 
-    setLoadingState("Please sign...");
-
-    // 7) Phantom signs first (via signAllTransactions — wallet + local keypairs
-    //    handled together by UMI), then each pre-signed transaction is submitted
-    //    via sendRawTransaction. skipPreflight keeps Lighthouse assertions out of
-    //    on-chain execution, following Phantom's recommended multi-signer flow.
-    const signedTxs = await signAllTransactions(mintTxs);
-
+    // 7) Phantom signs each transaction first, then the Core mint keypair is
+    //    added afterward. Submitted with preflight enabled per Phantom's guidance.
+    //    Sequential per-tx loop required — signAllTransactions is not used.
     let signatures: Uint8Array[] = [];
-    const sendPromises = signedTxs.map((tx, index) =>
-      umi.rpc
-        .sendTransaction(tx, {
-          skipPreflight: true,
+    for (let i = 0; i < mintTxs.length; i++) {
+      const { transaction, signers } = mintTxs[i];
+
+      setLoadingState(
+        mintTxs.length > 1
+          ? `Please sign ${i + 1} of ${mintTxs.length}...`
+          : "Please sign..."
+      );
+
+      try {
+        // Step 1: Phantom signs first.
+        let signedTx = await umi.identity.signTransaction(transaction);
+
+        // Step 2: Core mint keypair(s) sign after Phantom.
+        for (const signer of signers) {
+          signedTx = await signer.signTransaction(signedTx);
+        }
+
+        // Step 3: Submit with preflight enabled.
+        const sig = await umi.rpc.sendTransaction(signedTx, {
+          skipPreflight: false,
           maxRetries: 3,
           preflightCommitment: "confirmed",
           commitment: "confirmed",
-        })
-        .then((sig) => {
-          console.log(`[mint ${index + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
-          signatures.push(sig);
-          return { status: "fulfilled" as const, value: sig };
-        })
-        .catch((err) => {
-          console.error(`Transaction ${index + 1} failed:`, err);
-          return { status: "rejected" as const, reason: err };
-        })
-    );
+        });
 
-    await Promise.allSettled(sendPromises);
+        console.log(`[mint ${i + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
+        signatures.push(sig);
+      } catch (err: any) {
+        const msg: string = err?.message ?? "";
+        if (/user rejected|rejected the request/i.test(msg)) throw err;
+        console.error(`Transaction ${i + 1} failed:`, err);
+      }
+    }
 
     if (signatures.length === 0) {
       throw new Error("No mint transaction was sent successfully.");
