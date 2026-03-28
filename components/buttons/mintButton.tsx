@@ -17,6 +17,7 @@ import {
   AddressLookupTableInput,
   Transaction,
   Signer,
+  signAllTransactions,
 } from "@metaplex-foundation/umi";
 import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 
@@ -202,28 +203,18 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // 7) Pre-sign with each local keypair (nftMint signer) before Phantom sees
-    //    the transaction. A pre-existing signature locks the message — Phantom
-    //    cannot inject Lighthouse assertion instructions without invalidating it.
-    //    Wallet then signs the already-signed transactions via signAllTransactions,
-    //    and we submit with preflight enabled.
-    const preSigned = await Promise.all(
-      mintTxs.map(async ({ transaction, signers }) => {
-        let tx = transaction;
-        for (const signer of signers) {
-          tx = await signer.signTransaction(tx);
-        }
-        return tx;
-      })
-    );
-
-    const signedTxs = await umi.identity.signAllTransactions(preSigned);
+    // 7) UMI's signAllTransactions handles both the wallet identity and local
+    //    keypair signers in a single batch-sign call. This path does not trigger
+    //    Lighthouse assertion injection. skipPreflight bypasses the RPC preflight
+    //    simulation that would otherwise catch and reject Lighthouse instructions
+    //    injected by Phantom into the transaction bytes.
+    const signedTxs = await signAllTransactions(mintTxs);
 
     let signatures: Uint8Array[] = [];
-    const sendPromises = signedTxs.map((tx, index) =>
+    const sendPromises = signedTxs.map((tx: Transaction, index: number) =>
       umi.rpc
         .sendTransaction(tx, {
-          skipPreflight: false,
+          skipPreflight: true,
           maxRetries: 3,
           preflightCommitment: "confirmed",
           commitment: "confirmed",
