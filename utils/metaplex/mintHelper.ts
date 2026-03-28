@@ -322,7 +322,7 @@ export const buildTxs = async (
 export const getRequiredCU = async (umi: Umi, transaction: Transaction) => {
   const defaultCU = 800_000;
   const web3tx = toWeb3JsTransaction(transaction);
-  let connection = new Connection(umi.rpc.getEndpoint(), "finalized");
+  let connection = new Connection(umi.rpc.getEndpoint(), "confirmed");
   const simulatedTx = await connection.simulateTransaction(web3tx, {
     replaceRecentBlockhash: true,
     sigVerify: false,

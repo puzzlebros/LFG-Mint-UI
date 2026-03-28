@@ -214,30 +214,43 @@ const mintClick = async (
     setLoadingState("Please sign...");
 
     // 6) Sign all transactions in a single wallet prompt, then submit each
-    //    directly via RPC with skipPreflight to bypass preflight simulation.
+    //    with skipPreflight and keep resending every 2 s until confirmed or
+    //    the blockhash expires — prevents TransactionExpiredBlockheightExceededError.
     const signedTxs = await signAllTransactions(mintTxs);
 
-    let signatures: Uint8Array[] = [];
-    const sendPromises = signedTxs.map((tx: Transaction, index: number) =>
-      umi.rpc
-        .sendTransaction(tx, {
+    const signatures: Uint8Array[] = [];
+    for (let i = 0; i < signedTxs.length; i++) {
+      const tx = signedTxs[i];
+      let sig: Uint8Array;
+      try {
+        sig = await umi.rpc.sendTransaction(tx, {
           skipPreflight: true,
-          maxRetries: 3,
           preflightCommitment: "confirmed",
-          commitment: "confirmed",
-        })
-        .then((sig) => {
-          console.log(`[mint ${index + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
-          signatures.push(sig);
-          return { status: "fulfilled" as const, value: sig };
-        })
-        .catch((err) => {
-          console.error(`Transaction ${index + 1} failed:`, err);
-          return { status: "rejected" as const, reason: err };
-        })
-    );
+        });
+      } catch (err) {
+        console.error(`Transaction ${i + 1} initial send failed:`, err);
+        continue;
+      }
+      console.log(`[mint ${i + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
+      signatures.push(sig);
 
-    await Promise.allSettled(sendPromises);
+      // Resend every 2 s while waiting for confirmation so the tx doesn't
+      // drop silently from the validator's retry queue.
+      const resendTimer = setInterval(async () => {
+        try { await umi.rpc.sendTransaction(tx, { skipPreflight: true }); } catch {}
+      }, 2000);
+      try {
+        await umi.rpc.confirmTransaction(sig, {
+          strategy: { type: "blockhash", ...latestBlockhash },
+          commitment: "confirmed",
+        });
+        console.log(`[mint ${i + 1}] confirmed`);
+      } catch (e) {
+        console.error(`[mint ${i + 1}] confirmation failed:`, e);
+      } finally {
+        clearInterval(resendTimer);
+      }
+    }
 
     if (signatures.length === 0) {
       throw new Error("No mint transaction was sent successfully.");
@@ -257,7 +270,7 @@ const mintClick = async (
       signatures,
       nftsigners,
       latestBlockhash,
-      "finalized"
+      "confirmed"
     );
 
     setLoadingState("Fetching your LFG");
