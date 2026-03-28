@@ -405,10 +405,7 @@ export function ButtonList({
   const solanaTime = useSolanaTime();
   const { publicKey: walletPublicKey, wallet } = useWallet();
 
-  const isPhantom =
-    typeof window !== "undefined" &&
-    (wallet?.adapter?.name?.toLowerCase().includes("phantom") ||
-      !!(window as any).phantom?.solana?.isPhantom);
+  const isPhantom = wallet?.adapter?.name?.toLowerCase().includes("phantom") ?? false;
 
   if (!candyMachine || !candyGuard) return <></>;
 
