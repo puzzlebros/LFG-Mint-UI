@@ -18,6 +18,7 @@ import {
   Transaction,
   Signer,
   signAllTransactions,
+  BlockhashWithExpiryBlockHeight,
 } from "@metaplex-foundation/umi";
 import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 
@@ -179,27 +180,36 @@ const mintClick = async (
       nftsigners.push(generateSigner(umi));
     }
 
-    // 5) Build mint transactions.
+    // 5) Build mint transactions — CU simulation runs here with a temp blockhash
+    //    (replaceRecentBlockhash:true means simulation is blockhash-agnostic).
     const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
-    const latestBlockhash = await umi.rpc.getLatestBlockhash({
-      commitment: "confirmed",
-    });
+    const tempBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
 
-    const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
-      await buildTxs(
-        umi,
-        freshCandyMachine,
-        freshCandyGuard,
-        nftsigners,
-        freshGuardToUse,
-        mintArgsArray,
-        tables,
-        latestBlockhash.blockhash
-      );
+    const mintBuilders = await buildTxs(
+      umi,
+      freshCandyMachine,
+      freshCandyGuard,
+      nftsigners,
+      freshGuardToUse,
+      mintArgsArray,
+      tables,
+      tempBlockhash.blockhash
+    );
 
-    if (!mintTxs.length) {
+    if (!mintBuilders.length) {
       throw new Error("No mint transaction could be built.");
     }
+
+    // Fetch a fresh blockhash after CU simulation so the signed transaction
+    // has maximum validity window — minimises expiry risk during wallet prompt.
+    const latestBlockhash: BlockhashWithExpiryBlockHeight =
+      await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
+
+    const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
+      mintBuilders.map(({ builder, signers }) => ({
+        transaction: builder.setBlockhash(latestBlockhash).build(umi),
+        signers,
+      }));
 
     setLoadingState("Please sign...");
 

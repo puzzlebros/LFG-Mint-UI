@@ -266,13 +266,13 @@ export const buildTxs = async (
   mintArgsArray: Partial<DefaultGuardSetMintArgs>[] | undefined,
   luts: AddressLookupTableInput[],
   latestBlockhash: string,
-) => {
+): Promise<{ builder: TransactionBuilder; signers: Signer[] }[]> => {
   const newBuilder = transactionBuilder()
     .prepend(setComputeUnitPrice(umi, { microLamports: 5 }))
     .prepend(setComputeUnitLimit(umi, { units: 1400000 }))
     .setBlockhash(latestBlockhash);
   let builder = newBuilder;
-  const transactions: { transaction: Transaction; signers: Signer[] }[] = [];
+  const transactions: { builder: TransactionBuilder; signers: Signer[] }[] = [];
   for (let i = 0; i < nftMints.length; i++) {
     let before = builder;
     let mintArgs = undefined;
@@ -296,7 +296,7 @@ export const buildTxs = async (
       let [CU, withoutCU] = before.splitByIndex(1);
       const withCU = withoutCU.prepend(setComputeUnitLimit(umi, { units }));
       transactions.push({
-        transaction: withCU.build(umi),
+        builder: withCU,
         signers: withCU.getSigners(umi),
       });
       builder = newBuilder;
@@ -310,7 +310,7 @@ export const buildTxs = async (
       let [CU, withoutCU] = builder.splitByIndex(1);
       const withCU = withoutCU.prepend(setComputeUnitLimit(umi, { units }));
       transactions.push({
-        transaction: withCU.build(umi),
+        builder: withCU,
         signers: withCU.getSigners(umi),
       });
     }
