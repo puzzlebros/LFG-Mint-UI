@@ -17,10 +17,9 @@ import {
   AddressLookupTableInput,
   Transaction,
   Signer,
+  signAllTransactions,
 } from "@metaplex-foundation/umi";
 import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
-import { toWeb3JsTransaction } from "@metaplex-foundation/umi-web3js-adapters";
-import { Connection } from "@solana/web3.js";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../../settings";
@@ -40,7 +39,7 @@ import {
   buildTxs
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
-import { useWallet, useConnection, WalletContextState } from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
@@ -90,8 +89,6 @@ const mintClick = async (
   candyGuard: CandyGuard,
   mintAmount: number,
   allowlist: string[],
-  walletSendTransaction: WalletContextState["sendTransaction"],
-  connection: Connection,
   setMintsCreated: Dispatch<
     SetStateAction<
       { mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined
@@ -206,33 +203,29 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // 6) Pre-sign with each local keypair (nftMint signer) so the wallet only
-    //    needs to add its own signature. wallet.sendTransaction does not inject
-    //    Lighthouse instructions — it simulates and may warn, but sends the
-    //    original transaction bytes. skipPreflight bypasses the RPC preflight
-    //    simulation that would surface Phantom's simulation warning as an error.
+    // 6) Sign all transactions in a single wallet prompt, then submit each
+    //    directly via RPC with skipPreflight to bypass preflight simulation.
+    const signedTxs = await signAllTransactions(mintTxs);
+
     let signatures: Uint8Array[] = [];
-    const sendPromises = mintTxs.map(async ({ transaction, signers }, index) => {
-      try {
-        let tx: Transaction = transaction;
-        for (const signer of signers) {
-          tx = await signer.signTransaction(tx);
-        }
-        const web3Tx = toWeb3JsTransaction(tx);
-        const sig = await walletSendTransaction(web3Tx, connection, {
+    const sendPromises = signedTxs.map((tx: Transaction, index: number) =>
+      umi.rpc
+        .sendTransaction(tx, {
           skipPreflight: true,
           maxRetries: 3,
           preflightCommitment: "confirmed",
-        });
-        const sigBytes = base58.serialize(sig);
-        console.log(`[mint ${index + 1}] broadcast: ${sig}`);
-        signatures.push(sigBytes);
-        return { status: "fulfilled" as const, value: sigBytes };
-      } catch (err) {
-        console.error(`Transaction ${index + 1} failed:`, err);
-        return { status: "rejected" as const, reason: err };
-      }
-    });
+          commitment: "confirmed",
+        })
+        .then((sig) => {
+          console.log(`[mint ${index + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
+          signatures.push(sig);
+          return { status: "fulfilled" as const, value: sig };
+        })
+        .catch((err) => {
+          console.error(`Transaction ${index + 1} failed:`, err);
+          return { status: "rejected" as const, reason: err };
+        })
+    );
 
     await Promise.allSettled(sendPromises);
 
@@ -400,8 +393,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey, sendTransaction } = useWallet();
-  const { connection } = useConnection();
+  const { publicKey: walletPublicKey } = useWallet();
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -468,8 +460,6 @@ export function ButtonList({
                       candyGuard,
                       1,
                       allowlist,
-                      sendTransaction,
-                      connection,
                       setMintsCreated,
                       setGuardList,
                       onOpen,
