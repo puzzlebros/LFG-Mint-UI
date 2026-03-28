@@ -589,6 +589,7 @@ export default function MintPage() {
                   onOpen={onShowNftOpen}
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
+                  allowlist={top10Wallets ?? []}
                   buttonProps={claimButtonProps}
                   onBeforeMint={async () => {
                     const res = await preflight();

@@ -12,11 +12,13 @@ import {
   createBigInt,
   generateSigner,
   KeypairSigner,
+  publicKey,
   PublicKey,
   AddressLookupTableInput,
   Transaction,
   Signer,
 } from "@metaplex-foundation/umi";
+import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../../settings";
@@ -30,6 +32,7 @@ import {
 } from "@chakra-ui/react";
 import {
   chooseGuardToUse,
+  routeBuilder,
   mintArgsBuilder,
   GuardButtonList,
   buildTxs
@@ -84,6 +87,7 @@ const mintClick = async (
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
   mintAmount: number,
+  allowlist: string[],
   setMintsCreated: Dispatch<
     SetStateAction<
       { mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined
@@ -138,55 +142,35 @@ const mintClick = async (
   try {
     setMintingState(true);
 
-    // 1) Ensure AllowListProof PDA exists before minting.
-    // The proof is created server-side using the admin deploy keypair so
-    // Phantom / Lighthouse is never involved in this step.
-    if (guardToUse.guards.allowList.__option === "Some") {
-      setLoadingState("Authenticating...");
-
-      const walletAddress = umi.identity.publicKey.toString();
-      const proofRes = await fetch("/api/allowlist-proof", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet: walletAddress }),
-      });
-
-      if (!proofRes.ok) {
-        const { error } = await proofRes.json().catch(() => ({ error: "Unknown error" }));
-        console.error("[allowlist proof] backend error:", error);
-        throw new Error(
-          error?.includes("not on the current allowlist")
-            ? "Your wallet is not on the current allowlist."
-            : `Allowlist proof failed: ${error}`
-        );
-      }
-
-      const proofData = await proofRes.json();
-      console.log(
-        proofData.alreadyExists
-          ? `[allowlist proof] already existed (pda=${proofData.pda})`
-          : `[allowlist proof] created by backend (pda=${proofData.pda})`
-      );
-    }
-
-    // 2) Re-fetch CandyMachine + CandyGuard from on-chain so mintArgs use the
-    //    current merkleRoot — stale React state would produce a wrong PDA
-    //    address, causing Lighthouse's pre-condition assertion to fail.
+    // 1) Re-fetch CandyMachine + CandyGuard so mintArgs use the current on-chain state.
     const [freshCandyMachine, freshCandyGuard] = await Promise.all([
       fetchCandyMachine(umi, candyMachine.publicKey),
       fetchCandyGuard(umi, candyMachine.mintAuthority),
     ]);
     const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
-    console.log(
-      `[mintClick] fresh merkleRoot: ${
-        freshGuardToUse.guards.allowList.__option === "Some"
-          ? Buffer.from(freshGuardToUse.guards.allowList.value.merkleRoot).toString("hex").slice(0, 12) + "…"
-          : "none"
-      }`
-    );
 
-    // 3) No LUTs — all accounts passed as static for simplicity.
-    const tables: AddressLookupTableInput[] = [];
+    // 2) Route allowlist proof via user's wallet — no server API needed.
+    if (freshGuardToUse.guards.allowList.__option === "Some") {
+      setLoadingState("Authenticating...");
+      const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
+      if (routeTxBuilder.getInstructions().length > 0) {
+        const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
+          send: { skipPreflight: true },
+          confirm: { commitment: "confirmed" },
+        });
+        console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
+      } else {
+        console.log("[allowlist proof] already exists, skipping route tx");
+      }
+    }
+
+    // 3) Load LUT if configured — reduces tx size for complex mints.
+    let tables: AddressLookupTableInput[] = [];
+    const lutAddress = process.env.NEXT_PUBLIC_LUT;
+    if (lutAddress) {
+      const fetchedLut = await fetchAddressLookupTable(umi, publicKey(lutAddress));
+      tables = [fetchedLut];
+    }
 
     // 4) Generate mint signers.
     const nftsigners: KeypairSigner[] = [];
@@ -194,7 +178,7 @@ const mintClick = async (
       nftsigners.push(generateSigner(umi));
     }
 
-    // 5) Build mint transactions using fresh on-chain data.
+    // 5) Build mint transactions.
     const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
     const latestBlockhash = await umi.rpc.getLatestBlockhash({
       commitment: "confirmed",
@@ -216,44 +200,46 @@ const mintClick = async (
       throw new Error("No mint transaction could be built.");
     }
 
-    // 7) Phantom signs each transaction first, then the Core mint keypair is
-    //    added afterward. Submitted with preflight enabled per Phantom's guidance.
-    //    Sequential per-tx loop required — signAllTransactions is not used.
-    let signatures: Uint8Array[] = [];
-    for (let i = 0; i < mintTxs.length; i++) {
-      const { transaction, signers } = mintTxs[i];
+    setLoadingState("Please sign...");
 
-      setLoadingState(
-        mintTxs.length > 1
-          ? `Please sign ${i + 1} of ${mintTxs.length}...`
-          : "Please sign..."
-      );
-
-      try {
-        // Step 1: Phantom signs first.
-        let signedTx = await umi.identity.signTransaction(transaction);
-
-        // Step 2: Core mint keypair(s) sign after Phantom.
+    // 7) Pre-sign with each local keypair (nftMint signer) before Phantom sees
+    //    the transaction. A pre-existing signature locks the message — Phantom
+    //    cannot inject Lighthouse assertion instructions without invalidating it.
+    //    Wallet then signs the already-signed transactions via signAllTransactions,
+    //    and we submit with preflight enabled.
+    const preSigned = await Promise.all(
+      mintTxs.map(async ({ transaction, signers }) => {
+        let tx = transaction;
         for (const signer of signers) {
-          signedTx = await signer.signTransaction(signedTx);
+          tx = await signer.signTransaction(tx);
         }
+        return tx;
+      })
+    );
 
-        // Step 3: Submit with preflight enabled.
-        const sig = await umi.rpc.sendTransaction(signedTx, {
+    const signedTxs = await umi.identity.signAllTransactions(preSigned);
+
+    let signatures: Uint8Array[] = [];
+    const sendPromises = signedTxs.map((tx, index) =>
+      umi.rpc
+        .sendTransaction(tx, {
           skipPreflight: false,
           maxRetries: 3,
           preflightCommitment: "confirmed",
           commitment: "confirmed",
-        });
+        })
+        .then((sig) => {
+          console.log(`[mint ${index + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
+          signatures.push(sig);
+          return { status: "fulfilled" as const, value: sig };
+        })
+        .catch((err) => {
+          console.error(`Transaction ${index + 1} failed:`, err);
+          return { status: "rejected" as const, reason: err };
+        })
+    );
 
-        console.log(`[mint ${i + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
-        signatures.push(sig);
-      } catch (err: any) {
-        const msg: string = err?.message ?? "";
-        if (/user rejected|rejected the request/i.test(msg)) throw err;
-        console.error(`Transaction ${i + 1} failed:`, err);
-      }
-    }
+    await Promise.allSettled(sendPromises);
 
     if (signatures.length === 0) {
       throw new Error("No mint transaction was sent successfully.");
@@ -395,6 +381,7 @@ type Props = {
   candyMachine?: CandyMachine;
   candyGuard?: CandyGuard;
   ownedTokens?: DigitalAssetWithToken[];
+  allowlist?: string[];
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>;
   setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined>>;
   onOpen: () => void;
@@ -409,6 +396,7 @@ export function ButtonList({
   guardList,
   candyMachine,
   candyGuard,
+  allowlist = [],
   setGuardList,
   setMintsCreated,
   onOpen,
@@ -483,6 +471,7 @@ const { publicKey: walletPublicKey } = useWallet();
                       candyMachine,
                       candyGuard,
                       1,
+                      allowlist,
                       setMintsCreated,
                       setGuardList,
                       onOpen,
