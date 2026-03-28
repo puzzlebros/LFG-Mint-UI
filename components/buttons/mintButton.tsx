@@ -203,11 +203,8 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // 7) UMI's signAllTransactions handles both the wallet identity and local
-    //    keypair signers in a single batch-sign call. This path does not trigger
-    //    Lighthouse assertion injection. skipPreflight bypasses the RPC preflight
-    //    simulation that would otherwise catch and reject Lighthouse instructions
-    //    injected by Phantom into the transaction bytes.
+    // 6) Sign all transactions in a single wallet prompt, then submit each
+    //    directly via RPC with skipPreflight to bypass preflight simulation.
     const signedTxs = await signAllTransactions(mintTxs);
 
     let signatures: Uint8Array[] = [];
@@ -244,7 +241,7 @@ const mintClick = async (
       duration: 3000,
     });
 
-    // 6) Verify and fetch minted NFTs.
+    // 7) Verify and fetch minted NFTs.
     const successfulMints = await verifyTx(
       umi,
       signatures,
