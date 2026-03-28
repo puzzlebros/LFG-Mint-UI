@@ -1,0 +1,60 @@
+/* Stable wrapper — holds the width so both states match */
+.lfg-wallet-wrapper {
+  display: inline-block;
+  width: 275px; /* base / mobile */
+}
+@media (min-width: 768px) {
+  .lfg-wallet-wrapper {
+    width: 200px; /* md — matches theme nav size */
+  }
+}
+
+/* WalletMultiButton renders a .wallet-adapter-dropdown wrapper — fill it too */
+.lfg-wallet-wrapper .wallet-adapter-dropdown {
+  width: 100%;
+}
+
+/* Inner button fills wrapper regardless of which state is rendered */
+.lfg-wallet-wrapper button.wallet-adapter-button-trigger-secondary,
+.lfg-wallet-wrapper button.wallet-adapter-button-trigger-secondary:hover,
+.lfg-wallet-wrapper button.wallet-adapter-button-trigger-secondary:focus {
+  width: 100% !important;
+}
+
+/* Copy/Switch/Disconnect panel — match the unfolding wallet menu */
+.lfg-wallet-wrapper .wallet-adapter-dropdown-list {
+  background: white;
+  border-radius: 0;
+  box-shadow: var(--chakra-shadows-xl);
+  padding: 8px;
+  gap: 4px;
+  /* fill the wrapper width, overriding wallet-adapter's own min-width */
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.lfg-wallet-wrapper .wallet-adapter-dropdown-list-item {
+  font-family: "Nickel Gothic Variable", sans-serif;
+  font-variation-settings: "wdth" 75, "slnt" 0;
+  font-weight: normal;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  border-radius: 0;
+  justify-content: center;
+  color: var(--chakra-colors-brand-DarkPurple);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.lfg-wallet-wrapper .wallet-adapter-dropdown-list-item:hover {
+  /* same subtle overlay Chakra ghost buttons use on a white background */
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Wallet icon when connected */
+button.wallet-adapter-button-trigger-secondary .wallet-adapter-button-start-icon,
+button.wallet-adapter-button-trigger-secondary .wallet-adapter-button-start-icon img {
+  width: 32px;
+  height: 32px;
+}

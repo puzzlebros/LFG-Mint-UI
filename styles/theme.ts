@@ -176,25 +176,25 @@ export default extendTheme({
 "button.wallet-adapter-button-trigger-secondary": {
   borderRadius: 0,
   height: { base: "40px", md: "35px" },
-
-  // ✅ default sizing (same “feel” as your other buttons)
   width: { base: "275px", md: "200px" },
   maxWidth: "100%",
-
-  // ✅ keep your original visuals
   background:
     "linear-gradient(to right,var(--chakra-colors-brand-Purple), var(--chakra-colors-brand-Pink))",
   color: "white",
-
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  textStyle: "narrow",
   fontWeight: "normal",
+  fontSize: { base: "1rem", md: "1.2rem" },
   letterSpacing: "2.5px",
   textTransform: "uppercase",
   textAlign: "center",
-
-  // ✅ allow forcing full-width in mobile overlay by adding a class
+  _hover: {
+    background:
+      "linear-gradient(to right, var(--chakra-colors-brand-BrightPurple), var(--chakra-colors-brand-Pink))",
+    color: "white",
+  },
   "&.isFullWidth": {
     width: "100%",
   },

@@ -405,11 +405,11 @@ export default function MintPage() {
       descriptionContent = (
         <>
           <Text as="span" fontWeight="bold">
-            Congrats, Top 10 champ!
+            You earned it!
           </Text>
           <br />
-          You’ve got what it takes, hit the button and mint your NFT
-          before the 24 hour window closes.
+          FREE MINT your flamingos
+          before the 24-hour window closes.
         </>
       );
     } else if (showMint) {
@@ -418,7 +418,7 @@ export default function MintPage() {
         <>
           <b>Want to help the flock grow?</b>
           <br />
-          Buy your NFT and fly with us, every mint keeps the project
+          Get your flamingo and fly with us, every mint keeps the project
           soaring and unlocks new adventures for the community.
         </>
       );

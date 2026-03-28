@@ -9,11 +9,12 @@ import { ChakraProvider } from "@chakra-ui/react";
 import { ParallaxProvider } from "react-scroll-parallax";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
+import "@/styles/wallet.css";
 
 import type { Adapter } from "@solana/wallet-adapter-base";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { FilteredWalletModalProvider } from "../components/FilteredWalletModalProvider";
 
 // import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
@@ -71,7 +72,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         <ChakraProvider theme={theme}>
           <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={wallets} autoConnect>
-              <WalletModalProvider>
+              <FilteredWalletModalProvider>
                 <LeaderboardProvider>
                   <UmiProvider endpoint={endpoint}>
                     <SolanaTimeProvider>
@@ -79,7 +80,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                     </SolanaTimeProvider>
                   </UmiProvider>
                 </LeaderboardProvider>
-              </WalletModalProvider>
+              </FilteredWalletModalProvider>
             </WalletProvider>
           </ConnectionProvider>
         </ChakraProvider>

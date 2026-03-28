@@ -307,14 +307,9 @@ export default function Navbar() {
                   ABOUT
                 </Button>
               {isMobile && (
-<CustomWalletButton
-  className="isFullWidth"
-  style={{
-    justifyContent: "center",
-    paddingLeft: 0,
-    paddingRight: 0,
-  }}
-/>
+                <CustomWalletButton
+                  style={{ justifyContent: "center", paddingLeft: 0, paddingRight: 0 }}
+                />
               )}
             </Flex>
           </motion.div>
