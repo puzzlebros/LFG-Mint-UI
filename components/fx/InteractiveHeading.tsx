@@ -56,8 +56,14 @@ export default function InteractiveHeading({
   ...rest
 }: InteractiveHeadingProps) {
   const ref = useRef<HTMLHeadingElement>(null);
+  const rafId = useRef<number | null>(null);
   const [tiltAllowed, setTiltAllowed] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+  useEffect(() => {
+    setIsMobileDevice(isMobile());
+  }, []);
 
   // determine responsive axis limits
   const effectiveMinWidth = useBreakpointValue({
@@ -109,9 +115,18 @@ export default function InteractiveHeading({
     let orientationFrameId: number | null = null;
 
     const onPointerMove = (e: PointerEvent) => {
-      const xNorm = clamp(e.clientX / window.innerWidth, 0, 1);
-      const yNorm = clamp(e.clientY / window.innerHeight, 0, 1);
-      applyAxesFromNorm(xNorm, yNorm);
+      // Capture coordinates immediately (event object is reused by the browser)
+      const x = e.clientX;
+      const y = e.clientY;
+      // Throttle to one update per animation frame — prevents Mac trackpad's
+      // high-frequency events from restarting the CSS transition on every tick.
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(() => {
+        rafId.current = null;
+        const xNorm = clamp(x / window.innerWidth, 0, 1);
+        const yNorm = clamp(y / window.innerHeight, 0, 1);
+        applyAxesFromNorm(xNorm, yNorm);
+      });
     };
 
     window.addEventListener("pointermove", onPointerMove);
@@ -132,6 +147,7 @@ export default function InteractiveHeading({
 
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
       if (onDeviceOrientation) {
         if (orientationFrameId) cancelAnimationFrame(orientationFrameId);
         window.removeEventListener("deviceorientation", onDeviceOrientation);
@@ -243,7 +259,13 @@ export default function InteractiveHeading({
       lineHeight={lineHeight}
       sx={{
         fontVariationSettings: initial,
-        transition: `font-variation-settings ${transitionDuration}s ease`,
+        // Mobile: skip the CSS transition entirely — taps are discrete events and
+        // the intermediate rasterized frames cause trail artifacts on mobile GPUs.
+        transition: isMobileDevice ? "none" : `font-variation-settings ${transitionDuration}s ease`,
+        // Force a compositing layer so repaints are isolated to this element,
+        // preventing old pixels from bleeding into the surrounding composite.
+        willChange: "transform",
+        transform: "translateZ(0)",
       }}
       {...rest}
     >

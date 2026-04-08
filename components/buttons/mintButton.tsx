@@ -40,6 +40,7 @@ import {
   buildTxs
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
+import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { base58 } from "@metaplex-foundation/umi/serializers";
@@ -258,12 +259,6 @@ const mintClick = async (
 
     setLoadingState("Joining the flock");
 
-    createStandaloneToast().toast({
-      title: `${signatures.length} Transaction(s) sent!`,
-      status: "success",
-      duration: 3000,
-    });
-
     // 7) Verify and fetch minted NFTs.
     const successfulMints = await verifyTx(
       umi,
@@ -304,11 +299,17 @@ const mintClick = async (
     }
   } catch (e: any) {
     const msg: string = e?.message ?? "";
-    const isRejected = /user rejected|rejected the request/i.test(msg);
+    const name: string = e?.name ?? "";
+    // Wallet adapter wraps rejections in WalletSignTransactionError;
+    // some wallets also fire a disconnect event on cancel (WalletDisconnectedError).
+    // All of these are user-initiated — swallow silently.
+    const isRejected =
+      /user rejected|rejected the request|user denied|transaction was not confirmed/i.test(msg) ||
+      /WalletSign|WalletDisconnected|WalletNotConnected/i.test(name) ||
+      /disconnected|emitter/i.test(msg);
 
     if (isRejected) {
-      // User cancelled in the wallet — no toast needed, they know what they did.
-      console.log("[mintClick] transaction cancelled by user");
+      console.log("[mintClick] transaction cancelled by user:", name || msg);
     } else {
       console.error("minting failed", e);
       createStandaloneToast().toast({
@@ -417,8 +418,10 @@ export function ButtonList({
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
   const { publicKey: walletPublicKey, wallet } = useWallet();
+  const router = useRouter();
+  const isAdminMode = router.query.admin !== undefined;
 
-  const isPhantom = wallet?.adapter?.name?.toLowerCase().includes("phantom") ?? false;
+  const isPhantom = !isAdminMode && (wallet?.adapter?.name?.toLowerCase().includes("phantom") ?? false);
 
   if (!candyMachine || !candyGuard) return <></>;
 

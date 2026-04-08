@@ -656,7 +656,6 @@ const pulseClaim = keyframes`
   scrollSnapStop="always"
   position="relative"
   overflow="hidden"
-  overscrollBehaviorY="contain"
 >
   {/* Layer 1: background heading */}
   <Box

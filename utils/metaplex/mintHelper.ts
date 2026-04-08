@@ -267,8 +267,9 @@ export const buildTxs = async (
   luts: AddressLookupTableInput[],
   latestBlockhash: string,
 ): Promise<{ builder: TransactionBuilder; signers: Signer[] }[]> => {
+  const priorityFee = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
   const newBuilder = transactionBuilder()
-    .prepend(setComputeUnitPrice(umi, { microLamports: 5 }))
+    .prepend(setComputeUnitPrice(umi, { microLamports: priorityFee }))
     .prepend(setComputeUnitLimit(umi, { units: 1400000 }))
     .setBlockhash(latestBlockhash);
   let builder = newBuilder;

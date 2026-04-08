@@ -29,7 +29,8 @@ const iconVariants = {
 
 export default function Navbar() {
   const { isFrozen, next } = useWeeklyCycle();
-  const [showFreezeBanner, setShowFreezeBanner] = useState(true)
+  const [showFreezeBanner, setShowFreezeBanner] = useState(true);
+  const [playTooltipOpen, setPlayTooltipOpen] = useState(false);
 
   const [visible, setVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -290,15 +291,30 @@ export default function Navbar() {
               <Tooltip
                 label={
                   isFrozen
-                    ? `The game is locked on Saturday`
+                    ? "The game is locked on Saturday"
                     : "Start playing now!"
                 }
                 placement="top"
                 hasArrow
+                isOpen={playTooltipOpen}
               >
-                <Button size="default" variant="primary" isDisabled={isFrozen} onClick={handlePlay}>
-                  PLAY
-                </Button>
+                <span
+                  onMouseEnter={() => setPlayTooltipOpen(true)}
+                  onMouseLeave={() => setPlayTooltipOpen(false)}
+                  onClick={() => {
+                    if (isFrozen) setPlayTooltipOpen((v) => !v);
+                  }}
+                >
+                  <Button
+                    size="default"
+                    variant="primary"
+                    isDisabled={isFrozen}
+                    onClick={handlePlay}
+                    pointerEvents={isFrozen ? "none" : undefined}
+                  >
+                    PLAY
+                  </Button>
+                </span>
               </Tooltip>
               <Button size="default" variant="primary" onClick={handleMint}>
                 MINT
