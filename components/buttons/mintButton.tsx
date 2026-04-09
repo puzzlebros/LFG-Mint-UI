@@ -51,16 +51,16 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
   let digitalAsset: AssetV1 | undefined;
   let jsonMetadata: JsonMetadata | undefined;
   try {
-    // RPC may not index the new account immediately after finalization —
-    // retry up to 6 times with 2 s backoff before giving up.
-    for (let attempt = 0; attempt < 6; attempt++) {
+    // RPC may not index the new account immediately after confirmation —
+    // retry up to 15 times with 3 s backoff (45 s total) before giving up.
+    for (let attempt = 0; attempt < 15; attempt++) {
       try {
         digitalAsset = await fetchAssetV1(umi, nftAdress);
         break;
       } catch (e: any) {
-        if (attempt < 5 && e?.name === "AccountNotFoundError") {
-          console.log(`[fetchNft] account not indexed yet, retrying (${attempt + 1}/6)…`);
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (attempt < 14 && e?.name === "AccountNotFoundError") {
+          console.log(`[fetchNft] account not indexed yet, retrying (${attempt + 1}/15)…`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
           continue;
         }
         throw e;
