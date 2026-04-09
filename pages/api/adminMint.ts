@@ -19,6 +19,8 @@ import {
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
 import { base58 } from "@metaplex-foundation/umi/serializers";
+import nacl from "tweetnacl";
+import { PublicKey as Web3PublicKey } from "@solana/web3.js";
 
 type Ok  = { signature: string; mintAddress: string };
 type Err = { error: string };
@@ -32,27 +34,41 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const rpc         = process.env.NEXT_PUBLIC_RPC;
-  const cmId        = process.env.NEXT_PUBLIC_CANDY_MACHINE_ID;
-  const kpRaw       = process.env.DEPLOY_KEYPAIR;
-  const adminWallet = process.env.NEXT_PUBLIC_ADMIN_WALLET;
+  const rpc   = process.env.NEXT_PUBLIC_RPC;
+  const cmId  = process.env.NEXT_PUBLIC_CANDY_MACHINE_ID;
+  const kpRaw = process.env.DEPLOY_KEYPAIR;
 
   if (!rpc || !cmId || !kpRaw) {
     return res.status(500).json({ error: "Server misconfiguration: missing env vars" });
   }
 
-  const { guardLabel, ownerWallet } = req.body as {
+  const { guardLabel, ownerWallet, timestamp, signature } = req.body as {
     guardLabel?: string;
     ownerWallet?: string;
+    timestamp?: number;
+    signature?: string;
   };
 
-  if (!guardLabel || !ownerWallet) {
-    return res.status(400).json({ error: "guardLabel and ownerWallet are required" });
+  if (!guardLabel || !ownerWallet || !timestamp || !signature) {
+    return res.status(400).json({ error: "guardLabel, ownerWallet, timestamp and signature are required" });
   }
 
-  // Gate to admin wallet if configured
-  if (adminWallet && ownerWallet !== adminWallet) {
-    return res.status(403).json({ error: "Forbidden" });
+  // 1) Timestamp must be within 60 seconds — prevents replay attacks
+  if (Math.abs(Date.now() - timestamp) > 60_000) {
+    return res.status(403).json({ error: "Challenge expired" });
+  }
+
+  // 2) Verify the ed25519 signature — proves ownerWallet is controlled by the caller.
+  //    The Address Gate on the ADMIN candy machine group enforces the allowed wallet on-chain,
+  //    so we only need to confirm the caller actually owns the wallet they're minting to.
+  try {
+    const message = new TextEncoder().encode(`lfg-admin-mint:${ownerWallet}:${timestamp}`);
+    const sigBytes = base58.serialize(signature);
+    const pubkeyBytes = new Web3PublicKey(ownerWallet).toBytes();
+    const valid = nacl.sign.detached.verify(message, sigBytes, pubkeyBytes);
+    if (!valid) return res.status(403).json({ error: "Invalid signature" });
+  } catch {
+    return res.status(403).json({ error: "Signature verification failed" });
   }
 
   const umi = createUmi(rpc).use(mplCandyMachine());

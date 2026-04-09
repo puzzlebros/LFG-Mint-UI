@@ -101,6 +101,7 @@ const mintClick = async (
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
   isAdminMode: boolean,
   walletAddress: string | undefined,
+  signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | undefined,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -173,6 +174,15 @@ const mintClick = async (
     // The API uses DEPLOY_KEYPAIR to build, sign, and broadcast server-side.
     // Exit early so the buildTxs/signAllTransactions path is never entered.
     if (isAdminMode && walletAddress) {
+      if (!signMessage) throw new Error("Wallet does not support message signing");
+      setLoadingState("Authenticating...");
+      // Sign a timestamped challenge — proves ownership of the connected wallet
+      // without exposing any secret. The server verifies the signature on-chain.
+      const timestamp = Date.now();
+      const challenge = new TextEncoder().encode(`lfg-admin-mint:${walletAddress}:${timestamp}`);
+      const signature = await signMessage(challenge);
+      const signatureB58 = base58.deserialize(signature)[0];
+
       setLoadingState("Minting...");
       const resp = await fetch("/api/adminMint", {
         method: "POST",
@@ -180,6 +190,8 @@ const mintClick = async (
         body: JSON.stringify({
           guardLabel: freshGuardToUse.label,
           ownerWallet: walletAddress,
+          timestamp,
+          signature: signatureB58,
         }),
       });
       const data = await resp.json();
@@ -445,7 +457,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey, wallet } = useWallet();
+  const { publicKey: walletPublicKey, wallet, signMessage } = useWallet();
   const router = useRouter();
   const isAdminMode = router.query.admin !== undefined;
 
@@ -522,6 +534,7 @@ export function ButtonList({
                       setCheckEligibility,
                       isAdminMode,
                       walletPublicKey?.toString(),
+                      signMessage,
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);
