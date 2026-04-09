@@ -99,6 +99,8 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
+  isAdminMode: boolean,
+  walletAddress: string | undefined,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -167,7 +169,33 @@ const mintClick = async (
       }
     }
 
-    // 3) Load LUT if configured — reduces tx size for complex mints.
+    // 3-admin) Server-side signing — bypasses Phantom/Lighthouse entirely.
+    // The API uses DEPLOY_KEYPAIR to build, sign, and broadcast server-side.
+    // Exit early so the buildTxs/signAllTransactions path is never entered.
+    if (isAdminMode && walletAddress) {
+      setLoadingState("Minting...");
+      const resp = await fetch("/api/adminMint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guardLabel: freshGuardToUse.label,
+          ownerWallet: walletAddress,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error ?? "Admin mint failed");
+      console.log(`[admin mint] confirmed: ${data.signature} mint: ${data.mintAddress}`);
+
+      setLoadingState("Fetching your LFG");
+      const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
+      if (digitalAsset && jsonMetadata) {
+        setMintsCreated([{ mint: publicKey(data.mintAddress), offChainMetadata: jsonMetadata }]);
+        onOpen();
+      }
+      return;
+    }
+
+    // 4) Load LUT if configured — reduces tx size for complex mints.
     let tables: AddressLookupTableInput[] = [];
     const lutAddress = process.env.NEXT_PUBLIC_LUT;
     if (lutAddress) {
@@ -175,13 +203,13 @@ const mintClick = async (
       tables = [fetchedLut];
     }
 
-    // 4) Generate mint signers.
+    // 5) Generate mint signers.
     const nftsigners: KeypairSigner[] = [];
     for (let i = 0; i < mintAmount; i++) {
       nftsigners.push(generateSigner(umi));
     }
 
-    // 5) Build mint transactions — CU simulation runs here with a temp blockhash
+    // 6) Build mint transactions — CU simulation runs here with a temp blockhash
     //    (replaceRecentBlockhash:true means simulation is blockhash-agnostic).
     const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
     const tempBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
@@ -214,7 +242,7 @@ const mintClick = async (
 
     setLoadingState("Please sign...");
 
-    // 6) Sign all transactions in a single wallet prompt, then submit each
+    // 7) Sign all transactions in a single wallet prompt, then submit each
     //    with skipPreflight and keep resending every 2 s until confirmed or
     //    the blockhash expires — prevents TransactionExpiredBlockheightExceededError.
     const signedTxs = await signAllTransactions(mintTxs);
@@ -492,6 +520,8 @@ export function ButtonList({
                       setGuardList,
                       onOpen,
                       setCheckEligibility,
+                      isAdminMode,
+                      walletPublicKey?.toString(),
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);

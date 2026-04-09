@@ -8,6 +8,7 @@ declare module '*.module.scss' {
   export default classes;
 }
 
+
 declare global {
   var sessions: { [key: string]: any } | undefined;
 }
@@ -20,6 +21,8 @@ declare global {
   }
 }
 
+export {};
+
 declare module '@metaplex-foundation/umi' {
   // this is the interface that `digital-asset-standard-api` was supposed to patch:
   interface RpcInterface {
@@ -30,4 +33,3 @@ declare module '@metaplex-foundation/umi' {
   }
 }
 
-export {};
