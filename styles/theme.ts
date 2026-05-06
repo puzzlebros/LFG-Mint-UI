@@ -20,6 +20,7 @@ export default extendTheme({
       White:        "#FFFFFF",
       Lavender:     "#5B00E04D",
       GreyPurple:   "#CAB7FF",
+      Winner:       "#FFCE00B2",
       gradientStart:"#93D2FF",
       gradientMid:  "#BDACFF",
       gradientEnd:  "#FFBCD5",

@@ -55,7 +55,7 @@ export const guardChecker = async (
   candyGuard: CandyGuard,
   candyMachine: CandyMachine,
   solanaTime: bigint,
-  top10Wallets: string[]
+  top3Wallets: string[]
 ) => {
   let guardReturn: GuardReturn[] = [];
   let ownedTokens: DigitalAssetWithTokenAndNftMintLimit[] = [];
@@ -184,19 +184,19 @@ export const guardChecker = async (
       }
     }
 
-    // Check if the wallet is in top-10 and part of the allowlist
-    const walletInTop10 = allowlistChecker(top10Wallets, umi);
-    console.log("Wallet in top-10 allowlist:", walletInTop10);
+    // Check if the wallet is in top-3 and part of the allowlist
+    const walletInTop10 = allowlistChecker(top3Wallets, umi);
+    console.log("Wallet in top-3 allowlist:", walletInTop10);
 
     if (singleGuard.allowList.__option === "Some") {
       if (!walletInTop10) {
         guardReturn.push({
           label: eachGuard.label,
           allowed: false,
-          reason: "Wallet not in allowlist (top-10 leaderboard)",
+          reason: "Wallet not in allowlist (top-3 leaderboard)",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}: Wallet not in top-10 allowlist`);
+        console.info(`Guard ${eachGuard.label}: Wallet not in top-3 allowlist`);
         continue;
       }
     }

@@ -4,7 +4,7 @@ import axios from 'axios';
 import type { LeaderboardEntry } from '@/types/leaderboard';
 
 interface LeaderboardContextType {
-  top10Wallets: string[];
+  top3Wallets: string[];
   leaderboardEntries: LeaderboardEntry[];
   loading: boolean;
   error: string | null;
@@ -22,7 +22,7 @@ export const useLeaderboard = () => {
 
 // Define children prop type as ReactNode
 export const LeaderboardProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
+  const [top3Wallets, setTop3Wallets] = useState<string[]>([]);
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export const LeaderboardProvider: React.FC<{ children: ReactNode }> = ({ childre
       try {
         const { data } = await axios.get<LeaderboardEntry[]>('/api/leaderboard');
         setLeaderboardEntries(data);
-        setTop10Wallets(data.map((entry) => entry.wallet_address));
+        setTop3Wallets(data.map((entry) => entry.wallet_address));
       } catch (err) {
         setError('Failed to load leaderboard');
       } finally {
@@ -45,7 +45,7 @@ export const LeaderboardProvider: React.FC<{ children: ReactNode }> = ({ childre
   }, []);
 
   return (
-    <LeaderboardContext.Provider value={{ top10Wallets, leaderboardEntries, loading, error }}>
+    <LeaderboardContext.Provider value={{ top3Wallets, leaderboardEntries, loading, error }}>
       {children}
     </LeaderboardContext.Provider>
   );

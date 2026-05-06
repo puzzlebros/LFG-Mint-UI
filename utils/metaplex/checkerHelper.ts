@@ -336,15 +336,15 @@ export const ownedCoreAssetChecker = async (
 };
 
 export const allowlistChecker = (
-  top10Wallets: string[],
+  top3Wallets: string[],
   umi: Umi
 ): boolean => {
   const walletStr = umi.identity.publicKey.toString();
-  const allowed   = top10Wallets.includes(walletStr);
+  const allowed   = top3Wallets.includes(walletStr);
 
   if (!allowed) {
     console.info(
-      `🚫 allowlistChecker: wallet ${walletStr} is NOT in the top-10 allowlist`
+      `🚫 allowlistChecker: wallet ${walletStr} is NOT in the top-3 allowlist`
     );
   }
   // (no log when allowed)

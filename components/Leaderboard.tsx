@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import {
   Box,
+  Icon,
   Text,
   Table,
   Thead,
@@ -13,6 +14,7 @@ import {
   useBreakpointValue,
   useColorModeValue
 } from '@chakra-ui/react';
+import { FaCrown } from 'react-icons/fa';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useLeaderboard } from '../components/LeaderboardContext';
 
@@ -43,7 +45,7 @@ export default function Leaderboard({
   // 1️⃣ Pull everything from context
   const {
     leaderboardEntries,
-    top10Wallets,
+    top3Wallets,
     loading: ctxLoading,
     error: ctxError,
   } = useLeaderboard();
@@ -57,15 +59,15 @@ export default function Leaderboard({
     md: 'left',
   });
 
-  // 3️⃣ Report top-10 status upstream
+  // 3️⃣ Report top-3 status upstream
   useEffect(() => {
     if (onTopStatus && myWallet) {
-      onTopStatus(top10Wallets.includes(myWallet));
+      onTopStatus(top3Wallets.includes(myWallet));
     }
-  }, [onTopStatus, top10Wallets, myWallet]);
+  }, [onTopStatus, top3Wallets, myWallet]);
 
-  // 4️⃣ Build exactly ten rows
-  const rows = Array.from({ length: 10 }).map((_, i) => {
+  // 4️⃣ Build exactly three rows
+  const rows = Array.from({ length: 3 }).map((_, i) => {
     const e = leaderboardEntries[i];
     const isMe = !!e && e.wallet_address === myWallet;
     return {
@@ -83,7 +85,10 @@ export default function Leaderboard({
   return (
     <Box
       bg={bg}
-      p={4}
+      pt={4}
+      pb={4}
+      pr={4}
+      pl={8}
       borderRadius="md"
       boxShadow="none"
       display="inline-block"
@@ -91,7 +96,20 @@ export default function Leaderboard({
       h={height}
       minH="140px"
       mx="auto"
+      position="relative"
     >
+      {/* Filled crown sits in the left padding, centered on first data row */}
+      {!ctxLoading && !ctxError && leaderboardEntries[0] && (
+        <Icon
+          as={FaCrown}
+          position="absolute"
+          left="2px"
+          top={{ base: '40px', md: '64px' }}
+          transform="translateY(-50%)"
+          color="#FFCE00"
+          boxSize="22px"
+        />
+      )}
       {/* Error from context */}
       {ctxError && (
         <Text color="red.500" textAlign="center">
@@ -135,18 +153,19 @@ export default function Leaderboard({
           <Tbody>
             {rows.map((_, idx) => (
               <Tr key={`skeleton-${idx}`}>
-                <Td width={columnWidths.position ?? '51px'}>
+                <Td width={columnWidths.position ?? '51px'} py={3}>
                   <Skeleton h="20px" />
                 </Td>
-                <Td width={columnWidths.user}>
+                <Td width={columnWidths.user} py={3}>
                   <Skeleton h="20px" />
                 </Td>
-                <Td width={columnWidths.score}>
+                <Td width={columnWidths.score} py={3}>
                   <Skeleton h="20px" />
                 </Td>
                 <Td
                   display={{ base: 'none', md: 'table-cell' }}
                   width={columnWidths.wallet}
+                  py={3}
                 >
                   <Skeleton h="20px" />
                 </Td>
@@ -208,39 +227,51 @@ fontSize="0.7rem"
             </Tr>
           </Thead>
           <Tbody>
-            {rows.map(({ key, isMe, position, user, score, wallet }) => (
+            {rows.map(({ key, isMe, position, user, score, wallet }) => {
+              const isFirst = position === 1;
+              const rowBg = isMe
+                ? 'brand.Purple'
+                : isFirst
+                ? 'brand.Winner'
+                : 'brand.Lavender';
+              const rowColor = isMe ? 'white' : 'brand.DarkPurple';
+              return (
               <Tr key={key}>
                 <Td
                   textStyle="ranking"
                   fontWeight="black"
                   textAlign="center"
-                  bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
-                  color={isMe ? 'white' : 'brand.DarkPurple'}
+                  bg={rowBg}
+                  color={rowColor}
                   width={columnWidths.position ?? '51px'}
                   px={4}
-                  py={2}
+                  py={3}
                 >
                   {position}
                 </Td>
                 <Td
                   textStyle="ranking"
                   textAlign="center"
-                  bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
-                  color={isMe ? 'white' : 'brand.DarkPurple'}
+                  bg={rowBg}
+                  color={rowColor}
                   width={columnWidths.user}
                   px={4}
-                  py={2}
+                  py={3}
+                  fontWeight={isFirst ? 'bold' : 'normal'}
+                  fontSize={isFirst ? '16px' : '16px'}
                 >
                   {user}
                 </Td>
                 <Td
                   textStyle="ranking"
                   textAlign="center"
-                  bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
-                  color={isMe ? 'white' : 'brand.DarkPurple'}
+                  bg={rowBg}
+                  color={rowColor}
                   width={columnWidths.score}
                   px={4}
-                  py={2}
+                  py={3}
+                  fontWeight={isFirst ? 'bold' : 'normal'}
+                  fontSize={isFirst ? '16px' : '16px'}
                 >
                   {score}
                 </Td>
@@ -248,17 +279,18 @@ fontSize="0.7rem"
                   display={{ base: 'none', md: 'table-cell' }}
                   textStyle="ranking"
                   textAlign="center"
-                  bg={isMe ? 'brand.Purple' : 'brand.Lavender'}
-                  color={isMe ? 'white' : 'brand.DarkPurple'}
+                  bg={rowBg}
+                  color={rowColor}
                   width={columnWidths.wallet}
                   px={4}
-                  py={2}
+                  py={3}
                   opacity={isMe ? 1 : 0.7}
                 >
                   {wallet}
                 </Td>
               </Tr>
-            ))}
+              );
+            })}
           </Tbody>
         </Table>
       )}

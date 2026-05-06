@@ -49,7 +49,7 @@ export default function HomePage() {
   const { setVisible } = useWalletModal();
   const router = useRouter();
 
-  const [isInTop10, setIsInTop10] = useState(false);
+  const [isInTop3, setIsInTop3] = useState(false);
   const { isFrozen, next, countdown } = useWeeklyCycle();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [hasShown, setHasShown] = useState(false);
@@ -78,14 +78,14 @@ export default function HomePage() {
   const windowSize = useWindowSize();
 
   useEffect(() => {
-    if (isFrozen && isInTop10 && !hasShown) {
+    if (isFrozen && isInTop3 && !hasShown) {
       onOpen();
       setHasShown(true);
       setShowConfetti(true);
       const timer = setTimeout(() => setShowConfetti(false), 6000);
       return () => clearTimeout(timer);
     }
-  }, [isFrozen, isInTop10, hasShown, onOpen]);
+  }, [isFrozen, isInTop3, hasShown, onOpen]);
 
   function handleClose() {
     onClose();
@@ -449,7 +449,7 @@ const pulseClaim = keyframes`
                   </Text>
                   <br/>
                   <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
-                    Let’s Flamingo is a web3 casual game<br/>
+                    Let’s Flamingo is a Solana web3 casual game<br/>
                     crafted with passion by indie game devs<br/>
                     powered by a 5555 NFT collection of flamingos<br/>
                     which you can mint for free every Saturday.
@@ -459,8 +459,8 @@ const pulseClaim = keyframes`
  <Text as="span" fontSize={welcomeCopyAltSize}>
   <b>How? It's simple:</b><br />
   Play and fly as high as you can!<br />
-  Each Saturday, if you show in the Top 10,<br />
-  you’ll be able to claim your free flamingo.{``}
+  Each Saturday, if you show in the Top 3,<br />
+  you’ll be able to mint for free.{``}
   <Text
     as="button"
     type="button"
@@ -557,7 +557,7 @@ const pulseClaim = keyframes`
 
 >
   {isFrozen ? (
-    hasWallet && isInTop10 ? (
+    hasWallet && isInTop3 ? (
       <>
         Congrats! You’ve got {' '}
         <Text as="span" color="brand.Purple" fontWeight="bold">
@@ -576,18 +576,21 @@ const pulseClaim = keyframes`
     )
   ) : (
     <>
-      Play to enter the top 10, and mint your <b>FREE</b> flamingo.{' '}
+      Play to rank and{' '}
+      <Text as="span" color="brand.Purple" fontWeight="bold">
+        FREE MINT
+      </Text>{' '}
+      from the collection in the next{' '}
       <Text as="span" color="brand.Purple" fontWeight="bold">
         {timeLeft}
-      </Text>{' '}
-      until next claim!
+      </Text>
     </>
   )}
 </Text>
 
             <Center w="100%" mt="-4">
               <Leaderboard
-                onTopStatus={setIsInTop10}
+                onTopStatus={setIsInTop3}
                 withBorders
                 bgColor="transparent"
                 columnWidths={{
@@ -600,7 +603,7 @@ const pulseClaim = keyframes`
               />
             </Center>
 
-{isFrozen && hasWallet && isInTop10 ? (
+{isFrozen && hasWallet && isInTop3 ? (
   // Frozen window + winner → CLAIM
   <Button
     mt={{ base: "0", md: "2" }}

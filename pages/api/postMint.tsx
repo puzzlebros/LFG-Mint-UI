@@ -1,35 +1,6 @@
 // pages/api/postMint.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { xFetchWithAutoRefresh } from '@/lib/xAuth' // auto-refresh + retry helper
-import { mintMessages, defaultHashtags, type DayBucket } from '@/public/data/mintMessages'
-
-/** ───────── compact night window helpers ─────────
- * Default: GN only from 02:00–03:59 in the given TZ (2 hours).
- * Override with env:
- *   POST_NIGHT_START=2   // inclusive hour (0–23)
- *   POST_NIGHT_END=4     // exclusive hour (0–24), can wrap (e.g., 23 → 2)
- */
-function hourInTz(tz: string): number {
-  return Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date()))
-}
-function inNightWindow(hour: number, start: number, end: number): boolean {
-  start = Math.max(0, Math.min(23, Number.isFinite(start) ? start : 2))
-  end   = Math.max(1, Math.min(24,  Number.isFinite(end)   ? end   : 4))
-  if (start < end) return hour >= start && hour < end        // e.g., 2..4
-  return hour >= start || hour < end                         // wrap, e.g., 23..2
-}
-function getGreeting(tz: string): 'GM!' | 'GN!' {
-  const h = hourInTz(tz)
-  const start = Number(process.env.POST_NIGHT_START ?? 2)   // default 02:00
-  const end   = Number(process.env.POST_NIGHT_END   ?? 4)   // default 04:00 (exclusive)
-  return inNightWindow(h, start, end) ? 'GN!' : 'GM!'
-}
-function getDayBucket(tz: string): DayBucket {
-  const h = hourInTz(tz)
-  const start = Number(process.env.POST_NIGHT_START ?? 2)
-  const end   = Number(process.env.POST_NIGHT_END   ?? 4)
-  return inNightWindow(h, start, end) ? 'night' : 'morning'
-}
+import { mintCompletions } from '@/public/data/mintMessages'
 
 function pickRandom<T>(arr: T[], fallback: T): T {
   return arr.length ? arr[Math.floor(Math.random() * arr.length)] : fallback
@@ -57,9 +28,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const {
     DISCORD_WEBHOOK_URL,
-    POST_TIMEZONE,
-    TELEGRAM_BOT_TOKEN,       // optional (kept, but safe to remove)
-    TELEGRAM_CHAT_ID,         // optional (kept, but safe to remove)
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
   } = process.env
 
   if (!DISCORD_WEBHOOK_URL) {
@@ -75,12 +45,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Compose message
   const imageUrl = ipfsToHttp(rawImageUrl)
-  const tz = POST_TIMEZONE || 'America/Argentina/Buenos_Aires'
-  const greet = getGreeting(tz)
-  const bucket = getDayBucket(tz)
-  const bodyLine = pickRandom(mintMessages[bucket], 'A new Flamingo minted!')
-  const hashtags = (defaultHashtags?.length ? defaultHashtags : ['#LetsFlamingo', '#SolanaNFT']).join(' ')
-  const postText = `${greet} 🦩 ${bodyLine}\n${hashtags}`
+  const completion = pickRandom(mintCompletions, 'LFG.')
+  const postText = `🦩 A new Flamingo just minted!\n"I believe ${completion}"\n#Solana`
 
   // Fetch image once (shared)
   let imgBuf: ArrayBuffer | null = null
@@ -99,40 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const results: Record<string, any> = {}
 
-  // 1) X (best effort)
-  try {
-    if (!imgBuf) throw new Error('No image buffer for X')
-
-    const form = new FormData()
-    form.append('media', new Blob([imgBuf], { type: imgMime }), 'asset')
-    form.append('media_category', 'tweet_image')
-    form.append('media_type', imgMime)
-
-    const uploadResp = await xFetchWithAutoRefresh('https://api.x.com/2/media/upload', {
-      method: 'POST',
-      body: form,
-    })
-    const uploadJson = await safeJson(uploadResp)
-    if (!uploadResp.ok) throw new Error(`Media upload failed: ${uploadResp.status} ${JSON.stringify(uploadJson)}`)
-
-    const mediaId = uploadJson?.data?.id as string
-    if (!mediaId) throw new Error('No media id returned by X')
-
-    const tweetResp = await xFetchWithAutoRefresh('https://api.x.com/2/tweets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: postText, media: { media_ids: [mediaId] } }),
-    })
-    const tweetJson = await safeJson(tweetResp)
-    if (!tweetResp.ok) throw new Error(`Tweet failed: ${tweetResp.status} ${JSON.stringify(tweetJson)}`)
-
-    results.x = { ok: true, tweetId: tweetJson?.data?.id ?? null }
-  } catch (e: any) {
-    console.error('❌ X post error:', e?.message || e)
-    results.x = { ok: false, error: e?.message || String(e) }
-  }
-
-  // 2) Discord (always)
+  // Discord (always)
   try {
     await fetch(DISCORD_WEBHOOK_URL!, {
       method: 'POST',
@@ -175,6 +108,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     results.telegram = { ok: false, skipped: true, reason: 'TELEGRAM_* not set' }
   }
 
-  const httpOk = (results.discord?.ok ?? false) || (results.x?.ok ?? false) || (results.telegram?.ok ?? false)
+  const httpOk = (results.discord?.ok ?? false) || (results.telegram?.ok ?? false)
   return res.status(httpOk ? 200 : 502).json({ success: httpOk, results })
 }

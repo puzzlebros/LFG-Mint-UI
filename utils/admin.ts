@@ -66,7 +66,7 @@ cli
 // — update-allowlist —
 cli
   .command('update-allowlist')
-  .description('🔀 Merge top-10 into allowlist, update Candy Guard, clear leaderboard')
+  .description('🔀 Merge top-3 into allowlist, update Candy Guard, clear leaderboard')
   .action(async () => {
     console.log('🔒 Verifying ADMIN_PASSWORD');
     try {

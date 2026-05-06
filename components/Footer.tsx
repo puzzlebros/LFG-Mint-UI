@@ -1,7 +1,7 @@
 // components/Footer.tsx
 import React from 'react'
 import { Box, Flex, Text, Link, Icon } from '@chakra-ui/react'
-import { SiX, SiDiscord, SiTelegram } from 'react-icons/si'
+import { SiX, SiDiscord } from 'react-icons/si'
 import { MdOutlineStorefront, MdInsights, MdRadar } from 'react-icons/md'
 
 const MAGIC_EDEN_URL  = 'https://magiceden.io/marketplace/letsflamingonft'          // ← put your collection URL here
@@ -50,19 +50,6 @@ export function Footer() {
             lineHeight="1"
           >
             <Icon as={SiDiscord} boxSize={5} _hover={{ color: 'brand.Purple' }} />
-          </Link>
-
-          {/* Telegram */}
-          <Link
-            href="https://t.me/letsflamingo"
-            isExternal
-            aria-label="Telegram"
-            display="inline-flex"
-            alignItems="center"
-            justifyContent="center"
-            lineHeight="1"
-          >
-            <Icon as={SiTelegram} boxSize={5} _hover={{ color: 'brand.Purple' }} />
           </Link>
 
           {/* Magic Eden */}

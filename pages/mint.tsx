@@ -84,12 +84,17 @@ const DUMMY_NFT: { mint: PublicKey; offChainMetadata: JsonMetadata } = {
   mint: publicKey("11111111111111111111111111111111"),
   offChainMetadata: {
     name: "LFG #DEMO",
-    description: "Demo preview of your minted Flamingo. This is local-only.",
+    description: "LET'S FLAMINGO!",
     image: "/images/skins/1.png",
     attributes: [
-      { trait_type: "Background", value: "Lavender" },
-      { trait_type: "Mood", value: "Hyped" },
-      { trait_type: "Edition", value: "Demo" },
+      { trait_type: "Special",     value: "01" },
+      { trait_type: "Background",  value: "01" },
+      { trait_type: "Skin",        value: "01" },
+      { trait_type: "Clothes",     value: "01" },
+      { trait_type: "Beak",        value: "01" },
+      { trait_type: "Neck",        value: "01" },
+      { trait_type: "Eyes",        value: "01" },
+      { trait_type: "Head",        value: "01" },
     ],
   },
 };
@@ -115,7 +120,7 @@ export default function MintPage() {
   const toast = useToast();
 
   // — UI state —
-  const { top10Wallets } = useLeaderboard();
+  const { top3Wallets } = useLeaderboard();
   const [loading, setLoading] = useState(true);
   const [guards, setGuards] = useState<GuardReturn[]>([]);
   const [isAllowed, setIsAllowed] = useState(false);
@@ -183,12 +188,12 @@ export default function MintPage() {
   // wallet in top10?
   useEffect(() => {
     if (isDemo) return;
-    if (!walletPublicKey || !top10Wallets || top10Wallets.length === 0) return;
-    setIsAllowed(top10Wallets.includes(walletPublicKey.toString()));
+    if (!walletPublicKey || !top3Wallets || top3Wallets.length === 0) return;
+    setIsAllowed(top3Wallets.includes(walletPublicKey.toString()));
     // If the leaderboard finished loading after guardChecker already ran with an
     // empty list, re-trigger eligibility so allowList guards are re-evaluated.
     setCheckEligibility(true);
-  }, [walletPublicKey, top10Wallets, isDemo]);
+  }, [walletPublicKey, top3Wallets, isDemo]);
 
 
   // CM ID
@@ -252,7 +257,7 @@ export default function MintPage() {
     setLoading(true);
     let cancelled = false;
 
-    if (!top10Wallets) {
+    if (!top3Wallets) {
       console.error("Top-10 wallets data is not available.");
       setLoading(false);
       return;
@@ -262,7 +267,7 @@ export default function MintPage() {
       try {
         const now = BigInt(Math.floor(Date.now() / 1000));
         const { guardReturn, ownedTokens: ot, ownedCoreAssets: oca } =
-          await guardChecker(umi, candyGuard, candyMachine, now, top10Wallets);
+          await guardChecker(umi, candyGuard, candyMachine, now, top3Wallets);
 
         if (!cancelled) {
           console.log("✅ guardReturn:", guardReturn);
@@ -294,7 +299,7 @@ export default function MintPage() {
     umi,
     toast,
     isMinting,
-    top10Wallets,
+    top3Wallets,
     isDemo,
   ]);
 
@@ -375,7 +380,7 @@ export default function MintPage() {
     useEffect(() => {
       if (isDemo) return;
       console.log(
-        `Claim eligibility: ${showClaim} Wallet in top-10 (any allowed guard): ${isAllowed}`
+        `Claim eligibility: ${showClaim} Wallet in top-3 (any allowed guard): ${isAllowed}`
       );
     }, [showClaim, isAllowed]);
 
@@ -589,7 +594,7 @@ export default function MintPage() {
                   onOpen={onShowNftOpen}
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
-                  allowlist={top10Wallets ?? []}
+                  allowlist={top3Wallets ?? []}
                   buttonProps={claimButtonProps}
                   onBeforeMint={async () => {
                     const res = await preflight();
@@ -636,16 +641,16 @@ export default function MintPage() {
         </Box>
 
         {/* minted NFT modal */}
-        <Modal isOpen={isShowNftOpen} onClose={onNftModalClose}>
+        <Modal isOpen={isShowNftOpen} onClose={onNftModalClose} isCentered>
           <ModalOverlay />
           <ModalContent
             maxW={{ base: "90vw", md: "900px" }}
             w="full"
             borderRadius={0}
+            overflow="hidden"
           >
-
-            <ModalCloseButton />
-            <ModalBody>
+            <ModalCloseButton top={2} right={2} />
+            <ModalBody p={0}>
               <ShowNft nfts={mintsCreated} />
             </ModalBody>
           </ModalContent>
