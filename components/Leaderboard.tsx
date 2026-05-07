@@ -18,6 +18,11 @@ import { FaCrown } from 'react-icons/fa';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useLeaderboard } from '../components/LeaderboardContext';
 
+function truncateWallet(addr: string, start = 5, end = 4): string {
+  if (!addr || addr.length <= start + end + 3) return addr;
+  return `${addr.slice(0, start)}...${addr.slice(-end)}`;
+}
+
 type ColumnWidths = {
   position?: string;
   user?: string;
@@ -45,7 +50,7 @@ export default function Leaderboard({
   // 1️⃣ Pull everything from context
   const {
     leaderboardEntries,
-    top3Wallets,
+    topWallets,
     loading: ctxLoading,
     error: ctxError,
   } = useLeaderboard();
@@ -59,24 +64,23 @@ export default function Leaderboard({
     md: 'left',
   });
 
-  // 3️⃣ Report top-3 status upstream
+  // 3️⃣ Report top-10 status upstream (real wallets only — no fakes)
   useEffect(() => {
     if (onTopStatus && myWallet) {
-      onTopStatus(top3Wallets.includes(myWallet));
+      onTopStatus(topWallets.includes(myWallet));
     }
-  }, [onTopStatus, top3Wallets, myWallet]);
+  }, [onTopStatus, topWallets, myWallet]);
 
-  // 4️⃣ Build exactly three rows
-  const rows = Array.from({ length: 3 }).map((_, i) => {
+  // 4️⃣ Always render 10 rows; unfilled slots show "–"
+  const rows = Array.from({ length: 10 }).map((_, i) => {
     const e = leaderboardEntries[i];
-    const isMe = !!e && e.wallet_address === myWallet;
     return {
       key: e?.wallet_address ?? `empty-${i}`,
-      isMe,
+      isMe: !!e && e.wallet_address === myWallet,
       position: i + 1,
       user: e?.display_name?.trim() || '–',
       score: e?.score ?? '–',
-      wallet: e?.wallet_address ?? '–',
+      walletShort: e ? truncateWallet(e.wallet_address) : '–',
     };
   });
 
@@ -227,7 +231,7 @@ fontSize="0.7rem"
             </Tr>
           </Thead>
           <Tbody>
-            {rows.map(({ key, isMe, position, user, score, wallet }) => {
+            {rows.map(({ key, isMe, position, user, score, walletShort }) => {
               const isFirst = position === 1;
               const rowBg = isMe
                 ? 'brand.Purple'
@@ -286,7 +290,7 @@ fontSize="0.7rem"
                   py={3}
                   opacity={isMe ? 1 : 0.7}
                 >
-                  {wallet}
+                  {walletShort}
                 </Td>
               </Tr>
               );

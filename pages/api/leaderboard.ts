@@ -19,7 +19,7 @@ export default async function handler(
     .from<"leaderboard", LeaderboardEntry>("leaderboard")
     .select("*")
     .order("score", { ascending: false })
-    .limit(3);
+    .limit(10);
 
   if (error) {
     console.error("Error fetching leaderboard:", error.message);

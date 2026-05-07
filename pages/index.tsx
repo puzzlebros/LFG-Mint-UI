@@ -49,7 +49,7 @@ export default function HomePage() {
   const { setVisible } = useWalletModal();
   const router = useRouter();
 
-  const [isInTop3, setIsInTop3] = useState(false);
+  const [isInTop10, setIsInTop10] = useState(false);
   const { isFrozen, next, countdown } = useWeeklyCycle();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [hasShown, setHasShown] = useState(false);
@@ -78,14 +78,14 @@ export default function HomePage() {
   const windowSize = useWindowSize();
 
   useEffect(() => {
-    if (isFrozen && isInTop3 && !hasShown) {
+    if (isFrozen && isInTop10 && !hasShown) {
       onOpen();
       setHasShown(true);
       setShowConfetti(true);
       const timer = setTimeout(() => setShowConfetti(false), 6000);
       return () => clearTimeout(timer);
     }
-  }, [isFrozen, isInTop3, hasShown, onOpen]);
+  }, [isFrozen, isInTop10, hasShown, onOpen]);
 
   function handleClose() {
     onClose();
@@ -169,7 +169,7 @@ export default function HomePage() {
     md:   "MINTMINT",
   });
 
-  const welcomeTitleSize = useBreakpointValue({ base: "4rem", md: "7.5rem" });
+  const welcomeTitleSize = useBreakpointValue({ base: "6rem", md: "7.5rem" });
   const welcomeCopySize = useBreakpointValue({ base: "1rem", md: "1.2rem" });
   const welcomeCopyAltSize = useBreakpointValue({ base: "1rem", md: "1.1rem" });
   const welcomeCopyLineHeight = useBreakpointValue({ base: "1rem", md: "1.5rem" });
@@ -178,6 +178,8 @@ export default function HomePage() {
   const rankingCopySize = useBreakpointValue({ base: "1rem", md: "1.15rem" });
   const rankingHeadingMargin = useBreakpointValue({ base: "35px", md: "15px"});
   const mintButtonMargin = useBreakpointValue({ base: "7%", md: "7%"});
+  const colScore  = useBreakpointValue({ base: "100px", md: "130px" });
+  const colWallet = useBreakpointValue({ base: "130px", md: "190px" });
 
   // when mount or resize, capture dimensions
   useEffect(() => {
@@ -430,9 +432,9 @@ const pulseClaim = keyframes`
                   as="h1"
                   fontSize={welcomeTitleSize}
                   textStyle="condensed"
-                  lineHeight="5rem"
+                  lineHeight="6rem"
                 >
-                  JOIN THE FLOCK
+                  GM, DEGEN
                 </Heading>
                 <Text
                   textStyle="copy"
@@ -445,38 +447,18 @@ const pulseClaim = keyframes`
                   ml="5"
                 >
                   <Text as="span" fontWeight="bold" fontSize="1.5rem" lineHeight="2.3rem">
-                    Play. Rank. Collect.
+                    You found a nostalgic trip to the golden era.
                   </Text>
-                  <br/>
+                  <br/><br/>
                   <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
-                    Let’s Flamingo is a Solana web3 casual game<br/>
-                    crafted with passion by indie game devs<br/>
-                    powered by a 5555 NFT collection of flamingos<br/>
-                    which you can mint for free every Saturday.
+                    We are a team of human designers and artists<br/>
+                    that built this project with love in the trenches<br/>
+                    for the ones still out here who miss a real reveal<br/>
+                    where it was all about the dopamine of hitting mint.<br/>
+                    <b>We hope you enjoy it!</b>
                     <br/>
                   </Text>
-                  <br/>
- <Text as="span" fontSize={welcomeCopyAltSize}>
-  <b>How? It's simple:</b><br />
-  Play and fly as high as you can!<br />
-  Each Saturday, if you show in the Top 3,<br />
-  you’ll be able to mint for free.{``}
-  <Text
-    as="button"
-    type="button"
-    display="inline"
-    ml={1}
-    color="brand.Lavender"
-    textDecoration="none"
-    _hover={{ textDecoration: 'underline' }}
-    cursor="pointer"
-    fontWeight="bold"
-    onClick={() => router.push('/faq#about')}
-  >
-  Why?
-  </Text>
-  <br />
-</Text>
+
                 </Text>
               </>
               {isFrozen ? (
@@ -543,7 +525,7 @@ const pulseClaim = keyframes`
               {isFrozen
                 ? 'MINT DAY'
                 : (
-                  'FLY TO THE TOP!'
+                  'WANNA GET WL?'
                 )
               }
             </Heading>
@@ -557,7 +539,7 @@ const pulseClaim = keyframes`
 
 >
   {isFrozen ? (
-    hasWallet && isInTop3 ? (
+    hasWallet && isInTop10 ? (
       <>
         Congrats! You’ve got {' '}
         <Text as="span" color="brand.Purple" fontWeight="bold">
@@ -576,13 +558,16 @@ const pulseClaim = keyframes`
     )
   ) : (
     <>
-      Play to rank and{' '}
+      Play, rank and{' '}
       <Text as="span" color="brand.Purple" fontWeight="bold">
         FREE MINT
       </Text>{' '}
-      from the collection in the next{' '}
-      <Text as="span" color="brand.Purple" fontWeight="bold">
-        {timeLeft}
+      from the collection{' '}
+      <Text as="span" display={{ base: 'block', md: 'inline' }}>
+        in the next{' '}
+        <Text as="span" color="brand.Purple" fontWeight="bold">
+          {timeLeft}
+        </Text>
       </Text>
     </>
   )}
@@ -590,20 +575,20 @@ const pulseClaim = keyframes`
 
             <Center w="100%" mt="-4">
               <Leaderboard
-                onTopStatus={setIsInTop3}
+                onTopStatus={setIsInTop10}
                 withBorders
                 bgColor="transparent"
                 columnWidths={{
                   position: "45px",
                   user:     "150px",
-                  score:    "100px",
-                  wallet:   "420px",
+                  score:    colScore,
+                  wallet:   colWallet,
                 }}
                 height="auto"
               />
             </Center>
 
-{isFrozen && hasWallet && isInTop3 ? (
+{isFrozen && hasWallet && isInTop10 ? (
   // Frozen window + winner → CLAIM
   <Button
     mt={{ base: "0", md: "2" }}
@@ -762,7 +747,7 @@ const pulseClaim = keyframes`
       <ThemedModal
   isOpen={isEntryOpen}
   onClose={onEntryClose}
-  title="LET'S GET YOU IN THE GAME!"
+  title="LET'S FUCKING GO"
     headerProps={{
     fontSize: { base: "3rem", md: "3.5rem" },
     lineHeight: { base: "2.4rem", md: "3rem" },
@@ -805,7 +790,7 @@ const pulseClaim = keyframes`
   </Stack>
   }
 >
-  Join for fun as a guest, or connect your wallet to climb the ranks and win an NFT!
+  Try for fun as a guest, or connect your wallet to record your score and claim your spot.
 </ThemedModal>
 
     </Box>

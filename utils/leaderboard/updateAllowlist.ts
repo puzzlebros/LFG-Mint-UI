@@ -35,35 +35,35 @@ const deployBytes = new Uint8Array(
 const deployKP = umi.eddsa.createKeypairFromSecretKey(deployBytes);
 umi.use(keypairIdentity(deployKP));
 
-// 1) Fetch Top-3 from Supabase
-async function getTop3Wallets(): Promise<string[]> {
+// 1) Fetch Top-10 from Supabase
+async function getTop10Wallets(): Promise<string[]> {
   const { data, error } = await supabase
     .from<"leaderboard", LeaderboardEntry>("leaderboard")
     .select("wallet_address")
     .order("score", { ascending: false })
-    .limit(3);
+    .limit(10);
 
   if (error) throw error;
   return data!.map((r) => r.wallet_address);
 }
 
 export async function updateAllowlistGuard(): Promise<void> {
-  console.log("🔍 [update] Fetching top-3 from Supabase…");
+  console.log("🔍 [update] Fetching top-10 from Supabase…");
 
-  // Fetch the top 3 wallets from the leaderboard
-  const top3 = await getTop3Wallets();
+  // Fetch the top 10 wallets from the leaderboard
+  const top10 = await getTop10Wallets();
 
-  // Handle the case where there are fewer than 3 wallets
-  if (top3.length === 0) {
+  // Handle the case where there are fewer than 10 wallets
+  if (top10.length === 0) {
     console.log("No wallets found in the leaderboard.");
     return;  // Early return if there are no wallets
   }
 
-  if (top3.length < 3) {
-    console.log(`Fewer than 3 wallets found. Top ${top3.length} wallets will be used.`);
+  if (top10.length < 10) {
+    console.log(`Fewer than 10 wallets found. Top ${top10.length} wallets will be used.`);
   }
 
-  console.log("   → top3:", top3);
+  console.log("   → top10:", top10);
 
   // 2) On-chain: fetch Candy Machine & its guard
   const cm = await fetchCandyMachine(
@@ -80,9 +80,9 @@ export async function updateAllowlistGuard(): Promise<void> {
     throw new Error('No "LFG" group on Candy Guard');
   }
 
-  // 4) Use the leaderboard top-3 to generate a Merkle root
-  const merged = top3;  // Merge the leaderboard wallets
-  console.log(`🔀 [update] Updated allowlist with top-3 wallets:`, merged);
+  // 4) Use the leaderboard top-10 to generate a Merkle root
+  const merged = top10;
+  console.log(`🔀 [update] Updated allowlist with top-10 wallets:`, merged);
 
   // 5) Compute new Merkle root
   const merkleRoot = getMerkleRoot(merged);

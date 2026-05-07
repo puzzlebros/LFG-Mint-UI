@@ -45,13 +45,13 @@ import type { LeaderboardEntry } from '@/types/leaderboard';
 import { supabase } from "../../utils/leaderboard/supabaseClient"
 
 
-// Function to fetch the top-3 leaderboard wallets from Supabase
-async function getTop3Wallets(): Promise<string[]> {
+// Function to fetch the top-10 leaderboard wallets from Supabase
+async function getTop10Wallets(): Promise<string[]> {
   const { data, error } = await supabase
     .from<"leaderboard", LeaderboardEntry>("leaderboard")
     .select("wallet_address")
     .order("score", { ascending: false })
-    .limit(3);
+    .limit(10);
 
   if (error) throw error;
   return data!.map((r) => r.wallet_address);
@@ -60,7 +60,7 @@ async function getTop3Wallets(): Promise<string[]> {
 export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
   const [recentSlot, setRecentSlot] = useState<number>(0);
   const [amount, setAmount] = useState<string>("5");
-  const [top3Wallets, setTop3Wallets] = useState<string[]>([]);
+  const [top10Wallets, setTop10Wallets] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -70,8 +70,7 @@ export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
 
   useEffect(() => {
     (async () => {
-      // Fetch the top-10 wallets from the leaderboard
-      const wallets = await getTop3Wallets();
+      const wallets = await getTop10Wallets();
       setTop10Wallets(wallets);
     })();
   }, []);
@@ -92,8 +91,8 @@ export const InitializeModal = ({ umi, candyMachine, candyGuard }: Props) => {
 // Compute Merkle root from the leaderboard wallets
 const roots = new Map<string, string>();
 
-  if (top3Wallets.length > 0) {
-    const merkleRoot = getMerkleRoot(top3Wallets); // generate Merkle root from the leaderboard wallets
+  if (top10Wallets.length > 0) {
+    const merkleRoot = getMerkleRoot(top10Wallets); // generate Merkle root from the leaderboard wallets
     roots.set("LFG", Buffer.from(merkleRoot).toString("hex"));
   }
 

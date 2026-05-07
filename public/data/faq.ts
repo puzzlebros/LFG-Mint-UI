@@ -9,7 +9,7 @@ export const faqs: Faq[] = [
   {
     question: "What is Let's Flamingo?",
     answer:
-      "It is a game and NFT collection. Anyone can play it and collect it.",
+      "It is a Solana web3 casual game and NFT collection. Anyone can play it and collect it.",
   },
   {
     question: "How does the ranking work?",

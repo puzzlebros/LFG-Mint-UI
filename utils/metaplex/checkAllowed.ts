@@ -55,7 +55,7 @@ export const guardChecker = async (
   candyGuard: CandyGuard,
   candyMachine: CandyMachine,
   solanaTime: bigint,
-  top3Wallets: string[]
+  topWallets: string[]
 ) => {
   let guardReturn: GuardReturn[] = [];
   let ownedTokens: DigitalAssetWithTokenAndNftMintLimit[] = [];
@@ -185,7 +185,7 @@ export const guardChecker = async (
     }
 
     // Check if the wallet is in top-3 and part of the allowlist
-    const walletInTop10 = allowlistChecker(top3Wallets, umi);
+    const walletInTop10 = allowlistChecker(topWallets, umi);
     console.log("Wallet in top-3 allowlist:", walletInTop10);
 
     if (singleGuard.allowList.__option === "Some") {

@@ -2,10 +2,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 import type { LeaderboardEntry } from '@/types/leaderboard';
+import { generateFakeEntries } from '@/utils/leaderboard/fakeEntries';
 
 interface LeaderboardContextType {
-  top3Wallets: string[];
-  leaderboardEntries: LeaderboardEntry[];
+  topWallets: string[];          // real entries only — used for allowlist / minting
+  leaderboardEntries: LeaderboardEntry[]; // real + fake — used for display
   loading: boolean;
   error: string | null;
 }
@@ -20,20 +21,23 @@ export const useLeaderboard = () => {
   return context;
 };
 
-// Define children prop type as ReactNode
 export const LeaderboardProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [top3Wallets, setTop3Wallets] = useState<string[]>([]);
+  const [topWallets, setTopWallets] = useState<string[]>([]);
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch leaderboard data on page load and only re-fetch if necessary
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
         const { data } = await axios.get<LeaderboardEntry[]>('/api/leaderboard');
-        setLeaderboardEntries(data);
-        setTop3Wallets(data.map((entry) => entry.wallet_address));
+
+        // Real wallets are used for allowlist — no fakes included
+        setTopWallets(data.map((entry) => entry.wallet_address));
+
+        // Pad display list with deterministic fake entries (front-end only)
+        const fakes = generateFakeEntries(data);
+        setLeaderboardEntries([...data, ...fakes]);
       } catch (err) {
         setError('Failed to load leaderboard');
       } finally {
@@ -45,7 +49,7 @@ export const LeaderboardProvider: React.FC<{ children: ReactNode }> = ({ childre
   }, []);
 
   return (
-    <LeaderboardContext.Provider value={{ top3Wallets, leaderboardEntries, loading, error }}>
+    <LeaderboardContext.Provider value={{ topWallets, leaderboardEntries, loading, error }}>
       {children}
     </LeaderboardContext.Provider>
   );

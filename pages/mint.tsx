@@ -120,7 +120,7 @@ export default function MintPage() {
   const toast = useToast();
 
   // — UI state —
-  const { top3Wallets } = useLeaderboard();
+  const { topWallets } = useLeaderboard();
   const [loading, setLoading] = useState(true);
   const [guards, setGuards] = useState<GuardReturn[]>([]);
   const [isAllowed, setIsAllowed] = useState(false);
@@ -188,12 +188,12 @@ export default function MintPage() {
   // wallet in top10?
   useEffect(() => {
     if (isDemo) return;
-    if (!walletPublicKey || !top3Wallets || top3Wallets.length === 0) return;
-    setIsAllowed(top3Wallets.includes(walletPublicKey.toString()));
+    if (!walletPublicKey || !topWallets || topWallets.length === 0) return;
+    setIsAllowed(topWallets.includes(walletPublicKey.toString()));
     // If the leaderboard finished loading after guardChecker already ran with an
     // empty list, re-trigger eligibility so allowList guards are re-evaluated.
     setCheckEligibility(true);
-  }, [walletPublicKey, top3Wallets, isDemo]);
+  }, [walletPublicKey, topWallets, isDemo]);
 
 
   // CM ID
@@ -257,7 +257,7 @@ export default function MintPage() {
     setLoading(true);
     let cancelled = false;
 
-    if (!top3Wallets) {
+    if (!topWallets) {
       console.error("Top-10 wallets data is not available.");
       setLoading(false);
       return;
@@ -267,7 +267,7 @@ export default function MintPage() {
       try {
         const now = BigInt(Math.floor(Date.now() / 1000));
         const { guardReturn, ownedTokens: ot, ownedCoreAssets: oca } =
-          await guardChecker(umi, candyGuard, candyMachine, now, top3Wallets);
+          await guardChecker(umi, candyGuard, candyMachine, now, topWallets);
 
         if (!cancelled) {
           console.log("✅ guardReturn:", guardReturn);
@@ -299,7 +299,7 @@ export default function MintPage() {
     umi,
     toast,
     isMinting,
-    top3Wallets,
+    topWallets,
     isDemo,
   ]);
 
@@ -594,7 +594,7 @@ export default function MintPage() {
                   onOpen={onShowNftOpen}
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
-                  allowlist={top3Wallets ?? []}
+                  allowlist={topWallets ?? []}
                   buttonProps={claimButtonProps}
                   onBeforeMint={async () => {
                     const res = await preflight();

@@ -336,11 +336,11 @@ export const ownedCoreAssetChecker = async (
 };
 
 export const allowlistChecker = (
-  top3Wallets: string[],
+  topWallets: string[],
   umi: Umi
 ): boolean => {
   const walletStr = umi.identity.publicKey.toString();
-  const allowed   = top3Wallets.includes(walletStr);
+  const allowed   = topWallets.includes(walletStr);
 
   if (!allowed) {
     console.info(
