@@ -112,11 +112,12 @@ export default function ShowNft({
     `I just minted this @LetsFlamingoNFT because I believe ${completion}\n#Solana`
   );
 
-  // /share/[mint] is a SSR page with Twitter Card OG tags pointing to the NFT image.
-  // X's crawler reads those tags and embeds the image; human visitors are redirected home.
+  // /share/[mint] is a SSR page whose getServerSideProps fetches the NFT image
+  // from the Helius DAS API and injects it as twitter:card OG tags.
+  // X's crawler reads those tags and embeds the image in the tweet card.
   const mintStr = String(nft.mint);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const cardUrl = `${origin}/share/${mintStr}?image=${encodeURIComponent(image ?? '')}&name=${encodeURIComponent(metadata.name ?? '')}`;
+  const cardUrl = `${origin}/share/${mintStr}`;
   const shareUrl = `https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(cardUrl)}`;
 
   return (

@@ -1,7 +1,7 @@
 // pages/share/[mint].tsx
-// Thin SSR page whose only job is to serve Twitter Card / OG meta tags so that
-// X (Twitter) embeds the NFT image when the tweet is rendered.
-// Real users who land here are immediately redirected to the homepage.
+// SSR page whose only purpose is to expose Twitter Card / OG meta tags so that
+// X embeds the NFT image when the tweet card unfurls.
+// Human visitors are immediately redirected to the homepage via client-side nav.
 
 import { GetServerSideProps } from 'next';
 import Head from 'next/head';
@@ -9,7 +9,6 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 
 interface Props {
-  mint: string;
   name: string;
   image: string;
 }
@@ -17,7 +16,7 @@ interface Props {
 export default function SharePage({ name, image }: Props) {
   const router = useRouter();
 
-  // Redirect human visitors away; X's crawler ignores JS so it sees the OG tags.
+  // X's crawler ignores JS — only humans get redirected.
   useEffect(() => {
     router.replace('/');
   }, [router]);
@@ -42,10 +41,38 @@ export default function SharePage({ name, image }: Props) {
   );
 }
 
-export const getServerSideProps: GetServerSideProps = async (context) => {
-  const mint  = (context.params?.mint as string) ?? '';
-  const image = decodeURIComponent((context.query.image as string) ?? '');
-  const name  = decodeURIComponent((context.query.name  as string) ?? 'My Flamingo');
+function ipfsToHttp(url: string): string {
+  return url?.startsWith('ipfs://')
+    ? url.replace('ipfs://', 'https://dweb.link/ipfs/')
+    : url;
+}
 
-  return { props: { mint, image, name } };
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  const mint = (context.params?.mint as string) ?? '';
+
+  try {
+    const rpc = process.env.NEXT_PUBLIC_RPC!;
+    const resp = await fetch(rpc, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'share-card',
+        method: 'getAsset',
+        params: { id: mint },
+      }),
+    });
+    const { result } = await resp.json();
+
+    const name  = result?.content?.metadata?.name ?? 'My Flamingo';
+    const rawImage =
+      result?.content?.links?.image ??
+      result?.content?.files?.[0]?.uri ??
+      '';
+    const image = ipfsToHttp(rawImage);
+
+    return { props: { name, image } };
+  } catch {
+    return { props: { name: 'My Flamingo', image: '' } };
+  }
 };
