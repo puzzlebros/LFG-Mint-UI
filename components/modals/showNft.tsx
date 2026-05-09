@@ -111,8 +111,13 @@ export default function ShowNft({
   const shareText = encodeURIComponent(
     `I just minted this @LetsFlamingoNFT because I believe ${completion}\n#Solana`
   );
-  // Include the NFT image URL so X unfurls it as a card in the tweet
-  const shareUrl = `https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(image ?? "")}`;
+
+  // /share/[mint] is a SSR page with Twitter Card OG tags pointing to the NFT image.
+  // X's crawler reads those tags and embeds the image; human visitors are redirected home.
+  const mintStr = String(nft.mint);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const cardUrl = `${origin}/share/${mintStr}?image=${encodeURIComponent(image ?? '')}&name=${encodeURIComponent(metadata.name ?? '')}`;
+  const shareUrl = `https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(cardUrl)}`;
 
   return (
     // Outer Box: p={6} on all sides → equal outer margins from modal edge.
