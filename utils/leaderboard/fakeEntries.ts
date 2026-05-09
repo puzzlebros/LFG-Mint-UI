@@ -59,17 +59,24 @@ export function generateFakeEntries(
 ): LeaderboardEntry[] {
   if (!FAKE_ENTRIES_ENABLED) return [];
 
-  const { sunUTC, isFrozen } = getWeeklyCycle(now);
-  if (isFrozen) return [];
+  const { satUTC, sunUTC, isFrozen } = getWeeklyCycle(now);
 
   const slots = MAX_ENTRIES - realEntries.length;
   if (slots <= 0) return [];
 
-  // Current non-frozen week started at sunUTC (end of the most recent frozen window)
-  const weekStart = sunUTC;
+  // Non-frozen: accumulate fakes day-by-day from this week's Sunday 03:00 UTC.
+  // Frozen (Sat→Sun 03:00): weekStart points to the play week that just ended so
+  // the existing fakes stay visible — dayIndex is capped at 5 so no new ones are
+  // added. Everything resets at Sunday 03:00 (sunUTC), the same moment the
+  // clear-allowlist cron fires. Fake wallets never appear in topWallets or the
+  // allowlist — those are sourced directly from Supabase.
+  const weekStart = isFrozen
+    ? new Date(satUTC.getTime() - 6 * MS_PER_DAY)  // previous Sunday 03:00
+    : sunUTC;                                        // current Sunday 03:00
+
   const dayIndex = Math.min(
     Math.floor((now.getTime() - weekStart.getTime()) / MS_PER_DAY),
-    5  // cap at Friday (day 5)
+    5  // cap at Friday; frozen window yields ~6 days → clamped, no new entries
   );
 
   const topScore = realEntries.length > 0 ? realEntries[0].score : 1000;
