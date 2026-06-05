@@ -457,11 +457,9 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey, wallet, signMessage } = useWallet();
+  const { publicKey: walletPublicKey, signMessage } = useWallet();
   const router = useRouter();
   const isAdminMode = router.query.admin !== undefined;
-
-  const isPhantom = !isAdminMode && (wallet?.adapter?.name?.toLowerCase().includes("phantom") ?? false);
 
   if (!candyMachine || !candyGuard) return <></>;
 
@@ -510,12 +508,12 @@ export function ButtonList({
               </>
             )}
 
-            <Tooltip label={!walletPublicKey ? "Log in to mint" : isPhantom ? "Phantom is not supported — please use Solflare" : btn.tooltip}>
+            <Tooltip label={!walletPublicKey ? "Log in to mint" : btn.tooltip}>
               <Button
                 size="default"
                 mt="2"
                 {...buttonProps}
-                isDisabled={!walletPublicKey || !btn.allowed || isPhantom}
+                isDisabled={!walletPublicKey || !btn.allowed}
                 isLoading={guardList.find((g) => g.label === btn.label)?.minting}
                 loadingText={guardList.find((g) => g.label === btn.label)?.loadingText}
                 onClick={async () => {

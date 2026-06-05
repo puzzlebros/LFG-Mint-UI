@@ -16,7 +16,7 @@ import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { FilteredWalletModalProvider } from "../components/FilteredWalletModalProvider";
 
-// import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 
 import { image, headerText, description } from "@/settings";
@@ -40,7 +40,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
     if (typeof window === "undefined") return [];
 
     return [
-      // new PhantomWalletAdapter(),
+      new PhantomWalletAdapter(),
       new SolflareWalletAdapter({ network }),
     ];
   }, [network]);

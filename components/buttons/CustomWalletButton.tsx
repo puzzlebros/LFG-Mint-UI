@@ -1,7 +1,7 @@
 // components/buttons/CustomWalletButton.tsx
 import React, { useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/router";
+
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletReadyState } from "@solana/wallet-adapter-base";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -26,8 +26,6 @@ type Props = ComponentProps<typeof WalletMultiButtonDynamic>;
 export function CustomWalletButton({ className, style, ...rest }: Props) {
   const { connected, wallet, wallets, select } = useWallet();
   const { visible, setVisible } = useWalletModal();
-  const router = useRouter();
-  const isAdminMode = router.query.admin !== undefined;
   const { isOpen, onOpen, onClose } = useDisclosure();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -54,17 +52,14 @@ export function CustomWalletButton({ className, style, ...rest }: Props) {
   }, [wallet?.adapter?.name, selectedReadyState, select]);
 
   const filteredWallets = useMemo(() => {
-    const base = isAdminMode
-      ? wallets
-      : wallets.filter((w) => !w.adapter.name.toLowerCase().includes("phantom"));
-    const metaMaskEntries = base.filter((w) =>
+    const metaMaskEntries = wallets.filter((w) =>
       w.adapter.name.toLowerCase().includes("metamask")
     );
-    return base.filter((w) => {
+    return wallets.filter((w) => {
       if (!w.adapter.name.toLowerCase().includes("metamask")) return true;
       return w === metaMaskEntries[metaMaskEntries.length - 1];
     });
-  }, [wallets, isAdminMode]);
+  }, [wallets]);
 
   const btnClass = ["wallet-adapter-button-trigger-secondary", className]
     .filter(Boolean)
