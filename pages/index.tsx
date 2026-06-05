@@ -447,15 +447,16 @@ const pulseClaim = keyframes`
                   ml="5"
                 >
                   <Text as="span" fontWeight="bold" fontSize="1.5rem" lineHeight="2.3rem">
-                    You found a nostalgic trip to the golden era.
+                    Fly to the moon. Free mint each Saturday.
                   </Text>
                   <br/><br/>
                   <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
-                    We are a team of human designers and artists<br/>
-                    that built this project with love in the trenches<br/>
-                    for the ones still out here who miss a real reveal<br/>
-                    where it was all about the dopamine of hitting mint.<br/>
-                    <b>We hope you enjoy it!</b>
+                    Connect your Solana wallet and play the game.<br/>
+                    The ranking freezes every Saturday.<br/>
+                    Winners can free mint flamingos during that day.<br/>
+                    16 grails are hidden inside the collection. Good luck!<br/>
+                    .<br/>
+                    <b>Play. Rank. Mint. Repeat.</b>
                     <br/>
                   </Text>
 

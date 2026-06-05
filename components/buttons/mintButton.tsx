@@ -102,6 +102,7 @@ const mintClick = async (
   isAdminMode: boolean,
   walletAddress: string | undefined,
   signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | undefined,
+  walletAdapterName: string | undefined,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -155,18 +156,44 @@ const mintClick = async (
     ]);
     const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
 
-    // 2) Route allowlist proof via user's wallet — no server API needed.
+    // 2) Route allowlist proof.
+    //    Phantom: server signs the route tx so Lighthouse never sees it.
+    //    Everyone else: client signs via the existing routeBuilder path.
     if (freshGuardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
-      const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
-      if (routeTxBuilder.getInstructions().length > 0) {
-        const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
-          send: { skipPreflight: true },
-          confirm: { commitment: "confirmed" },
+      const isPhantom = walletAdapterName?.toLowerCase().includes("phantom") ?? false;
+
+      if (isPhantom) {
+        if (!signMessage) throw new Error("Wallet does not support message signing");
+        if (!walletAddress) throw new Error("No wallet address");
+        const timestamp = Date.now();
+        const challenge = new TextEncoder().encode(`lfg-route-proof:${walletAddress}:${timestamp}`);
+        const sigBytes = await signMessage(challenge);
+        const signatureB58 = base58.deserialize(sigBytes)[0];
+        const resp = await fetch("/api/phantom-route-proof", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress,
+            guardLabel: freshGuardToUse.label,
+            timestamp,
+            signature: signatureB58,
+          }),
         });
-        console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error ?? "Route proof failed");
+        console.log(`[allowlist proof] phantom server-side: alreadyExists=${data.alreadyExists}`);
       } else {
-        console.log("[allowlist proof] already exists, skipping route tx");
+        const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
+        if (routeTxBuilder.getInstructions().length > 0) {
+          const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
+            send: { skipPreflight: true },
+            confirm: { commitment: "confirmed" },
+          });
+          console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
+        } else {
+          console.log("[allowlist proof] already exists, skipping route tx");
+        }
       }
     }
 
@@ -457,7 +484,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey, signMessage } = useWallet();
+  const { publicKey: walletPublicKey, signMessage, wallet } = useWallet();
   const router = useRouter();
   const isAdminMode = router.query.admin !== undefined;
 
@@ -533,6 +560,7 @@ export function ButtonList({
                       isAdminMode,
                       walletPublicKey?.toString(),
                       signMessage,
+                      wallet?.adapter?.name,
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);
