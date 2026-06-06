@@ -5,22 +5,10 @@ import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-ad
 import { mplTokenMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mplCandyMachine } from "@metaplex-foundation/mpl-core-candy-machine";
 import { dasApi } from "@metaplex-foundation/digital-asset-standard-api";
-import { createNoopSigner, publicKey, signerIdentity, UmiPlugin } from "@metaplex-foundation/umi";
+import { createNoopSigner, publicKey, signerIdentity } from "@metaplex-foundation/umi";
 import { useWallet } from "@solana/wallet-adapter-react";
 import type { WalletAdapter } from "@solana/wallet-adapter-base";
 import { UmiContext } from "./useUmi";
-
-// The SDK's hardcoded mplCoreCandyGuard ID (CMAGAKJ67...) differs from the
-// actual deployed program (L2TExMFK...). Without this override all PDA
-// derivations use the wrong program seed, so the proof PDA the client derives
-// and the one the on-chain program checks end up at different addresses.
-const actualCandyGuardId = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
-const overrideCandyGuardProgram: UmiPlugin = {
-  install(umi) {
-    const existing = umi.programs.get("mplCoreCandyGuard");
-    umi.programs.add({ ...existing, publicKey: publicKey(actualCandyGuardId) }, true);
-  },
-};
 
 export const UmiProvider = ({
   endpoint,
@@ -36,7 +24,6 @@ export const UmiProvider = ({
     return createUmi(endpoint)
       .use(mplTokenMetadata())
       .use(mplCandyMachine())
-      .use(overrideCandyGuardProgram)
       .use(dasApi());
   }, [endpoint]);
 

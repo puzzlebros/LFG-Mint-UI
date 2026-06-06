@@ -5,8 +5,6 @@ import {
   CandyMachine,
   fetchCandyMachine,
   fetchCandyGuard,
-  safeFetchAllowListProofFromSeeds,
-  mintV1 as candyMintV1,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import {
@@ -18,15 +16,9 @@ import {
   PublicKey,
   AddressLookupTableInput,
   Transaction,
-  Signer,
-  signAllTransactions,
   BlockhashWithExpiryBlockHeight,
-  TransactionBuilder,
-  transactionBuilder,
-  none,
-  some,
 } from "@metaplex-foundation/umi";
-import { fetchAddressLookupTable, setComputeUnitPrice, setComputeUnitLimit } from "@metaplex-foundation/mpl-toolbox";
+import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../../settings";
@@ -44,7 +36,6 @@ import {
   mintArgsBuilder,
   GuardButtonList,
   buildTxs,
-  getRequiredCU,
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useRouter } from "next/router";
@@ -109,7 +100,6 @@ const mintClick = async (
   isAdminMode: boolean,
   walletAddress: string | undefined,
   signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | undefined,
-  walletAdapterName: string | undefined,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -163,34 +153,18 @@ const mintClick = async (
     ]);
     const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
 
-    // 2) Route allowlist proof.
-    //    Phantom: bundle route + mint in ONE transaction so Lighthouse can't inject
-    //    extra guard invocations between them (the root cause of Custom 6400).
-    //    Everyone else: client signs the route tx separately as before.
-    let phantomPendingRouteTx: TransactionBuilder | null = null;
+    // 2) Route allowlist proof — send as a separate tx for all wallets.
     if (freshGuardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
-      const isPhantom = walletAdapterName?.toLowerCase().includes("phantom") ?? false;
-
-      if (isPhantom) {
-        const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
-        if (routeTxBuilder.getInstructions().length > 0) {
-          console.log("[allowlist proof] phantom: proof missing — bundling route with mint tx");
-          phantomPendingRouteTx = routeTxBuilder;
-        } else {
-          console.log("[allowlist proof] phantom: proof already exists");
-        }
+      const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
+      if (routeTxBuilder.getInstructions().length > 0) {
+        const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
+          send: { skipPreflight: true },
+          confirm: { commitment: "confirmed" },
+        });
+        console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
       } else {
-        const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
-        if (routeTxBuilder.getInstructions().length > 0) {
-          const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
-            send: { skipPreflight: true },
-            confirm: { commitment: "confirmed" },
-          });
-          console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
-        } else {
-          console.log("[allowlist proof] already exists, skipping route tx");
-        }
+        console.log("[allowlist proof] already exists, skipping route tx");
       }
     }
 
@@ -247,49 +221,19 @@ const mintClick = async (
 
     // 6) Build mint transactions — CU simulation runs here with a temp blockhash
     //    (replaceRecentBlockhash:true means simulation is blockhash-agnostic).
-    //    Phantom + allowList without an existing proof: bundle the route instruction
-    //    atomically with the mint so Lighthouse cannot inject extra guard calls between them.
     const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
     const tempBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
 
-    let mintBuilders: { builder: TransactionBuilder; signers: Signer[] }[];
-    if (phantomPendingRouteTx) {
-      const priorityFee = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
-      const nftSigner = nftsigners[0];
-      const mintInstruction = candyMintV1(umi, {
-        candyMachine: freshCandyMachine.publicKey,
-        collection: freshCandyMachine.collectionMint,
-        asset: nftSigner,
-        group: freshGuardToUse.label === "default" ? none() : some(freshGuardToUse.label),
-        candyGuard: freshCandyGuard.publicKey,
-        mintArgs: mintArgsArray[0],
-      });
-      // Build: [CB_limit(temp), CB_price, route_ix, mint_ix]
-      const combined = transactionBuilder()
-        .prepend(setComputeUnitPrice(umi, { microLamports: priorityFee }))
-        .prepend(setComputeUnitLimit(umi, { units: 1_400_000 }))
-        .add(phantomPendingRouteTx)
-        .add(mintInstruction)
-        .setAddressLookupTables(tables)
-        .setBlockhash(tempBlockhash.blockhash);
-      const units = await getRequiredCU(umi, combined.build(umi));
-      console.log(`[phantom route+mint tx] estimated CU: ${units}`);
-      // Replace the temp CB_limit (index 0) with the simulated value
-      const [, rest] = combined.splitByIndex(1);
-      const withCU = rest.prepend(setComputeUnitLimit(umi, { units }));
-      mintBuilders = [{ builder: withCU, signers: withCU.getSigners(umi) }];
-    } else {
-      mintBuilders = await buildTxs(
-        umi,
-        freshCandyMachine,
-        freshCandyGuard,
-        nftsigners,
-        freshGuardToUse,
-        mintArgsArray,
-        tables,
-        tempBlockhash.blockhash
-      );
-    }
+    const mintBuilders = await buildTxs(
+      umi,
+      freshCandyMachine,
+      freshCandyGuard,
+      nftsigners,
+      freshGuardToUse,
+      mintArgsArray,
+      tables,
+      tempBlockhash.blockhash
+    );
 
     if (!mintBuilders.length) {
       throw new Error("No mint transaction could be built.");
@@ -300,18 +244,32 @@ const mintClick = async (
     const latestBlockhash: BlockhashWithExpiryBlockHeight =
       await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
 
-    const mintTxs: { transaction: Transaction; signers: Signer[] }[] =
-      mintBuilders.map(({ builder, signers }) => ({
-        transaction: builder.setBlockhash(latestBlockhash).build(umi),
-        signers,
-      }));
+    // Build raw transactions and separate wallet signer from local NFT mint keypairs.
+    const builtTxs = mintBuilders.map(({ builder, signers }) => ({
+      transaction: builder.setBlockhash(latestBlockhash).build(umi),
+      localSigners: signers.filter(s => s.publicKey !== umi.identity.publicKey),
+    }));
 
     setLoadingState("Please sign...");
 
-    // 7) Sign all transactions in a single wallet prompt, then submit each
-    //    with skipPreflight and keep resending every 2 s until confirmed or
-    //    the blockhash expires — prevents TransactionExpiredBlockheightExceededError.
-    const signedTxs = await signAllTransactions(mintTxs);
+    // 7) Phantom-compliant signing: wallet signs first (one prompt for all txs via
+    //    signAllTransactions, or signTransaction for a single tx), then local NFT
+    //    mint keypairs add their signatures, then submit directly to the RPC.
+    //    This avoids Lighthouse simulation warnings caused by multi-signer flows.
+    const rawTxs = builtTxs.map(t => t.transaction);
+    const walletSignedTxs: Transaction[] = rawTxs.length === 1
+      ? [await umi.identity.signTransaction(rawTxs[0])]
+      : await umi.identity.signAllTransactions(rawTxs);
+
+    const signedTxs = await Promise.all(
+      walletSignedTxs.map(async (tx, i) => {
+        let signed = tx;
+        for (const signer of builtTxs[i].localSigners) {
+          signed = await signer.signTransaction(signed);
+        }
+        return signed;
+      })
+    );
 
     const signatures: Uint8Array[] = [];
     for (let i = 0; i < signedTxs.length; i++) {
@@ -511,7 +469,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey, signMessage, wallet } = useWallet();
+  const { publicKey: walletPublicKey, signMessage } = useWallet();
   const router = useRouter();
   const isAdminMode = router.query.admin !== undefined;
 
@@ -587,7 +545,6 @@ export function ButtonList({
                       isAdminMode,
                       walletPublicKey?.toString(),
                       signMessage,
-                      wallet?.adapter?.name,
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);
