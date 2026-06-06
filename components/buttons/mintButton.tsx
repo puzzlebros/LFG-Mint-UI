@@ -144,6 +144,9 @@ const mintClick = async (
     `[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`
   );
 
+  const { toast } = createStandaloneToast();
+  let activeToastId: string | number | undefined;
+
   try {
     setMintingState(true);
 
@@ -170,10 +173,19 @@ const mintClick = async (
 
       const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
       if (routeTxBuilder.getInstructions().length > 0) {
+        activeToastId = toast({
+          title: "Verify you won the free mint",
+          description: "Approve in your wallet to continue.",
+          status: "info",
+          duration: null,
+          isClosable: false,
+        });
         const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
           send: { skipPreflight: true },
           confirm: { commitment: "confirmed" },
         });
+        toast.close(activeToastId);
+        activeToastId = undefined;
         console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
       } else {
         console.log("[allowlist proof] already exists, skipping route tx");
@@ -194,6 +206,47 @@ const mintClick = async (
         throw new Error(
           "AllowList proof PDA not found after route step — the route transaction may have failed on-chain. Please try again."
         );
+      }
+
+      // 3-allowlist) Mint server-side to bypass Lighthouse.
+      // The route tx above created the user's AllowListProof PDA; the server verifies it
+      // on-chain and sends mintV1 with minter=ownerWallet (non-signing) so the allowList
+      // guard finds the correct PDA without Phantom ever signing the mint transaction.
+      if (!isAdminMode && walletAddress) {
+        if (!signMessage) throw new Error("Wallet does not support message signing");
+        setLoadingState("Authenticating...");
+
+        const timestamp = Date.now();
+        const challenge = new TextEncoder().encode(`lfg-allowlist-mint:${walletAddress}:${timestamp}`);
+        activeToastId = toast({
+          title: "Sign to confirm the mint",
+          description: "Approve in your wallet to complete your free mint.",
+          status: "info",
+          duration: null,
+          isClosable: false,
+        });
+        const sig = await signMessage(challenge);
+        toast.close(activeToastId);
+        activeToastId = undefined;
+        const signatureB58 = base58.deserialize(sig)[0];
+
+        setLoadingState("Minting...");
+        const resp = await fetch("/api/allowlistMint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ownerWallet: walletAddress, timestamp, signature: signatureB58 }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error ?? "Allowlist mint failed");
+        console.log(`[allowlist mint] sig: ${data.signature} asset: ${data.mintAddress}`);
+
+        setLoadingState("Fetching your LFG");
+        const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
+        if (digitalAsset && jsonMetadata) {
+          setMintsCreated([{ mint: publicKey(data.mintAddress), offChainMetadata: jsonMetadata }]);
+          onOpen();
+        }
+        return;
       }
     }
 
@@ -287,10 +340,19 @@ const mintClick = async (
     }));
 
     setLoadingState("Please sign...");
+    activeToastId = toast({
+      title: "Sign to confirm the mint",
+      description: "Approve in your wallet to complete the mint.",
+      status: "info",
+      duration: null,
+      isClosable: false,
+    });
 
     // UMI's signAllTransactions handles all signers in one pass: batches wallet
     // prompts via signAllTransactions then signs locally with each keypair.
     const signedTxs = await signAllTransactions(mintTxs);
+    toast.close(activeToastId);
+    activeToastId = undefined;
 
     const signatures: Uint8Array[] = [];
     for (let i = 0; i < signedTxs.length; i++) {
@@ -385,7 +447,7 @@ const mintClick = async (
       console.log("[mintClick] transaction cancelled by user:", name || msg);
     } else {
       console.error("minting failed", e);
-      createStandaloneToast().toast({
+      toast({
         title: "Mint failed",
         description: msg || "Please try again.",
         status: "error",
@@ -394,6 +456,7 @@ const mintClick = async (
       });
     }
   } finally {
+    if (activeToastId !== undefined) toast.close(activeToastId);
     setMintingState(false);
     setCheckEligibility(true);
     setLoadingState(undefined);
