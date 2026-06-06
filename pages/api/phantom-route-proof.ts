@@ -100,7 +100,13 @@ export default async function handler(
   }
 
   // 4) Set up UMI with server keypair as payer/signer
-  const umi = createUmi(rpc).use(mplCandyMachine());
+  const ACTUAL_CANDY_GUARD_ID = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
+  const umi = createUmi(rpc).use(mplCandyMachine()).use({
+    install(u) {
+      const existing = u.programs.get("mplCoreCandyGuard");
+      u.programs.add({ ...existing, publicKey: publicKey(ACTUAL_CANDY_GUARD_ID) }, true);
+    },
+  });
   const keypairBytes = new Uint8Array(JSON.parse(kpRaw) as number[]);
   const serverKP = umi.eddsa.createKeypairFromSecretKey(keypairBytes);
   umi.use(keypairIdentity(serverKP));
