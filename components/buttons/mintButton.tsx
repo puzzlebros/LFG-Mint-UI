@@ -20,7 +20,6 @@ import {
   BlockhashWithExpiryBlockHeight,
   signAllTransactions,
 } from "@metaplex-foundation/umi";
-import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../../settings";
@@ -235,14 +234,19 @@ const mintClick = async (
       return;
     }
 
-    // 4) Load LUT if configured — reduces tx size for complex mints.
-    let tables: AddressLookupTableInput[] = [];
-    const lutAddress = process.env.NEXT_PUBLIC_LUT;
-    if (lutAddress) {
-      const fetchedLut = await fetchAddressLookupTable(umi, publicKey(lutAddress));
-      console.log(`[LUT] loaded ${lutAddress}, addresses:`, fetchedLut.addresses);
-      tables = [fetchedLut];
-    }
+    // 4) LUT intentionally skipped for wallet-facing mints.
+    //
+    // When Phantom prepends Lighthouse assertions it adds L2TExMFK to the
+    // static account list, which increments static_count and therefore
+    // shifts every LUT account index by +1 (LUT indices = static_count +
+    // lut_slot).  Lighthouse's assertions were built against the pre-shift
+    // indices, so after the shift the assertion that was targeting the new
+    // nftMint (expected data_length=0) instead targets the candy machine
+    // account (290219 bytes), producing "Some(290219) == Some(0)" and a
+    // hard failure.  A single-mint tx fits comfortably in the 1232-byte
+    // limit without a LUT (≈14 accounts × 32 bytes + instruction data ≈
+    // 700 bytes), so there is no size regression.
+    const tables: AddressLookupTableInput[] = [];
 
     // 5) Generate mint signers.
     const nftsigners: KeypairSigner[] = [];
@@ -253,6 +257,7 @@ const mintClick = async (
     // 6) Build mint transactions — CU simulation runs here with a temp blockhash
     //    (replaceRecentBlockhash:true means simulation is blockhash-agnostic).
     const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
+
     const tempBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
 
     const mintBuilders = await buildTxs(
