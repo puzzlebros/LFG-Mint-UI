@@ -17,8 +17,8 @@ import {
   publicKey,
   PublicKey,
   AddressLookupTableInput,
-  Transaction,
   BlockhashWithExpiryBlockHeight,
+  signAllTransactions,
 } from "@metaplex-foundation/umi";
 import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
 
@@ -240,6 +240,7 @@ const mintClick = async (
     const lutAddress = process.env.NEXT_PUBLIC_LUT;
     if (lutAddress) {
       const fetchedLut = await fetchAddressLookupTable(umi, publicKey(lutAddress));
+      console.log(`[LUT] loaded ${lutAddress}, addresses:`, fetchedLut.addresses);
       tables = [fetchedLut];
     }
 
@@ -274,32 +275,17 @@ const mintClick = async (
     const latestBlockhash: BlockhashWithExpiryBlockHeight =
       await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
 
-    // Build raw transactions and separate wallet signer from local NFT mint keypairs.
-    const builtTxs = mintBuilders.map(({ builder, signers }) => ({
+    // Build transactions, keeping all signers (wallet + local NFT mint keypairs).
+    const mintTxs = mintBuilders.map(({ builder, signers }) => ({
       transaction: builder.setBlockhash(latestBlockhash).build(umi),
-      localSigners: signers.filter(s => s.publicKey !== umi.identity.publicKey),
+      signers,
     }));
 
     setLoadingState("Please sign...");
 
-    // 7) Phantom-compliant signing: wallet signs first (one prompt for all txs via
-    //    signAllTransactions, or signTransaction for a single tx), then local NFT
-    //    mint keypairs add their signatures, then submit directly to the RPC.
-    //    This avoids Lighthouse simulation warnings caused by multi-signer flows.
-    const rawTxs = builtTxs.map(t => t.transaction);
-    const walletSignedTxs: Transaction[] = rawTxs.length === 1
-      ? [await umi.identity.signTransaction(rawTxs[0])]
-      : await umi.identity.signAllTransactions(rawTxs);
-
-    const signedTxs = await Promise.all(
-      walletSignedTxs.map(async (tx, i) => {
-        let signed = tx;
-        for (const signer of builtTxs[i].localSigners) {
-          signed = await signer.signTransaction(signed);
-        }
-        return signed;
-      })
-    );
+    // UMI's signAllTransactions handles all signers in one pass: batches wallet
+    // prompts via signAllTransactions then signs locally with each keypair.
+    const signedTxs = await signAllTransactions(mintTxs);
 
     const signatures: Uint8Array[] = [];
     for (let i = 0; i < signedTxs.length; i++) {
