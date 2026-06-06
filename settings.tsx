@@ -1,6 +1,6 @@
 // settings.tsx
 export const mintSettings = [
-  { label: "LFG", mintText: "FREE!", buttonLabel: "CLAIM", header: "TOP 10 PRIZE" },
+  { label: "LFG", mintText: "FREE!", buttonLabel: "FREE MINT", header: "TOP 10 PRIZE" },
   { label: "OG", mintText: "0.05 sol", buttonLabel: "MINT", header: "SUPPORT THE PROJECT" }
 ];
 

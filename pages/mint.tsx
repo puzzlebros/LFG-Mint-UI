@@ -37,6 +37,7 @@ import {
 import { ButtonList } from "../components/buttons/mintButton";
 import { InitializeModal } from "../components/modals/initializeModal";
 import { image, headerText } from "../settings";
+import { useRouter } from "next/router";
 import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/checkerHelper";
 import { useWallet } from "@solana/wallet-adapter-react";
 import axios from "axios";
@@ -360,11 +361,21 @@ export default function MintPage() {
   }, [walletPublicKey, isMinting, isDemo]);
 
   const PageContent = () => {
+    const router = useRouter();
+    const isAdminMode = router.query.admin !== undefined;
+
     // allow-list group
     const allowListLabel = candyGuard
       ?.groups.find(g => g.guards.allowList.__option === 'Some')
       ?.label;
     const allowGuard = guards.find(g => g.label === allowListLabel);
+
+    // Admin: all guards forced allowed so the button is never greyed out.
+    // ButtonList detects ?admin internally and routes to /api/adminMint.
+    const adminGuardList = useMemo(
+      () => (isAdminMode ? guards.map(g => ({ ...g, allowed: true, reason: '' })) : []),
+      [isAdminMode, guards]
+    );
 
     // states
     const showLogin = !connected || !walletPublicKey || blocked;
@@ -406,14 +417,14 @@ export default function MintPage() {
     let descriptionContent: JSX.Element;
 
     if (showClaim) {
-      title = "MINT YOUR REWARD";
+      title = "FREE MINT AVAILABLE";
       descriptionContent = (
         <>
           <Text as="span" fontWeight="bold">
             You earned it!
           </Text>
           <br />
-          FREE MINT your flamingos
+          FREE MINT your flamingos<br/>
           before the 24-hour window closes.
         </>
       );
@@ -613,10 +624,32 @@ export default function MintPage() {
               >
                 <span>
                   <Button size="default" isDisabled mt={2}>
-                    MINT 
+                    MINT
                   </Button>
                 </span>
               </Tooltip>
+            </Center>
+          )}
+
+          {/* Admin mint — only visible at /mint?admin */}
+          {isAdminMode && walletPublicKey && candyMachine && candyGuard && !loading && adminGuardList.length > 0 && (
+            <Center w="full" flexDirection="column" gap={1} mt={4}>
+              <Text textStyle="copy" fontSize="10px" letterSpacing="3px" color="gray.400">
+                ADMIN
+              </Text>
+              <ButtonList
+                guardList={adminGuardList}
+                candyMachine={candyMachine}
+                candyGuard={candyGuard}
+                umi={umi}
+                ownedTokens={ownedTokens}
+                setGuardList={setGuards}
+                setMintsCreated={setMintsCreated}
+                onOpen={onShowNftOpen}
+                setCheckEligibility={setCheckEligibility}
+                ownedCoreAssets={ownedCoreAssets}
+                allowlist={topWallets ?? []}
+              />
             </Center>
           )}
         </VStack>

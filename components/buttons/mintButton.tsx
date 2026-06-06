@@ -5,6 +5,7 @@ import {
   CandyMachine,
   fetchCandyMachine,
   fetchCandyGuard,
+  safeFetchAllowListProofFromSeeds,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import {
@@ -183,6 +184,31 @@ const mintClick = async (
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error ?? "Route proof failed");
         console.log(`[allowlist proof] phantom server-side: alreadyExists=${data.alreadyExists}`);
+
+        // Verify the proof PDA is visible from this client's UMI context (which
+        // uses whatever candy-guard program ID is registered in this deployment).
+        // If the server's UMI derived the PDA with a different program ID, the
+        // proof won't be found here and we fall back to the client-side path.
+        const merkleRoot = freshGuardToUse.guards.allowList.value.merkleRoot;
+        const proofAccount = await safeFetchAllowListProofFromSeeds(umi, {
+          candyGuard:   freshCandyMachine.mintAuthority,
+          candyMachine: freshCandyMachine.publicKey,
+          merkleRoot,
+          user: publicKey(walletAddress),
+        });
+        if (!proofAccount) {
+          console.warn("[allowlist proof] server PDA not found by client UMI — falling back to client-side route");
+          const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
+          if (routeTxBuilder.getInstructions().length > 0) {
+            const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
+              send: { skipPreflight: true },
+              confirm: { commitment: "confirmed" },
+            });
+            console.log(`[allowlist proof] fallback client-side sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
+          } else {
+            console.log("[allowlist proof] fallback: proof already exists via client-side check");
+          }
+        }
       } else {
         const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
         if (routeTxBuilder.getInstructions().length > 0) {
@@ -518,7 +544,7 @@ export function ButtonList({
   return (
     <VStack spacing={3} align="center" w="full">
       {buttons.map((btn, idx) => {
-        const isClaim = btn.buttonLabel.toUpperCase() === "CLAIM";
+        const isClaim = btn.buttonLabel.toUpperCase() === "FREE MINT";
         const timerTarget = isClaim ? btn.endTime : btn.startTime;
         return (
           <VStack key={idx} spacing={1} align="center" w="full">

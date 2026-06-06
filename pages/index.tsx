@@ -455,7 +455,7 @@ const pulseClaim = keyframes`
                     The ranking freezes every Saturday.<br/>
                     Winners can free mint flamingos during that day.<br/>
                     16 grails are hidden inside the collection. Good luck!<br/>
-                    .<br/>
+                    <br/>
                     <b>Play. Rank. Mint. Repeat.</b>
                     <br/>
                   </Text>
@@ -464,7 +464,7 @@ const pulseClaim = keyframes`
               </>
               {isFrozen ? (
   <Tooltip
-    label="The game is locked on Saturdays"
+    label="The game is locked during Saturday"
     hasArrow
     placement="top"
   >
