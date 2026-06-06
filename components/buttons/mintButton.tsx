@@ -5,6 +5,8 @@ import {
   CandyMachine,
   fetchCandyMachine,
   fetchCandyGuard,
+  safeFetchAllowListProofFromSeeds,
+  findAllowListProofPda,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import {
@@ -156,6 +158,17 @@ const mintClick = async (
     // 2) Route allowlist proof — send as a separate tx for all wallets.
     if (freshGuardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
+      const merkleRoot = freshGuardToUse.guards.allowList.value.merkleRoot;
+
+      // Log the exact PDA address so we can inspect it on-chain if the mint fails.
+      const [proofPda] = findAllowListProofPda(umi, {
+        merkleRoot,
+        user: umi.identity.publicKey,
+        candyMachine: freshCandyMachine.publicKey,
+        candyGuard: freshCandyMachine.mintAuthority,
+      });
+      console.log(`[allowlist proof] PDA: ${proofPda}`);
+
       const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
       if (routeTxBuilder.getInstructions().length > 0) {
         const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
@@ -165,6 +178,23 @@ const mintClick = async (
         console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
       } else {
         console.log("[allowlist proof] already exists, skipping route tx");
+      }
+
+      // Verify the proof PDA actually exists on-chain before attempting the mint.
+      // If sendAndConfirm confirmed a failed tx (included-but-errored), or if
+      // safeFetchAllowListProofFromSeeds returned a false non-null earlier, the
+      // proof won't be there and the mint would fail with the same 6400 error.
+      const proof = await safeFetchAllowListProofFromSeeds(umi, {
+        merkleRoot,
+        user: umi.identity.publicKey,
+        candyMachine: freshCandyMachine.publicKey,
+        candyGuard: freshCandyMachine.mintAuthority,
+      });
+      console.log(`[allowlist proof] on-chain state:`, proof);
+      if (proof === null) {
+        throw new Error(
+          "AllowList proof PDA not found after route step — the route transaction may have failed on-chain. Please try again."
+        );
       }
     }
 
