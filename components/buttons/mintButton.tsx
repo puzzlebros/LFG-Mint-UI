@@ -6,6 +6,7 @@ import {
   fetchCandyMachine,
   fetchCandyGuard,
   safeFetchAllowListProofFromSeeds,
+  mintV1 as candyMintV1,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import {
@@ -20,8 +21,12 @@ import {
   Signer,
   signAllTransactions,
   BlockhashWithExpiryBlockHeight,
+  TransactionBuilder,
+  transactionBuilder,
+  none,
+  some,
 } from "@metaplex-foundation/umi";
-import { fetchAddressLookupTable } from "@metaplex-foundation/mpl-toolbox";
+import { fetchAddressLookupTable, setComputeUnitPrice, setComputeUnitLimit } from "@metaplex-foundation/mpl-toolbox";
 
 import { DigitalAssetWithToken, JsonMetadata, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata";
 import { mintSettings } from "../../settings";
@@ -38,7 +43,8 @@ import {
   routeBuilder,
   mintArgsBuilder,
   GuardButtonList,
-  buildTxs
+  buildTxs,
+  getRequiredCU,
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useRouter } from "next/router";
@@ -158,56 +164,21 @@ const mintClick = async (
     const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
 
     // 2) Route allowlist proof.
-    //    Phantom: server signs the route tx so Lighthouse never sees it.
-    //    Everyone else: client signs via the existing routeBuilder path.
+    //    Phantom: bundle route + mint in ONE transaction so Lighthouse can't inject
+    //    extra guard invocations between them (the root cause of Custom 6400).
+    //    Everyone else: client signs the route tx separately as before.
+    let phantomPendingRouteTx: TransactionBuilder | null = null;
     if (freshGuardToUse.guards.allowList.__option === "Some") {
       setLoadingState("Authenticating...");
       const isPhantom = walletAdapterName?.toLowerCase().includes("phantom") ?? false;
 
       if (isPhantom) {
-        if (!signMessage) throw new Error("Wallet does not support message signing");
-        if (!walletAddress) throw new Error("No wallet address");
-        const timestamp = Date.now();
-        const challenge = new TextEncoder().encode(`lfg-route-proof:${walletAddress}:${timestamp}`);
-        const sigBytes = await signMessage(challenge);
-        const signatureB58 = base58.deserialize(sigBytes)[0];
-        const resp = await fetch("/api/phantom-route-proof", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            walletAddress,
-            guardLabel: freshGuardToUse.label,
-            timestamp,
-            signature: signatureB58,
-          }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error ?? "Route proof failed");
-        console.log(`[allowlist proof] phantom server-side: alreadyExists=${data.alreadyExists}`);
-
-        // Verify the proof PDA is visible from this client's UMI context (which
-        // uses whatever candy-guard program ID is registered in this deployment).
-        // If the server's UMI derived the PDA with a different program ID, the
-        // proof won't be found here and we fall back to the client-side path.
-        const merkleRoot = freshGuardToUse.guards.allowList.value.merkleRoot;
-        const proofAccount = await safeFetchAllowListProofFromSeeds(umi, {
-          candyGuard:   freshCandyMachine.mintAuthority,
-          candyMachine: freshCandyMachine.publicKey,
-          merkleRoot,
-          user: publicKey(walletAddress),
-        });
-        if (!proofAccount) {
-          console.warn("[allowlist proof] server PDA not found by client UMI — falling back to client-side route");
-          const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
-          if (routeTxBuilder.getInstructions().length > 0) {
-            const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
-              send: { skipPreflight: true },
-              confirm: { commitment: "confirmed" },
-            });
-            console.log(`[allowlist proof] fallback client-side sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
-          } else {
-            console.log("[allowlist proof] fallback: proof already exists via client-side check");
-          }
+        const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
+        if (routeTxBuilder.getInstructions().length > 0) {
+          console.log("[allowlist proof] phantom: proof missing — bundling route with mint tx");
+          phantomPendingRouteTx = routeTxBuilder;
+        } else {
+          console.log("[allowlist proof] phantom: proof already exists");
         }
       } else {
         const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
@@ -276,19 +247,49 @@ const mintClick = async (
 
     // 6) Build mint transactions — CU simulation runs here with a temp blockhash
     //    (replaceRecentBlockhash:true means simulation is blockhash-agnostic).
+    //    Phantom + allowList without an existing proof: bundle the route instruction
+    //    atomically with the mint so Lighthouse cannot inject extra guard calls between them.
     const mintArgsArray = mintArgsBuilder(freshGuardToUse, mintAmount);
     const tempBlockhash = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
 
-    const mintBuilders = await buildTxs(
-      umi,
-      freshCandyMachine,
-      freshCandyGuard,
-      nftsigners,
-      freshGuardToUse,
-      mintArgsArray,
-      tables,
-      tempBlockhash.blockhash
-    );
+    let mintBuilders: { builder: TransactionBuilder; signers: Signer[] }[];
+    if (phantomPendingRouteTx) {
+      const priorityFee = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
+      const nftSigner = nftsigners[0];
+      const mintInstruction = candyMintV1(umi, {
+        candyMachine: freshCandyMachine.publicKey,
+        collection: freshCandyMachine.collectionMint,
+        asset: nftSigner,
+        group: freshGuardToUse.label === "default" ? none() : some(freshGuardToUse.label),
+        candyGuard: freshCandyGuard.publicKey,
+        mintArgs: mintArgsArray[0],
+      });
+      // Build: [CB_limit(temp), CB_price, route_ix, mint_ix]
+      const combined = transactionBuilder()
+        .prepend(setComputeUnitPrice(umi, { microLamports: priorityFee }))
+        .prepend(setComputeUnitLimit(umi, { units: 1_400_000 }))
+        .add(phantomPendingRouteTx)
+        .add(mintInstruction)
+        .setAddressLookupTables(tables)
+        .setBlockhash(tempBlockhash.blockhash);
+      const units = await getRequiredCU(umi, combined.build(umi));
+      console.log(`[phantom route+mint tx] estimated CU: ${units}`);
+      // Replace the temp CB_limit (index 0) with the simulated value
+      const [, rest] = combined.splitByIndex(1);
+      const withCU = rest.prepend(setComputeUnitLimit(umi, { units }));
+      mintBuilders = [{ builder: withCU, signers: withCU.getSigners(umi) }];
+    } else {
+      mintBuilders = await buildTxs(
+        umi,
+        freshCandyMachine,
+        freshCandyGuard,
+        nftsigners,
+        freshGuardToUse,
+        mintArgsArray,
+        tables,
+        tempBlockhash.blockhash
+      );
+    }
 
     if (!mintBuilders.length) {
       throw new Error("No mint transaction could be built.");

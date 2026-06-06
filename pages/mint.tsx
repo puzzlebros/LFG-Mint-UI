@@ -370,12 +370,16 @@ export default function MintPage() {
       ?.label;
     const allowGuard = guards.find(g => g.label === allowListLabel);
 
-    // Admin: all guards forced allowed so the button is never greyed out.
-    // ButtonList detects ?admin internally and routes to /api/adminMint.
-    const adminGuardList = useMemo(
-      () => (isAdminMode ? guards.map(g => ({ ...g, allowed: true, reason: '' })) : []),
-      [isAdminMode, guards]
-    );
+    // Admin: one non-allowList guard, forced allowed.
+    // DEPLOY_KEYPAIR (server signer used by adminMint.ts) is not in the merkle tree,
+    // so it can never satisfy the allowList guard — only the paid path works here.
+    const adminGuardList = useMemo(() => {
+      if (!isAdminMode) return [];
+      const nonAllowList = guards.filter(g => g.label !== allowListLabel);
+      if (nonAllowList.length === 0) return [];
+      const preferred = nonAllowList.find(g => g.label !== 'default') ?? nonAllowList[0];
+      return [{ ...preferred, allowed: true, reason: '' }];
+    }, [isAdminMode, guards, allowListLabel]);
 
     // states
     const showLogin = !connected || !walletPublicKey || blocked;
