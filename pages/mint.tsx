@@ -132,7 +132,6 @@ export default function MintPage() {
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
   const { isFrozen } = useWeeklyCycle();
-  const [grailsRemaining, setGrailsRemaining] = useState<number | null>(null);
 
   // wallet + CM
   const wallet = useWallet();
@@ -334,14 +333,6 @@ export default function MintPage() {
       .catch(err => console.error("⚠️ postMint failed:", err));
   }, [mintsCreated, isDemo]);
 
-  // grails remaining — refetch on mount and after each mint
-  useEffect(() => {
-    fetch("/api/grailsRemaining")
-      .then(r => r.json())
-      .then(d => { if (typeof d.remaining === "number") setGrailsRemaining(d.remaining); })
-      .catch(() => {});
-  }, [mintsCreated]);
-
   // refresh on focus
   useEffect(() => {
     if (isDemo) return;
@@ -410,8 +401,8 @@ export default function MintPage() {
             You earned it!
           </Text>
           <br />
-          FREE MINT your flamingos<br/>
-          before the 24-hour window closes.
+          FREE MINT your flamingo this weekend —<br/>
+          the window closes Monday.
         </>
       );
     } else if (showMint) {
@@ -420,8 +411,8 @@ export default function MintPage() {
         <>
           <b>Want to help the flock grow?</b>
           <br />
-          Get your flamingo and fly with us, every mint keeps the project
-          soaring and unlocks new adventures for the community.
+          Rank in the top 10 during the week to earn a free mint every
+          weekend, or grab your flamingo now and fly with us.
         </>
       );
     } else if (showLogin) {
@@ -432,7 +423,7 @@ export default function MintPage() {
             Log in to join the flock.
           </Text>
           <br />
-          Play to win or mint right away!
+          Rank during the week, free mint every weekend!
         </>
       );
     } else {
@@ -528,16 +519,7 @@ export default function MintPage() {
             </Text>
           )}
 
-          {!showLogin && grailsRemaining !== null && (
-            <Text
-              textAlign="center"
-              fontSize={{ base: "0.8rem", md: "0.95rem" }}
-              color="whiteAlpha.600"
-              mt={-2}
-            >
-              {grailsRemaining} grail{grailsRemaining !== 1 ? "s" : ""} remaining
-            </Text>
-          )}
+
 </VStack>
 
         {/* RIGHT: pack image + button + price */}

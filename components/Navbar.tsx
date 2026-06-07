@@ -291,8 +291,8 @@ export default function Navbar() {
               <Tooltip
                 label={
                   isFrozen
-                    ? "The game is locked on Saturday"
-                    : "Start playing now!"
+                    ? "Game locked during the weekend — free minting is open!"
+                    : "Rank this week to earn a free mint!"
                 }
                 placement="top"
                 hasArrow
