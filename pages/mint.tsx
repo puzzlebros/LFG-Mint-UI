@@ -132,18 +132,11 @@ export default function MintPage() {
   const { isOpen: isShowNftOpen, onOpen: onShowNftOpen, onClose: onShowNftClose } = useDisclosure();
   const { isOpen: isInitializerOpen, onOpen: onInitializerOpen, onClose: onInitializerClose } = useDisclosure();
   const { isFrozen } = useWeeklyCycle();
+  const [grailsRemaining, setGrailsRemaining] = useState<number | null>(null);
 
   // wallet + CM
   const wallet = useWallet();
   const { publicKey: walletPublicKey, connected } = wallet;
-
-  useEffect(() => {
-  console.log("ENVIRONMENT", process.env.NEXT_PUBLIC_ENVIRONMENT);
-  console.log("RPC", process.env.NEXT_PUBLIC_RPC);
-  console.log("CM", process.env.NEXT_PUBLIC_CANDY_MACHINE_ID);
-  console.log("LUT", process.env.NEXT_PUBLIC_LUT);
-  console.log("APP_URL", process.env.NEXT_PUBLIC_APP_URL);
-}, []);
 
   const [candyMachine, setCandyMachine] = useState<CandyMachine>();
   const [candyGuard, setCandyGuard] = useState<CandyGuard>();
@@ -210,7 +203,6 @@ export default function MintPage() {
   useEffect(() => {
     if (isDemo) return;
     if (!walletPublicKey) {
-      console.log("🔌 Wallet disconnected — clearing state");
       setGuards([]);
       setIsAllowed(false);
       setLoading(false);
@@ -223,7 +215,6 @@ export default function MintPage() {
   useEffect(() => {
     if (isDemo) return;
     if (!walletPublicKey || candyMachine) return;
-    console.log("💠 Fetching Candy Machine & Guard…");
     setLoading(true);
 
     (async () => {
@@ -254,7 +245,6 @@ export default function MintPage() {
       return;
     }
 
-    console.log("🔍 Running guardChecker…");
     setLoading(true);
     let cancelled = false;
 
@@ -271,7 +261,6 @@ export default function MintPage() {
           await guardChecker(umi, candyGuard, candyMachine, now, topWallets);
 
         if (!cancelled) {
-          console.log("✅ guardReturn:", guardReturn);
           setGuards(guardReturn);
           setOwnedTokens(ot);
           setOwnedCoreAssets(oca);
@@ -307,7 +296,6 @@ export default function MintPage() {
   // after mint finishes & modal closes, refresh supply + guards
   const onNftModalClose = () => {
     onShowNftClose();
-    console.log("🔄 Re-fetching Candy Machine & Guard…");
     setLoading(true);
     fetchCandyMachine(umi, candyMachineId)
       .then(async (cm) => {
@@ -334,7 +322,6 @@ export default function MintPage() {
     if (!offChainMetadata?.name || !offChainMetadata.image || !mintAddress) return;
 
     if (hasPostedMint(mintAddress)) {
-      console.log(`[API POST] Already posted for mint ${mintAddress}, skipping`);
       return;
     }
 
@@ -347,12 +334,19 @@ export default function MintPage() {
       .catch(err => console.error("⚠️ postMint failed:", err));
   }, [mintsCreated, isDemo]);
 
+  // grails remaining — refetch on mount and after each mint
+  useEffect(() => {
+    fetch("/api/grailsRemaining")
+      .then(r => r.json())
+      .then(d => { if (typeof d.remaining === "number") setGrailsRemaining(d.remaining); })
+      .catch(() => {});
+  }, [mintsCreated]);
+
   // refresh on focus
   useEffect(() => {
     if (isDemo) return;
     const onFocus = () => {
       if (walletPublicKey && !isMinting) {
-        console.log("Window focus → refresh guard");
         setCheckEligibility(true);
       }
     };
@@ -364,15 +358,10 @@ export default function MintPage() {
     const router = useRouter();
     const isAdminMode = router.query.admin !== undefined;
 
-    // allow-list group
-    const allowListLabel = candyGuard
-      ?.groups.find(g => g.guards.allowList.__option === 'Some')
-      ?.label;
+    // LFG is the free-mint group — server checks top-10 and pays the tx.
+    const allowListLabel = "LFG";
     const allowGuard = guards.find(g => g.label === allowListLabel);
 
-    // Admin: one non-allowList guard, forced allowed.
-    // DEPLOY_KEYPAIR (server signer used by adminMint.ts) is not in the merkle tree,
-    // so it can never satisfy the allowList guard — only the paid path works here.
     const adminGuardList = useMemo(() => {
       if (!isAdminMode) return [];
       const nonAllowList = guards.filter(g => g.label !== allowListLabel);
@@ -391,13 +380,6 @@ export default function MintPage() {
     );
     // showMint = any connected wallet that is not in claim state
     const showMint = Boolean(walletPublicKey && !showClaim);
-
-    useEffect(() => {
-      if (isDemo) return;
-      console.log(
-        `Claim eligibility: ${showClaim} Wallet in top-3 (any allowed guard): ${isAllowed}`
-      );
-    }, [showClaim, isAllowed]);
 
     // claim uses only allowGuard
     const claimGuardList = useMemo(
@@ -545,6 +527,17 @@ export default function MintPage() {
               </Text>
             </Text>
           )}
+
+          {!showLogin && grailsRemaining !== null && (
+            <Text
+              textAlign="center"
+              fontSize={{ base: "0.8rem", md: "0.95rem" }}
+              color="whiteAlpha.600"
+              mt={-2}
+            >
+              {grailsRemaining} grail{grailsRemaining !== 1 ? "s" : ""} remaining
+            </Text>
+          )}
 </VStack>
 
         {/* RIGHT: pack image + button + price */}
@@ -609,7 +602,6 @@ export default function MintPage() {
                   onOpen={onShowNftOpen}
                   setCheckEligibility={setCheckEligibility}
                   ownedCoreAssets={ownedCoreAssets}
-                  allowlist={topWallets ?? []}
                   buttonProps={claimButtonProps}
                   onBeforeMint={async () => {
                     const res = await preflight();
@@ -652,7 +644,6 @@ export default function MintPage() {
                 onOpen={onShowNftOpen}
                 setCheckEligibility={setCheckEligibility}
                 ownedCoreAssets={ownedCoreAssets}
-                allowlist={topWallets ?? []}
               />
             </Center>
           )}

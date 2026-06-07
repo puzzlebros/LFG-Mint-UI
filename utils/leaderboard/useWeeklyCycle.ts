@@ -14,14 +14,14 @@ export function getWeeklyCycle(now = new Date()) {
   const wd      = now.getUTCDay()            // 0=Sun…6=Sat
   const daysOff = (wd - 6 + 7) % 7           // how many days since Saturday
 
-  // Saturday @ 03:00 UTC
-  const satUTC = new Date(Date.UTC(y, m, d - daysOff, 3, 0, 0, 0))
-  // the following Sunday @ 03:00 UTC
-  const sunUTC = new Date(satUTC.getTime() + MS_PER_DAY)
-  // are we in [Sat03, Sun03)?
-  const isFrozen = now >= satUTC && now < sunUTC
+  // Saturday @ 00:00 UTC — end of Friday, start of weekend freeze
+  const satUTC = new Date(Date.UTC(y, m, d - daysOff, 0, 0, 0, 0))
+  // Monday @ 00:00 UTC — end of Sunday, leaderboard clears here
+  const monUTC = new Date(satUTC.getTime() + 2 * MS_PER_DAY)
+  // are we in [Sat00, Mon00)?
+  const isFrozen = now >= satUTC && now < monUTC
 
-  return { satUTC, sunUTC, isFrozen }
+  return { satUTC, monUTC, isFrozen }
 }
 
 /** convenience export */
@@ -52,14 +52,14 @@ export function useWeeklyCycle() {
     const tick = () => {
       const now = new Date()
       // **reuse** your shared logic:
-      const { satUTC, sunUTC, isFrozen } = getWeeklyCycle(now)
+      const { satUTC, monUTC, isFrozen } = getWeeklyCycle(now)
 
       setIsFrozen(isFrozen)
 
       // pick the next transition point
       let nextTransition: Date
       if (now < satUTC)      nextTransition = satUTC
-      else if (now < sunUTC) nextTransition = sunUTC
+      else if (now < monUTC) nextTransition = monUTC
       else                   nextTransition = new Date(satUTC.getTime() + 7 * MS_PER_DAY)
 
       setNext(nextTransition)

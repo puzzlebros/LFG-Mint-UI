@@ -20,15 +20,14 @@ if (!ADMIN_PASSWORD) {
 }
 
 // pull in your utility functions
-import { clearLeaderboard }     from './leaderboard/clearLeaderboard.ts';
-import { removeEntry }          from './leaderboard/removeEntry.ts';
-import { updateAllowlistGuard } from './leaderboard/updateAllowlist.ts';
+import { clearLeaderboard } from './leaderboard/clearLeaderboard.ts';
+import { removeEntry }      from './leaderboard/removeEntry.ts';
 
 const cli = new Command();
 
 cli
   .name('admin')
-  .description('🔧 Leaderboard & allowlist CLI')
+  .description('🔧 Leaderboard CLI')
   .version('1.0.0');
 
 // — clear-leaderboard —
@@ -59,22 +58,6 @@ cli
       process.exit(0);
     } catch (err: any) {
       console.error('❌ Failed to remove entry:', err.message || err);
-      process.exit(1);
-    }
-  });
-
-// — update-allowlist —
-cli
-  .command('update-allowlist')
-  .description('🔀 Merge top-3 into allowlist, update Candy Guard, clear leaderboard')
-  .action(async () => {
-    console.log('🔒 Verifying ADMIN_PASSWORD');
-    try {
-      await updateAllowlistGuard();
-      console.log('🎉 Allowlist updated & leaderboard reset.');
-      process.exit(0);
-    } catch (err: any) {
-      console.error('❌ Failed update-allowlist:', err.message || err);
       process.exit(1);
     }
   });

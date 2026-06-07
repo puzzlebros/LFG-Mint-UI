@@ -1,7 +1,6 @@
 // pages/api/allowlistMint.ts
-// Bypasses Phantom/Lighthouse by signing the mint tx server-side with DEPLOY_KEYPAIR.
-// The user's route tx (which created their AllowListProof PDA) must have already been
-// submitted before calling this endpoint.
+// Checks top-10 Supabase rank, then mints server-side with DEPLOY_KEYPAIR.
+// LFG candy guard group uses addressGate(DEPLOY_KEYPAIR) — no PDA route step needed.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
@@ -11,14 +10,12 @@ import {
   publicKey,
   some,
   transactionBuilder,
-  Signer,
 } from "@metaplex-foundation/umi";
 import {
   mplCandyMachine,
   fetchCandyMachine,
   fetchCandyGuard,
   mintV1,
-  safeFetchAllowListProofFromSeeds,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
 import { base58 } from "@metaplex-foundation/umi/serializers";
@@ -64,7 +61,7 @@ export default async function handler(
 
   // 2) Verify ed25519 signature — proves caller controls ownerWallet without exposing the key
   try {
-    const message    = new TextEncoder().encode(`lfg-allowlist-mint:${ownerWallet}:${timestamp}`);
+    const message    = new TextEncoder().encode(`Claim your free LFG flamingo!\nWallet: ${ownerWallet}\nNonce: ${timestamp}`);
     const sigBytes   = base58.serialize(signature);
     const pubkeyBytes = new Web3PublicKey(ownerWallet).toBytes();
     const valid = nacl.sign.detached.verify(message, sigBytes, pubkeyBytes);
@@ -73,7 +70,7 @@ export default async function handler(
     return res.status(403).json({ error: "Signature verification failed" });
   }
 
-  // 3) Verify wallet is in the current top-10 allowlist (Supabase)
+  // 3) Verify wallet is in the current top-10 (Supabase)
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: leaderboard, error: dbErr } = await supabase
     .from("leaderboard")
@@ -88,7 +85,7 @@ export default async function handler(
 
   const allowedWallets = leaderboard.map((r: { wallet_address: string }) => r.wallet_address);
   if (!allowedWallets.includes(ownerWallet)) {
-    return res.status(403).json({ error: "Wallet not in current allowlist (top-10)" });
+    return res.status(403).json({ error: "Wallet not in current top-10" });
   }
 
   // 4) Set up server-side UMI with DEPLOY_KEYPAIR as the fee payer / signer
@@ -101,36 +98,8 @@ export default async function handler(
     const cm = await fetchCandyMachine(umi, publicKey(cmId));
     const cg = await fetchCandyGuard(umi, cm.mintAuthority);
 
-    // 5) Locate the LFG allowList group and extract the current merkle root
-    const lfgGroup = cg.groups.find((g) => g.label === "LFG");
-    if (!lfgGroup || lfgGroup.guards.allowList.__option !== "Some") {
-      return res.status(500).json({ error: "LFG allowList group not found on candy guard" });
-    }
-    const merkleRoot = lfgGroup.guards.allowList.value.merkleRoot;
-
-    // 6) Verify the user's AllowListProof PDA exists on-chain.
-    //    This PDA was created by the user's own route tx (signed by Phantom before this call).
-    //    Its existence proves: the user was in the allowlist AND submitted the route tx.
-    //    Seeds: [merkleRoot, ownerWallet, candyGuard, candyMachine]
-    const proof = await safeFetchAllowListProofFromSeeds(umi, {
-      merkleRoot,
-      user: publicKey(ownerWallet),
-      candyMachine: cm.publicKey,
-      candyGuard: cm.mintAuthority,
-    });
-    if (proof === null) {
-      return res.status(403).json({
-        error: "AllowList proof PDA not found — please complete the route step first",
-      });
-    }
-
-    // 7) Mint server-side.
-    //
-    // The `minter` slot is passed as a plain { publicKey } object (no signMessage/signTransaction).
-    // UMI's isSigner() returns false for this, so the transaction marks minter as isSigner:false —
-    // no signature required. On-chain, the allowList guard reads minter.key() = ownerWallet and
-    // finds the AllowListProof PDA for ownerWallet (created in step 6). DEPLOY_KEYPAIR signs only
-    // as payer; it never touches Phantom and Lighthouse never runs.
+    // 5) Mint — DEPLOY_KEYPAIR satisfies the addressGate on the LFG group.
+    //    owner = ownerWallet so the NFT lands in the user's wallet.
     const assetSigner  = generateSigner(umi);
     const priorityFee  = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
     const blockhash    = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
@@ -144,13 +113,9 @@ export default async function handler(
           collection: cm.collectionMint,
           asset: assetSigner,
           owner: publicKey(ownerWallet),
-          // Non-signing minter: isSigner=false in tx, .publicKey used for PDA derivation only.
-          minter: { publicKey: publicKey(ownerWallet) } as unknown as Signer,
-          group: some("LFG"),
+          group: some("ADMIN"),
           candyGuard: cg.publicKey,
-          mintArgs: {
-            allowList: some({ merkleRoot }),
-          },
+          mintArgs: {},
         })
       )
       .setBlockhash(blockhash);

@@ -5,8 +5,6 @@ import {
   CandyMachine,
   fetchCandyMachine,
   fetchCandyGuard,
-  safeFetchAllowListProofFromSeeds,
-  findAllowListProofPda,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { DasApiAssetAndAssetMintLimit, GuardReturn } from "../../utils/metaplex/checkerHelper";
 import {
@@ -33,7 +31,6 @@ import {
 } from "@chakra-ui/react";
 import {
   chooseGuardToUse,
-  routeBuilder,
   mintArgsBuilder,
   GuardButtonList,
   buildTxs,
@@ -58,7 +55,6 @@ const fetchNft = async (umi: Umi, nftAdress: PublicKey) => {
         break;
       } catch (e: any) {
         if (attempt < 14 && e?.name === "AccountNotFoundError") {
-          console.log(`[fetchNft] account not indexed yet, retrying (${attempt + 1}/15)…`);
           await new Promise((resolve) => setTimeout(resolve, 3000));
           continue;
         }
@@ -89,7 +85,6 @@ const mintClick = async (
   candyMachine: CandyMachine,
   candyGuard: CandyGuard,
   mintAmount: number,
-  allowlist: string[],
   setMintsCreated: Dispatch<
     SetStateAction<
       { mint: PublicKey; offChainMetadata?: JsonMetadata | undefined }[] | undefined
@@ -137,13 +132,6 @@ const mintClick = async (
     });
   };
 
-  console.log(
-    `[mintClick] selected label="${guard.label}" → resolved group="${guardToUse.label}"`
-  );
-  console.log(
-    `[mintClick] guards: allowList=${guardToUse.guards.allowList.__option}, solPayment=${guardToUse.guards.solPayment.__option}`
-  );
-
   const { toast } = createStandaloneToast();
   let activeToastId: string | number | undefined;
 
@@ -157,97 +145,41 @@ const mintClick = async (
     ]);
     const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
 
-    // 2) Route allowlist proof — send as a separate tx for all wallets.
-    if (freshGuardToUse.guards.allowList.__option === "Some") {
+    // 2) LFG free mint — server checks top-10 rank, DEPLOY_KEYPAIR signs the tx.
+    if (guard.label === "LFG" && !isAdminMode && walletAddress) {
+      if (!signMessage) throw new Error("Wallet does not support message signing");
       setLoadingState("Authenticating...");
-      const merkleRoot = freshGuardToUse.guards.allowList.value.merkleRoot;
 
-      // Log the exact PDA address so we can inspect it on-chain if the mint fails.
-      const [proofPda] = findAllowListProofPda(umi, {
-        merkleRoot,
-        user: umi.identity.publicKey,
-        candyMachine: freshCandyMachine.publicKey,
-        candyGuard: freshCandyMachine.mintAuthority,
+      const timestamp = Date.now();
+      const challenge = new TextEncoder().encode(`Claim your free LFG flamingo!\nWallet: ${walletAddress}\nNonce: ${timestamp}`);
+      activeToastId = toast({
+        title: "Sign to confirm the mint",
+        description: "Approve in your wallet to complete your free mint.",
+        status: "info",
+        duration: null,
+        isClosable: false,
       });
-      console.log(`[allowlist proof] PDA: ${proofPda}`);
+      const sig = await signMessage(challenge);
+      toast.close(activeToastId);
+      activeToastId = undefined;
+      const signatureB58 = base58.deserialize(sig)[0];
 
-      const routeTxBuilder = await routeBuilder(umi, freshGuardToUse, freshCandyMachine, allowlist);
-      if (routeTxBuilder.getInstructions().length > 0) {
-        activeToastId = toast({
-          title: "Verify you won the free mint",
-          description: "Approve in your wallet to continue.",
-          status: "info",
-          duration: null,
-          isClosable: false,
-        });
-        const { signature: routeSig } = await routeTxBuilder.sendAndConfirm(umi, {
-          send: { skipPreflight: true },
-          confirm: { commitment: "confirmed" },
-        });
-        toast.close(activeToastId);
-        activeToastId = undefined;
-        console.log(`[allowlist proof] sent+confirmed: ${base58.deserialize(routeSig)[0]}`);
-      } else {
-        console.log("[allowlist proof] already exists, skipping route tx");
-      }
-
-      // Verify the proof PDA actually exists on-chain before attempting the mint.
-      // If sendAndConfirm confirmed a failed tx (included-but-errored), or if
-      // safeFetchAllowListProofFromSeeds returned a false non-null earlier, the
-      // proof won't be there and the mint would fail with the same 6400 error.
-      const proof = await safeFetchAllowListProofFromSeeds(umi, {
-        merkleRoot,
-        user: umi.identity.publicKey,
-        candyMachine: freshCandyMachine.publicKey,
-        candyGuard: freshCandyMachine.mintAuthority,
+      setLoadingState("Minting...");
+      const resp = await fetch("/api/allowlistMint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerWallet: walletAddress, timestamp, signature: signatureB58 }),
       });
-      console.log(`[allowlist proof] on-chain state:`, proof);
-      if (proof === null) {
-        throw new Error(
-          "AllowList proof PDA not found after route step — the route transaction may have failed on-chain. Please try again."
-        );
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error ?? "Allowlist mint failed");
+
+      setLoadingState("Fetching your LFG");
+      const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
+      if (digitalAsset && jsonMetadata) {
+        setMintsCreated([{ mint: publicKey(data.mintAddress), offChainMetadata: jsonMetadata }]);
+        onOpen();
       }
-
-      // 3-allowlist) Mint server-side to bypass Lighthouse.
-      // The route tx above created the user's AllowListProof PDA; the server verifies it
-      // on-chain and sends mintV1 with minter=ownerWallet (non-signing) so the allowList
-      // guard finds the correct PDA without Phantom ever signing the mint transaction.
-      if (!isAdminMode && walletAddress) {
-        if (!signMessage) throw new Error("Wallet does not support message signing");
-        setLoadingState("Authenticating...");
-
-        const timestamp = Date.now();
-        const challenge = new TextEncoder().encode(`lfg-allowlist-mint:${walletAddress}:${timestamp}`);
-        activeToastId = toast({
-          title: "Sign to confirm the mint",
-          description: "Approve in your wallet to complete your free mint.",
-          status: "info",
-          duration: null,
-          isClosable: false,
-        });
-        const sig = await signMessage(challenge);
-        toast.close(activeToastId);
-        activeToastId = undefined;
-        const signatureB58 = base58.deserialize(sig)[0];
-
-        setLoadingState("Minting...");
-        const resp = await fetch("/api/allowlistMint", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ownerWallet: walletAddress, timestamp, signature: signatureB58 }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error ?? "Allowlist mint failed");
-        console.log(`[allowlist mint] sig: ${data.signature} asset: ${data.mintAddress}`);
-
-        setLoadingState("Fetching your LFG");
-        const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
-        if (digitalAsset && jsonMetadata) {
-          setMintsCreated([{ mint: publicKey(data.mintAddress), offChainMetadata: jsonMetadata }]);
-          onOpen();
-        }
-        return;
-      }
+      return;
     }
 
     // 3-admin) Server-side signing — bypasses Phantom/Lighthouse entirely.
@@ -276,7 +208,6 @@ const mintClick = async (
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error ?? "Admin mint failed");
-      console.log(`[admin mint] confirmed: ${data.signature} mint: ${data.mintAddress}`);
 
       setLoadingState("Fetching your LFG");
       const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
@@ -367,7 +298,6 @@ const mintClick = async (
         console.error(`Transaction ${i + 1} initial send failed:`, err);
         continue;
       }
-      console.log(`[mint ${i + 1}] broadcast: ${base58.deserialize(sig)[0]}`);
       signatures.push(sig);
 
       // Resend every 2 s while waiting for confirmation so the tx doesn't
@@ -380,7 +310,6 @@ const mintClick = async (
           strategy: { type: "blockhash", ...latestBlockhash },
           commitment: "confirmed",
         });
-        console.log(`[mint ${i + 1}] confirmed`);
       } catch (e) {
         console.error(`[mint ${i + 1}] confirmation failed:`, e);
       } finally {
@@ -444,7 +373,6 @@ const mintClick = async (
       /disconnected|emitter/i.test(msg);
 
     if (isRejected) {
-      console.log("[mintClick] transaction cancelled by user:", name || msg);
     } else {
       console.error("minting failed", e);
       toast({
@@ -529,7 +457,6 @@ type Props = {
   candyMachine?: CandyMachine;
   candyGuard?: CandyGuard;
   ownedTokens?: DigitalAssetWithToken[];
-  allowlist?: string[];
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>;
   setMintsCreated: Dispatch<SetStateAction<{ mint: PublicKey; offChainMetadata?: JsonMetadata }[] | undefined>>;
   onOpen: () => void;
@@ -544,7 +471,6 @@ export function ButtonList({
   guardList,
   candyMachine,
   candyGuard,
-  allowlist = [],
   setGuardList,
   setMintsCreated,
   onOpen,
@@ -621,7 +547,6 @@ export function ButtonList({
                       candyMachine,
                       candyGuard,
                       1,
-                      allowlist,
                       setMintsCreated,
                       setGuardList,
                       onOpen,

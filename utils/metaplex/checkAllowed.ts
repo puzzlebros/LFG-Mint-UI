@@ -141,6 +141,8 @@ export const guardChecker = async (
     }
   }
 
+  const walletInTop10 = allowlistChecker(topWallets, umi);
+
   for (const eachGuard of guardsToCheck) {
     const singleGuard = eachGuard.guards;
     let mintableAmount =
@@ -148,19 +150,31 @@ export const guardChecker = async (
 
     if (singleGuard.addressGate.__option === "Some") {
       const addressGate = singleGuard.addressGate as Some<AddressGate>;
-      if (
-        !addressGateChecker(
-          umi.identity.publicKey,
-          publicKey(addressGate.value.address)
-        )
-      ) {
-        guardReturn.push({
-          label: eachGuard.label,
-          allowed: false,
-          reason: "AddressGate: Wrong Address",
-          maxAmount: 0,
-        });
-        continue;
+      const isAddressMatch = addressGateChecker(
+        umi.identity.publicKey,
+        publicKey(addressGate.value.address)
+      );
+      if (!isAddressMatch) {
+        if (eachGuard.label === "LFG") {
+          // LFG: addressGate is the server keypair — check top-10 ranking instead
+          if (!walletInTop10) {
+            guardReturn.push({
+              label: eachGuard.label,
+              allowed: false,
+              reason: "Wallet not in top-10 leaderboard",
+              maxAmount: 0,
+            });
+            continue;
+          }
+        } else {
+          guardReturn.push({
+            label: eachGuard.label,
+            allowed: false,
+            reason: "AddressGate: Wrong Address",
+            maxAmount: 0,
+          });
+          continue;
+        }
       }
     }
 
@@ -179,24 +193,18 @@ export const guardChecker = async (
           reason: "Allocation of this guard reached",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}; allocation reached`);
         continue;
       }
     }
-
-    // Check if the wallet is in top-3 and part of the allowlist
-    const walletInTop10 = allowlistChecker(topWallets, umi);
-    console.log("Wallet in top-3 allowlist:", walletInTop10);
 
     if (singleGuard.allowList.__option === "Some") {
       if (!walletInTop10) {
         guardReturn.push({
           label: eachGuard.label,
           allowed: false,
-          reason: "Wallet not in allowlist (top-3 leaderboard)",
+          reason: "Wallet not in top-10 leaderboard",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}: Wallet not in top-3 allowlist`);
         continue;
       }
     }
@@ -215,7 +223,6 @@ export const guardChecker = async (
           reason: "No Asset to burn!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: No Asset to burn!`);
         continue;
       }
     }
@@ -243,7 +250,6 @@ export const guardChecker = async (
           reason: "Asset Mint limit of all owned NFT reached",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}; assetMintLimit reached`);
         continue;
       }
     }
@@ -262,7 +268,6 @@ export const guardChecker = async (
           reason: "No Asset to pay!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: No Asset to pay!`);
         continue;
       }
     }
@@ -282,7 +287,6 @@ export const guardChecker = async (
           reason: "No Asset to pay!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: No Asset to pay!`);
         continue;
       }
     }
@@ -296,7 +300,6 @@ export const guardChecker = async (
           reason: "Mint time is over!",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}; endDate reached!`);
         continue;
       }
     }
@@ -317,9 +320,6 @@ export const guardChecker = async (
           reason: "Not enough SOL",
           maxAmount: 0,
         });
-        console.info(
-          `Guard ${eachGuard.label}; freezeSolPayment: not enough SOL`
-        );
         continue;
       }
     }
@@ -334,7 +334,6 @@ export const guardChecker = async (
           reason: "Mint limit of this wallet reached",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}; mintLimit reached`);
         continue;
       }
     }
@@ -355,7 +354,6 @@ export const guardChecker = async (
           reason: "Not enough tokens!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: Token Balance too low !`);
         continue;
       } else {
         const payableAmount =
@@ -381,7 +379,6 @@ export const guardChecker = async (
           reason: "No NFT to burn!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: No Nft to burn!`);
         continue;
       }
     }
@@ -409,7 +406,6 @@ export const guardChecker = async (
           reason: "NFT Mint limit of all owned NFT reached",
           maxAmount: 0,
         });
-        console.info(`Guard ${eachGuard.label}; nftmintLimit reached`);
         continue;
       }
     }
@@ -423,7 +419,6 @@ export const guardChecker = async (
           reason: "No NFT of the requred held!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: NftGate no NFT held!`);
         continue;
       }
     }
@@ -442,7 +437,6 @@ export const guardChecker = async (
           reason: "No NFT to pay with!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label}: nftPayment no NFT to pay with`);
         continue;
       }
     }
@@ -460,9 +454,6 @@ export const guardChecker = async (
           reason: "Too many NFTs redeemed!",
           maxAmount: 0,
         });
-        console.info(
-          `${eachGuard.label}: redeemedAmount Too many NFTs redeemed!`
-        );
         continue;
       }
     }
@@ -497,7 +488,6 @@ export const guardChecker = async (
           reason: "Invalid SOL payment configuration",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} invalid sol payment config`);
         continue;
       }
 
@@ -515,9 +505,6 @@ export const guardChecker = async (
           reason: `Not enough SOL! Need ${(costLamports / 1_000_000_000).toFixed(2)} SOL`,
           maxAmount: 0,
         });
-        console.info(
-          `${eachGuard.label} SolPayment not enough SOL! wallet=${walletLamports} required=${costLamports}`
-        );
         continue;
       }
     }
@@ -531,7 +518,6 @@ export const guardChecker = async (
           reason: "StartDate not reached!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} StartDate not reached!`);
 
         continue;
       }
@@ -552,7 +538,6 @@ export const guardChecker = async (
           reason: "Not enough tokens!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} tokenBurn not enough tokens!`);
         continue;
       }
       const payableAmount =
@@ -575,7 +560,6 @@ export const guardChecker = async (
           reason: "Not enough tokens!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} tokenGate not enough tokens!`);
         continue;
       }
     }
@@ -595,7 +579,6 @@ export const guardChecker = async (
           reason: "Not enough tokens!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} tokenPayment not enough tokens!`);
         continue;
       }
       const payableAmount =
@@ -619,7 +602,6 @@ export const guardChecker = async (
           reason: "Not enough tokens!",
           maxAmount: 0,
         });
-        console.info(`${eachGuard.label} token2022Payment not enough tokens!`);
         continue;
       }
       const payableAmount =
