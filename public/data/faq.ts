@@ -14,12 +14,12 @@ export const faqs: Faq[] = [
   {
     question: "How does the ranking work?",
     answer:
-      "The ranking freezes each Saturday. During that day, the top 10 players can claim free flamingo NFTs. The ranking resets after that and starts all over again.",
+      "The ranking freezes every weekend (Saturday and Sunday). During that time, the top 10 players can claim free flamingo NFTs. The ranking resets on Monday and starts all over again.",
   },
   {
     question: "How do I know if I won?",
     answer:
-      "If you show up in the ranking by Saturday, you will see the CLAIM button to FREE MINT.",
+      "If you are in the top 10 by the weekend, you will see the CLAIM button to FREE MINT.",
   },
   {
     question: "Are there plans for the future of this project?",

@@ -406,13 +406,13 @@ export default function MintPage() {
         </>
       );
     } else if (showMint) {
-      title = "GET YOUR LFG";
+      title = "BECOME A LEGEND";
       descriptionContent = (
         <>
-          <b>Want to help the flock grow?</b>
+          <b>You can help the flock grow strong.</b>
           <br />
-          Rank in the top 10 during the week to earn a free mint every
-          weekend, or grab your flamingo now and fly with us.
+          Support us for 0.05 sol mints if you like our project. 
+          Check us out on www.puzzlebros.studio
         </>
       );
     } else if (showLogin) {

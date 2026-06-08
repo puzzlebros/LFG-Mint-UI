@@ -64,15 +64,15 @@ export function generateFakeEntries(
   const slots = MAX_ENTRIES - realEntries.length;
   if (slots <= 0) return [];
 
-  // Non-frozen: accumulate fakes day-by-day from this week's Monday 03:00 UTC.
-  // Frozen (Sat→Mon 03:00): weekStart points to the play week that just ended so
+  // Non-frozen: accumulate fakes day-by-day from this week's Monday 00:00 UTC.
+  // Frozen (Sat→Mon 00:00): weekStart points to the play week that just ended so
   // the existing fakes stay visible — dayIndex is capped at 4 so no new ones are
-  // added. Everything resets at Monday 03:00 (monUTC), the same moment the
+  // added. Everything resets at Monday 00:00 (monUTC), the same moment the
   // clear-leaderboard cron fires. Fake wallets never appear in topWallets —
   // those are sourced directly from Supabase.
   const weekStart = isFrozen
-    ? new Date(satUTC.getTime() - 5 * MS_PER_DAY)  // previous Monday 03:00
-    : monUTC;                                         // next Monday 03:00
+    ? new Date(satUTC.getTime() - 5 * MS_PER_DAY)  // previous Monday 00:00
+    : monUTC;                                         // next Monday 00:00
 
   const dayIndex = Math.min(
     Math.floor((now.getTime() - weekStart.getTime()) / MS_PER_DAY),

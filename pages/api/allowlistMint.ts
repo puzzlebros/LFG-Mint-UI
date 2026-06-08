@@ -59,6 +59,18 @@ export default async function handler(
     return res.status(403).json({ error: "Challenge expired" });
   }
 
+  // 1b) Free mint is only open during the weekend freeze [Sat 00:00, Mon 00:00) UTC
+  {
+    const now     = new Date();
+    const wd      = now.getUTCDay();                  // 0=Sun … 6=Sat
+    const daysOff = (wd - 6 + 7) % 7;                // days since most recent Saturday
+    const satUTC  = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysOff, 0, 0, 0, 0));
+    const monUTC  = new Date(satUTC.getTime() + 2 * 24 * 60 * 60 * 1000);
+    if (!(now >= satUTC && now < monUTC)) {
+      return res.status(403).json({ error: "Free mint is only available during the weekend" });
+    }
+  }
+
   // 2) Verify ed25519 signature — proves caller controls ownerWallet without exposing the key
   try {
     const message    = new TextEncoder().encode(`Claim your free LFG flamingo!\nWallet: ${ownerWallet}\nNonce: ${timestamp}`);

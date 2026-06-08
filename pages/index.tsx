@@ -426,7 +426,7 @@ const pulseClaim = keyframes`
         }
 
         <Center h="100%">
-          <Stack spacing={2} textAlign="center" align="center" w="full" maxW="550px" mx="auto" mt={5}>
+          <Stack spacing={2} textAlign="center" align="center" w="full" maxW="650px" mx="auto" mt={5}>
               <>
                 <Heading
                   as="h1"
@@ -434,7 +434,7 @@ const pulseClaim = keyframes`
                   textStyle="condensed"
                   lineHeight="6rem"
                 >
-                  GM, DEGEN
+                  WELCOME, DEGENS
                 </Heading>
                 <Text
                   textStyle="copy"
@@ -447,16 +447,16 @@ const pulseClaim = keyframes`
                   ml="5"
                 >
                   <Text as="span" fontWeight="bold" fontSize="1.5rem" lineHeight="2.3rem">
-                    Fly to the moon. Free mint each Saturday.
+                    Are you ready for an epic grail hunt?
                   </Text>
                   <br/><br/>
                   <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
-                    Connect your Solana wallet and play the game.<br/>
-                    The ranking freezes every Saturday.<br/>
-                    Winners can free mint flamingos during that day.<br/>
+                    Connect your Solana wallet and play the game during the week.<br/>
+                    If you rank below,  you unlock free mints during the weekend.<br/>
+                    And free means FREE, you pay 0 for the mint. No transaction costs.<br/>
                     16 grails are hidden inside the collection. Good luck!<br/>
                     <br/>
-                    <b>Play. Rank. Mint. Repeat.</b>
+                    <b>Play. Free Mint. Repeat.</b>
                     <br/>
                   </Text>
 
@@ -464,7 +464,7 @@ const pulseClaim = keyframes`
               </>
               {isFrozen ? (
   <Tooltip
-    label="The game is locked during Saturday"
+    label="The game is locked during weekends"
     hasArrow
     placement="top"
   >
@@ -526,7 +526,7 @@ const pulseClaim = keyframes`
               {isFrozen
                 ? 'MINT DAY'
                 : (
-                  'WANNA GET WL?'
+                  'WANNA FREE MINT?'
                 )
               }
             </Heading>
@@ -546,7 +546,7 @@ const pulseClaim = keyframes`
         <Text as="span" color="brand.Purple" fontWeight="bold">
           {timeLeft}
         </Text>{' '}
-        to mint your flamingo before the next round begins!
+        to free mint before the reset!
       </>
     ) : (
       <>
@@ -559,17 +559,7 @@ const pulseClaim = keyframes`
     )
   ) : (
     <>
-      Play, rank and{' '}
-      <Text as="span" color="brand.Purple" fontWeight="bold">
-        FREE MINT
-      </Text>{' '}
-      from the collection{' '}
-      <Text as="span" display={{ base: 'block', md: 'inline' }}>
-        in the next{' '}
-        <Text as="span" color="brand.Purple" fontWeight="bold">
-          {timeLeft}
-        </Text>
-      </Text>
+      Play and rank before the weekend!
     </>
   )}
 </Text>
