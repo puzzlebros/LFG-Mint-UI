@@ -1,6 +1,6 @@
 // components/Footer.tsx
 import React from 'react'
-import { Box, Flex, Text, Link, Icon } from '@chakra-ui/react'
+import { Box, Flex, Text, Link, Icon, Image } from '@chakra-ui/react'
 import { SiX, SiDiscord } from 'react-icons/si'
 import { MdOutlineStorefront, MdInsights, MdRadar } from 'react-icons/md'
 
@@ -89,6 +89,21 @@ export function Footer() {
             lineHeight="1"
           >
             <Icon as={MdRadar} boxSize={5} _hover={{ color: 'brand.DarkPurple' }} />
+          </Link>
+
+          {/* Puzzlebros Studio */}
+          <Link
+            href="https://www.puzzlebros.studio"
+            isExternal
+            aria-label="Puzzlebros Studio"
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            lineHeight="1"
+            opacity={0.9}
+            _hover={{ opacity: 1 }}
+          >
+            <Image src="/images/puzzlebros-studio.png" boxSize={5} objectFit="contain" alt="Puzzlebros Studio" />
           </Link>
         </Flex>
       </Flex>

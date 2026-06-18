@@ -432,14 +432,14 @@ const pulseClaim = keyframes`
                   as="h1"
                   fontSize={welcomeTitleSize}
                   textStyle="condensed"
-                  lineHeight="6rem"
+                  lineHeight="5rem"
                 >
-                  WELCOME, DEGENS
+                  WELCOME, DEGEN
                 </Heading>
                 <Text
                   textStyle="copy"
                   fontSize="1.2rem"
-                  lineHeight="1.5rem"
+                  lineHeight="1.3rem"
                   whiteSpace="normal"
                   wordBreak="break-word"
                   mt={{ base: "1", md: "5" }}
@@ -447,13 +447,13 @@ const pulseClaim = keyframes`
                   ml="5"
                 >
                   <Text as="span" fontWeight="bold" fontSize="1.5rem" lineHeight="2.3rem">
-                    Are you ready for an epic grail hunt?
+                    Ready for an epic grail hunt?
                   </Text>
                   <br/><br/>
                   <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
-                    Connect your Solana wallet and play the game during the week.<br/>
-                    If you rank below,  you unlock free mints during the weekend.<br/>
-                    And free means FREE, you pay 0 for the mint. No transaction costs.<br/>
+                    Connect and play the game during the week.<br/>
+                    Rank below and unlock free mints during the weekend.<br/>
+                    Unlimited free mints. No transaction costs.<br/>
                     16 grails are hidden inside the collection. Good luck!<br/>
                     <br/>
                     <b>Play. Free Mint. Repeat.</b>
