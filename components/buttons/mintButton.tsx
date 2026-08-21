@@ -145,33 +145,64 @@ const mintClick = async (
     ]);
     const freshGuardToUse = chooseGuardToUse(guard, freshCandyGuard);
 
-    // 2) LFG free mint — server checks top-10 rank, DEPLOY_KEYPAIR signs the tx.
+    // 2) LFG free mint — server checks top-10 rank and partially signs; the CLAIMER pays.
+    //    The server returns a transaction whose fee payer is the claimer's wallet and
+    //    whose `minter` (addressGate) slot is already signed by DEPLOY_KEYPAIR, so the
+    //    project no longer absorbs the ~0.0035 SOL Metaplex Core creation fee.
+    //    Must use signTransaction + manual send: signAndSendTransaction would have
+    //    Phantom rebuild the message and drop the server's partial signatures.
     if (guard.label === "LFG" && !isAdminMode && walletAddress) {
-      if (!signMessage) throw new Error("Wallet does not support message signing");
-      setLoadingState("Authenticating...");
+      setLoadingState("Preparing...");
 
-      const timestamp = Date.now();
-      const challenge = new TextEncoder().encode(`Claim your free LFG flamingo!\nWallet: ${walletAddress}\nNonce: ${timestamp}`);
+      const resp = await fetch("/api/allowlistMint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerWallet: walletAddress }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error ?? "Allowlist mint failed");
+
+      const binary = atob(data.transaction as string);
+      const txBytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) txBytes[i] = binary.charCodeAt(i);
+
+      setLoadingState("Please sign...");
       activeToastId = toast({
         title: "Sign to confirm the mint",
-        description: "Approve in your wallet to complete your free mint.",
+        description:
+          "The NFT is free — you only cover the ~0.0035 SOL network cost.",
         status: "info",
         duration: null,
         isClosable: false,
       });
-      const sig = await signMessage(challenge);
+      const signedTx = await umi.identity.signTransaction(
+        umi.transactions.deserialize(txBytes)
+      );
       toast.close(activeToastId);
       activeToastId = undefined;
-      const signatureB58 = base58.deserialize(sig)[0];
 
       setLoadingState("Minting...");
-      const resp = await fetch("/api/allowlistMint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerWallet: walletAddress, timestamp, signature: signatureB58 }),
+      const claimSig = await umi.rpc.sendTransaction(signedTx, {
+        skipPreflight: true,
+        preflightCommitment: "confirmed",
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error ?? "Allowlist mint failed");
+
+      // Resend every 2 s while waiting so the tx doesn't drop from the retry queue.
+      const claimResendTimer = setInterval(async () => {
+        try { await umi.rpc.sendTransaction(signedTx, { skipPreflight: true }); } catch {}
+      }, 2000);
+      try {
+        await umi.rpc.confirmTransaction(claimSig, {
+          strategy: {
+            type: "blockhash",
+            blockhash: data.blockhash,
+            lastValidBlockHeight: data.lastValidBlockHeight,
+          },
+          commitment: "confirmed",
+        });
+      } finally {
+        clearInterval(claimResendTimer);
+      }
 
       setLoadingState("Fetching your LFG");
       const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
@@ -530,6 +561,21 @@ export function ButtonList({
               </>
             )}
 
+            {isClaim && (
+              <Text
+                textStyle="copy"
+                fontSize="11px"
+                lineHeight="0.95rem"
+                color="gray.400"
+                textAlign="center"
+                maxW="270px"
+                mt="1"
+              >
+                The NFT is free. You only cover the Solana network + Metaplex
+                creation fee (~0.0035 SOL) from your wallet.
+              </Text>
+            )}
+
             <Tooltip label={!walletPublicKey ? "Log in to mint" : btn.tooltip}>
               <Button
                 size="default"
@@ -571,7 +617,7 @@ export function ButtonList({
                       letterSpacing="-0.01em"
                       textTransform="none"
                     >
-                      (<b>0.05</b> sol)
+                      (<b>0.01</b> sol)
                     </Text>
                   </Text>
                 ) : (

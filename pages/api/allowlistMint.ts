@@ -1,14 +1,27 @@
 // pages/api/allowlistMint.ts
-// Checks top-10 Supabase rank, then mints server-side with DEPLOY_KEYPAIR.
-// LFG candy guard group uses addressGate(DEPLOY_KEYPAIR) — no PDA route step needed.
+// Checks top-10 Supabase rank, then builds a mint transaction that the MINTER pays for.
+//
+// The LFG free mint runs on the candy guard's "ADMIN" group, which is protected by
+// addressGate(DEPLOY_KEYPAIR).  addressGate validates the `minter` account, while the
+// SOL fees (network fee + rent + the ~0.003 SOL Metaplex Core creation fee) are charged
+// to the `payer` account.  mintV1 exposes those as two independent signers, so we can
+// keep DEPLOY_KEYPAIR as the gate-satisfying `minter` while making the claimer the
+// `payer` / fee payer.  The server partially signs (minter + new asset keypair) and
+// hands the transaction back; the wallet adds the final signature and broadcasts.
+//
+// Eligibility stays a plain Supabase leaderboard check — no allowList guard, no merkle
+// proof route instruction, nothing extra for the wallet to simulate.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   keypairIdentity,
+  createSignerFromKeypair,
+  createNoopSigner,
   generateSigner,
   publicKey,
   some,
+  signTransaction,
   transactionBuilder,
 } from "@metaplex-foundation/umi";
 import {
@@ -18,11 +31,14 @@ import {
   mintV1,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
-import { base58 } from "@metaplex-foundation/umi/serializers";
-import nacl from "tweetnacl";
 import { PublicKey as Web3PublicKey } from "@solana/web3.js";
 
-type Ok  = { signature: string; mintAddress: string };
+type Ok = {
+  transaction: string;           // base64, partially signed (minter + asset)
+  mintAddress: string;
+  blockhash: string;
+  lastValidBlockHeight: number;
+};
 type Err = { error: string };
 
 export default async function handler(
@@ -44,22 +60,24 @@ export default async function handler(
     return res.status(500).json({ error: "Server misconfiguration: missing env vars" });
   }
 
-  const { ownerWallet, timestamp, signature } = req.body as {
-    ownerWallet?: string;
-    timestamp?: number;
-    signature?: string;
-  };
+  const { ownerWallet } = req.body as { ownerWallet?: string };
 
-  if (!ownerWallet || !timestamp || !signature) {
-    return res.status(400).json({ error: "ownerWallet, timestamp and signature are required" });
+  if (!ownerWallet) {
+    return res.status(400).json({ error: "ownerWallet is required" });
   }
 
-  // 1) Replay prevention — challenge must be fresh (within 60 s)
-  if (Math.abs(Date.now() - timestamp) > 60_000) {
-    return res.status(403).json({ error: "Challenge expired" });
+  // 1) ownerWallet must be a well-formed pubkey.
+  //    No challenge signature is needed here: the transaction we return is only usable
+  //    by ownerWallet itself (it is the fee payer and must add the last signature), so
+  //    handing one out to the wrong caller grants nothing. Dropping the extra
+  //    signMessage step also keeps the claim at a single wallet prompt.
+  try {
+    new Web3PublicKey(ownerWallet);
+  } catch {
+    return res.status(400).json({ error: "Invalid ownerWallet" });
   }
 
-  // 1b) Free mint is only open during the weekend freeze [Sat 00:00, Mon 00:00) UTC
+  // 2) Free mint is only open during the weekend freeze [Sat 00:00, Mon 00:00) UTC
   {
     const now     = new Date();
     const wd      = now.getUTCDay();                  // 0=Sun … 6=Sat
@@ -69,17 +87,6 @@ export default async function handler(
     if (!(now >= satUTC && now < monUTC)) {
       return res.status(403).json({ error: "Free mint is only available during the weekend" });
     }
-  }
-
-  // 2) Verify ed25519 signature — proves caller controls ownerWallet without exposing the key
-  try {
-    const message    = new TextEncoder().encode(`Claim your free LFG flamingo!\nWallet: ${ownerWallet}\nNonce: ${timestamp}`);
-    const sigBytes   = base58.serialize(signature);
-    const pubkeyBytes = new Web3PublicKey(ownerWallet).toBytes();
-    const valid = nacl.sign.detached.verify(message, sigBytes, pubkeyBytes);
-    if (!valid) return res.status(403).json({ error: "Invalid signature" });
-  } catch {
-    return res.status(403).json({ error: "Signature verification failed" });
   }
 
   // 3) Verify wallet is in the current top-10 (Supabase)
@@ -100,53 +107,68 @@ export default async function handler(
     return res.status(403).json({ error: "Wallet not in current top-10" });
   }
 
-  // 4) Set up server-side UMI with DEPLOY_KEYPAIR as the fee payer / signer
+  // 4) Set up server-side UMI. DEPLOY_KEYPAIR is only the addressGate `minter` now —
+  //    it is deliberately NOT the fee payer, so it spends nothing on this mint.
   const umi = createUmi(rpc).use(mplCandyMachine());
   const keypairBytes = new Uint8Array(JSON.parse(kpRaw) as number[]);
   const serverKP = umi.eddsa.createKeypairFromSecretKey(keypairBytes);
   umi.use(keypairIdentity(serverKP));
+  const minterSigner = createSignerFromKeypair(umi, serverKP);
 
   try {
     const cm = await fetchCandyMachine(umi, publicKey(cmId));
     const cg = await fetchCandyGuard(umi, cm.mintAuthority);
 
-    // 5) Mint — DEPLOY_KEYPAIR satisfies the addressGate on the LFG group.
-    //    owner = ownerWallet so the NFT lands in the user's wallet.
-    const assetSigner  = generateSigner(umi);
-    const priorityFee  = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
-    const blockhash    = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
+    const assetSigner = generateSigner(umi);
+    // The claimer signs client-side; server-side it is a placeholder signer so the
+    // account lands in the message with the right signer/writable flags.
+    const payerSigner = createNoopSigner(publicKey(ownerWallet));
 
-    const tx = transactionBuilder()
+    const priorityFee = parseInt(process.env.NEXT_PUBLIC_MICROLAMPORTS ?? "1001");
+    const blockhash   = await umi.rpc.getLatestBlockhash({ commitment: "confirmed" });
+
+    // Measured on-chain: ~60k CU and ~0.0035 SOL total cost to the payer.
+    const builder = transactionBuilder()
       .prepend(setComputeUnitPrice(umi, { microLamports: priorityFee }))
-      .prepend(setComputeUnitLimit(umi, { units: 400_000 }))
+      .prepend(setComputeUnitLimit(umi, { units: 120_000 }))
       .add(
         mintV1(umi, {
           candyMachine: cm.publicKey,
           collection: cm.collectionMint,
           asset: assetSigner,
           owner: publicKey(ownerWallet),
+          payer: payerSigner,   // claimer pays network fee + rent + Core creation fee
+          minter: minterSigner, // DEPLOY_KEYPAIR satisfies addressGate on the ADMIN group
           group: some("ADMIN"),
           candyGuard: cg.publicKey,
           mintArgs: {},
         })
       )
+      .setFeePayer(payerSigner)
       .setBlockhash(blockhash);
 
-    const { signature: mintSig } = await tx.sendAndConfirm(umi, {
-      send: { skipPreflight: true },
-      confirm: { commitment: "confirmed" },
-    });
+    // Partially sign: minter + asset. The claimer's slot stays empty for their wallet.
+    // Note the client must use signTransaction (not signAndSendTransaction) — the
+    // latter makes Phantom rebuild the message and drop these signatures.
+    const partiallySigned = await signTransaction(builder.build(umi), [
+      minterSigner,
+      assetSigner,
+    ]);
+
+    const serialized = umi.transactions.serialize(partiallySigned);
 
     console.log(
-      `[allowlistMint] minted for ${ownerWallet}: sig=${base58.deserialize(mintSig)[0]} asset=${assetSigner.publicKey}`
+      `[allowlistMint] prepared mint for ${ownerWallet}: asset=${assetSigner.publicKey}`
     );
 
     return res.status(200).json({
-      signature: base58.deserialize(mintSig)[0],
+      transaction: Buffer.from(serialized).toString("base64"),
       mintAddress: assetSigner.publicKey.toString(),
+      blockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
     });
   } catch (e: any) {
     console.error("[allowlistMint] error:", e);
-    return res.status(500).json({ error: e?.message ?? "Mint failed" });
+    return res.status(500).json({ error: e?.message ?? "Mint preparation failed" });
   }
 }

@@ -411,7 +411,7 @@ export default function MintPage() {
         <>
           <b>You can help the flock grow strong.</b>
           <br />
-          Support us for 0.05 sol mints if you like our project. 
+          Support us for 0.01 sol mints if you like our project. 
           Check us out on www.puzzlebros.studio
         </>
       );
