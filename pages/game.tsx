@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWeeklyCycle } from "../utils/leaderboard/useWeeklyCycle";
+import { LEADERBOARD_ENABLED } from "../settings";
 import axios from "axios";
 import TutorialPopup from "../components/modals/TutorialPopup";
 import MobileLogOverlay from "@/utils/MobileLogOverlay";
@@ -95,7 +96,9 @@ function getUnityPathsRaw(opts: { origin: string; productName: string }) {
 export default function GamePage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const { isFrozen, next } = useWeeklyCycle();
+  const { isFrozen: weeklyFrozen, next } = useWeeklyCycle();
+  // No leaderboard → no weekly freeze, so the game is always playable.
+  const isFrozen = LEADERBOARD_ENABLED && weeklyFrozen;
   const { publicKey, connected } = useWallet();
 
   // ✅ Prevent SSR/CSR mismatch: don't render iframe until mounted

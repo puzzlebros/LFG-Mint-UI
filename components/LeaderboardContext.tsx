@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import axios from 'axios';
 import type { LeaderboardEntry } from '@/types/leaderboard';
 import { generateFakeEntries } from '@/utils/leaderboard/fakeEntries';
+import { LEADERBOARD_ENABLED } from '@/settings';
 
 interface LeaderboardContextType {
   topWallets: string[];          // real entries only — used for allowlist / minting
@@ -24,10 +25,13 @@ export const useLeaderboard = () => {
 export const LeaderboardProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [topWallets, setTopWallets] = useState<string[]>([]);
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(LEADERBOARD_ENABLED);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Mechanic off → stay empty and never call /api/leaderboard.
+    if (!LEADERBOARD_ENABLED) return;
+
     const fetchLeaderboard = async () => {
       try {
         const { data } = await axios.get<LeaderboardEntry[]>('/api/leaderboard');

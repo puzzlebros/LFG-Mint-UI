@@ -1,7 +1,7 @@
 // pages/api/leaderboard.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabase } from "@/utils/leaderboard/supabaseClient";
 import type { LeaderboardEntry } from "@/types/leaderboard";
+import { LEADERBOARD_ENABLED } from "@/settings";
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,8 +12,17 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
+  // Leaderboard off → always empty, and the Supabase client is never even
+  // imported (its module throws when the env vars are absent).
+  if (!LEADERBOARD_ENABLED) {
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json([]);
+  }
+
   // cache on edge for 60s, allow stale for 5m
   res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+
+  const { supabase } = await import("@/utils/leaderboard/supabaseClient");
 
   const { data, error } = await supabase
     .from<"leaderboard", LeaderboardEntry>("leaderboard")

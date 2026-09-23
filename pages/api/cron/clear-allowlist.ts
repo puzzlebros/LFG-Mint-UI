@@ -1,7 +1,7 @@
 // pages/api/cron/clear-allowlist.ts
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { clearAllowlistGuard } from "@/utils/leaderboard/clearAllowlist";
+import { LEADERBOARD_ENABLED } from "@/settings";
 
 type Data = { success: true } | { error: string };
 
@@ -29,8 +29,16 @@ export default async function handler(
     return res.status(401).json({ error: "Unauthorized" });
   }
 
+  // Leaderboard off → there is no weekly cycle and no rows to clear, so the
+  // cron stays wired up but never opens a Supabase connection.
+  if (!LEADERBOARD_ENABLED) {
+    console.log("⏭ [cron] leaderboard disabled — skipping clearAllowlistGuard");
+    return res.status(200).json({ success: true });
+  }
+
   try {
     console.log("🔔 [cron] Running clearAllowlistGuard…");
+    const { clearAllowlistGuard } = await import("@/utils/leaderboard/clearAllowlist");
     await clearAllowlistGuard();
     console.log("✅ [cron] clearAllowlistGuard succeeded");
     return res.status(200).json({ success: true });

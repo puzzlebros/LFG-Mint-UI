@@ -46,6 +46,7 @@ import {
   assetMintLimitChecker,
   ownedCoreAssetChecker,
 } from "./checkerHelper";
+import { LEADERBOARD_ENABLED } from "@/settings";
 import { fetchAllDigitalAssetWithTokenByOwner } from "@metaplex-foundation/mpl-token-metadata";
 import { DasApiError } from "@metaplex-foundation/digital-asset-standard-api";
 import { checkAtaValid } from "./validateConfig";
@@ -141,7 +142,12 @@ export const guardChecker = async (
     }
   }
 
-  const walletInTop10 = allowlistChecker(topWallets, umi);
+  // With the leaderboard mechanic off there is no ranking to check, so every
+  // wallet clears the gate. /api/allowlistMint applies the same rule before it
+  // co-signs, so the client and the server agree on who may free mint.
+  const walletInTop10 = LEADERBOARD_ENABLED
+    ? allowlistChecker(topWallets, umi)
+    : true;
 
   for (const eachGuard of guardsToCheck) {
     const singleGuard = eachGuard.guards;

@@ -13,6 +13,7 @@ import {
   useTheme,
   HStack,
 } from "@chakra-ui/react";
+import { LEADERBOARD_ENABLED } from "../../settings";
 
 const TUTORIAL_STORAGE_KEY = "gameTutorialShown";
 
@@ -30,9 +31,10 @@ const tutorialSteps = [
     image: "/images/tutorial/2.png",
   },
   {
-    title: "CLAIM REWARDS",
-    content:
-      "Rank into the top 10 scores to claim your FREE weekly reward. Good luck and have fun!",
+    title: LEADERBOARD_ENABLED ? "CLAIM REWARDS" : "FREE MINT",
+    content: LEADERBOARD_ENABLED
+      ? "Rank into the top 10 scores to claim your FREE weekly reward. Good luck and have fun!"
+      : "Play just for fun, then free mint your flamingo any time — you only cover the Solana network fee. Good luck and have fun!",
     image: "/images/tutorial/3.png",
   },
 ];

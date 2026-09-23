@@ -32,6 +32,7 @@ import { formatRemaining } from '../utils/leaderboard/formatRemaining';
 import CongratsPopup from '../components/modals/CongratsPopup';
 import Confetti from 'react-confetti';
 import { useWindowSize } from "../utils/useWindowSize";
+import { LEADERBOARD_ENABLED } from "../settings";
 
 // define a simple float animation
 const floatKeyframes = `
@@ -78,6 +79,7 @@ export default function HomePage() {
   const windowSize = useWindowSize();
 
   useEffect(() => {
+    if (!LEADERBOARD_ENABLED) return;
     if (isFrozen && isInTop10 && !hasShown) {
       onOpen();
       setHasShown(true);
@@ -124,10 +126,11 @@ export default function HomePage() {
       textStyle: "normal",           // pulls your theme’s `textStyles.condensed`
       textProps: { color: "brand.Pink", fontSize: "2rem" } // plus any other TextProps
     },
-    { text: 'RANK',
-      textStyle: "condensed",           // pulls your theme’s `textStyles.condensed`
-      textProps: { color: "brand.Pink", fontSize: "2rem" } // plus any other TextProps
-    },
+    // RANK only belongs here while the leaderboard mechanic is on
+    ...(LEADERBOARD_ENABLED ? [{ text: 'RANK',
+      textStyle: "condensed",
+      textProps: { color: "brand.Pink", fontSize: "2rem" }
+    }] as ScrollerItem[] : []),
     { textStyle: "narrow",           // pulls your theme’s `textStyles.condensed`
       textProps: { color: "brand.Pink", fontSize: "2rem" }, // plus any other TextProps
       text: 'MINT'
@@ -246,6 +249,7 @@ const pulseClaim = keyframes`
 
   // listen to game ranking button
   useEffect(() => {
+    if (!LEADERBOARD_ENABLED) return;
     if (router.asPath.includes('#ranking')) {
       const el = document.getElementById('ranking');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -451,10 +455,21 @@ const pulseClaim = keyframes`
                   </Text>
                   <br/><br/>
                   <Text as="span" fontWeight="regular" fontSize={welcomeCopySize} lineHeight={welcomeCopyLineHeight}>
-                    Connect and play the game during the week.<br/>
-                    Rank below and unlock free mints during the weekend.<br/>
-                    Unlimited free mints. No transaction costs.<br/>
-                    16 grails are hidden inside the collection. Good luck!<br/>
+                    {LEADERBOARD_ENABLED ? (
+                      <>
+                        Connect and play the game during the week.<br/>
+                        Rank below and unlock free mints during the weekend.<br/>
+                        Unlimited free mints.<br/>
+                        16 grails are hidden inside the collection. Good luck!<br/>
+                      </>
+                    ) : (
+                      <>
+                        Connect your wallet and play the game, just for fun.<br/>
+                        Free mint your flamingo whenever you like — you only<br/>
+                        cover the Solana network fee (~0.0035 SOL).<br/>
+                        16 grails are hidden inside the collection. Good luck!<br/>
+                      </>
+                    )}
                     <br/>
                     <b>Play. Free Mint. Repeat.</b>
                     <br/>
@@ -462,7 +477,7 @@ const pulseClaim = keyframes`
 
                 </Text>
               </>
-              {isFrozen ? (
+              {LEADERBOARD_ENABLED && isFrozen ? (
   <Tooltip
     label="The game is locked during weekends"
     hasArrow
@@ -492,7 +507,8 @@ const pulseClaim = keyframes`
         </Center>
         </Box>
 
-      {/** ——— Ranking Section ——— **/}
+      {/** ——— Ranking Section — the whole ranking mechanic lives here ——— **/}
+      {LEADERBOARD_ENABLED && (
       <Box
         id="ranking"
         as="section"
@@ -624,6 +640,7 @@ const pulseClaim = keyframes`
   />
 </Box>
         </Box>
+      )}
 
 {/** ——— Mint Section ——— **/}
 <Box

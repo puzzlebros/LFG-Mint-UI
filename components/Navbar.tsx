@@ -20,6 +20,7 @@ import { CustomWalletButton } from "./buttons/CustomWalletButton";
 import { formatRemaining } from '../utils/leaderboard/formatRemaining';
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletContextGuard } from "../utils/useWalletContextGuard";
+import { LEADERBOARD_ENABLED } from "../settings";
 
 // Variants for fade in/out
 const iconVariants = {
@@ -28,7 +29,9 @@ const iconVariants = {
 };
 
 export default function Navbar() {
-  const { isFrozen, next } = useWeeklyCycle();
+  const { isFrozen: weeklyFrozen, next } = useWeeklyCycle();
+  // No leaderboard → no weekly freeze, so the game never locks.
+  const isFrozen = LEADERBOARD_ENABLED && weeklyFrozen;
   const [showFreezeBanner, setShowFreezeBanner] = useState(true);
   const [playTooltipOpen, setPlayTooltipOpen] = useState(false);
 
@@ -290,9 +293,11 @@ export default function Navbar() {
             <Flex direction="column" justify="center" align="center" h="100%" gap={10}>
               <Tooltip
                 label={
-                  isFrozen
-                    ? "Game locked during the weekend — free minting is open!"
-                    : "Rank this week to earn a free mint!"
+                  !LEADERBOARD_ENABLED
+                    ? "Play for fun — free minting is always open!"
+                    : isFrozen
+                      ? "Game locked during the weekend — free minting is open!"
+                      : "Rank this week to earn a free mint!"
                 }
                 placement="top"
                 hasArrow

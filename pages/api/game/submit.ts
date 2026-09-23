@@ -3,6 +3,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
+import { LEADERBOARD_ENABLED } from '@/settings';
 
 ////////////////////////////////////////////////////////////////////////////////
 // Grab environment‐vars. Use `!` so TS knows they’re non‐null strings. If any
@@ -13,10 +14,14 @@ if (!JWT_SECRET) {
   throw new Error('Missing SESSION_JWT_SECRET');
 }
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error('Missing Supabase configuration');
+// Supabase config is resolved lazily inside the handler: with the leaderboard
+// disabled this route never touches Supabase, so a deployment running without
+// the leaderboard must not be forced to carry Supabase credentials.
+function getSupabaseConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) throw new Error('Missing Supabase configuration');
+  return { url, key };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -43,6 +48,19 @@ export default async function handler(
   console.log('🔥 /api/game/submit invoked');
   if (req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed');
+  }
+
+  // Leaderboard off → accept the score and drop it on the floor. Nothing is
+  // parsed, verified or persisted, so no score ever reaches Supabase. The
+  // response keeps its shape so the Unity build's request still succeeds.
+  if (!LEADERBOARD_ENABLED) {
+    const score = Number(req.body?.finalScore ?? 0);
+    return res.status(200).json({
+      success: true,
+      newHighScore: false,
+      bestScore: Number.isFinite(score) ? score : 0,
+      rank: 0,
+    });
   }
 
   const { token, finalScore, userName: clientName } = req.body ?? {};
@@ -78,6 +96,7 @@ export default async function handler(
       : origUserName || walletAddress;
 
   // ─── 4) Upsert into Supabase leaderboard ──────────────────────────────────
+  const { url: SUPABASE_URL, key: SUPABASE_KEY } = getSupabaseConfig();
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   // 4.a) Fetch existing score for this wallet, if any

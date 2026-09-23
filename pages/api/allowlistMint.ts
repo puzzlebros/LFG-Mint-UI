@@ -1,5 +1,9 @@
 // pages/api/allowlistMint.ts
-// Checks top-10 Supabase rank, then builds a mint transaction that the MINTER pays for.
+// Builds a free-mint transaction that the MINTER pays for.
+//
+// Eligibility depends on LEADERBOARD_ENABLED (see settings.tsx):
+//   • enabled  — weekend-only, and the wallet must sit in the Supabase top-10.
+//   • disabled — open to anyone, any day. Supabase is never contacted.
 //
 // The LFG free mint runs on the candy guard's "ADMIN" group, which is protected by
 // addressGate(DEPLOY_KEYPAIR).  addressGate validates the `minter` account, while the
@@ -32,6 +36,7 @@ import {
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
 import { PublicKey as Web3PublicKey } from "@solana/web3.js";
+import { LEADERBOARD_ENABLED } from "@/settings";
 
 type Ok = {
   transaction: string;           // base64, partially signed (minter + asset)
@@ -56,7 +61,11 @@ export default async function handler(
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!rpc || !cmId || !kpRaw || !supabaseUrl || !supabaseKey) {
+  if (!rpc || !cmId || !kpRaw) {
+    return res.status(500).json({ error: "Server misconfiguration: missing env vars" });
+  }
+  // Supabase credentials are only needed to resolve the top-10 allowlist.
+  if (LEADERBOARD_ENABLED && (!supabaseUrl || !supabaseKey)) {
     return res.status(500).json({ error: "Server misconfiguration: missing env vars" });
   }
 
@@ -77,8 +86,11 @@ export default async function handler(
     return res.status(400).json({ error: "Invalid ownerWallet" });
   }
 
-  // 2) Free mint is only open during the weekend freeze [Sat 00:00, Mon 00:00) UTC
-  {
+  // 2+3) Leaderboard gating. Skipped entirely when the mechanic is disabled —
+  //       the free mint is then open to every wallet on every day, and nothing
+  //       here reaches out to Supabase.
+  if (LEADERBOARD_ENABLED) {
+    // Free mint is only open during the weekend freeze [Sat 00:00, Mon 00:00) UTC
     const now     = new Date();
     const wd      = now.getUTCDay();                  // 0=Sun … 6=Sat
     const daysOff = (wd - 6 + 7) % 7;                // days since most recent Saturday
@@ -87,24 +99,24 @@ export default async function handler(
     if (!(now >= satUTC && now < monUTC)) {
       return res.status(403).json({ error: "Free mint is only available during the weekend" });
     }
-  }
 
-  // 3) Verify wallet is in the current top-10 (Supabase)
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const { data: leaderboard, error: dbErr } = await supabase
-    .from("leaderboard")
-    .select("wallet_address")
-    .order("score", { ascending: false })
-    .limit(10);
+    // Verify wallet is in the current top-10 (Supabase)
+    const supabase = createClient(supabaseUrl!, supabaseKey!);
+    const { data: leaderboard, error: dbErr } = await supabase
+      .from("leaderboard")
+      .select("wallet_address")
+      .order("score", { ascending: false })
+      .limit(10);
 
-  if (dbErr || !leaderboard) {
-    console.error("[allowlistMint] Supabase error:", dbErr);
-    return res.status(500).json({ error: "Failed to fetch allowlist" });
-  }
+    if (dbErr || !leaderboard) {
+      console.error("[allowlistMint] Supabase error:", dbErr);
+      return res.status(500).json({ error: "Failed to fetch allowlist" });
+    }
 
-  const allowedWallets = leaderboard.map((r: { wallet_address: string }) => r.wallet_address);
-  if (!allowedWallets.includes(ownerWallet)) {
-    return res.status(403).json({ error: "Wallet not in current top-10" });
+    const allowedWallets = leaderboard.map((r: { wallet_address: string }) => r.wallet_address);
+    if (!allowedWallets.includes(ownerWallet)) {
+      return res.status(403).json({ error: "Wallet not in current top-10" });
+    }
   }
 
   // 4) Set up server-side UMI. DEPLOY_KEYPAIR is only the addressGate `minter` now —

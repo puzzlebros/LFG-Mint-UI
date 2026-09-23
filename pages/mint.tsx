@@ -36,7 +36,7 @@ import {
 } from "@chakra-ui/react";
 import { ButtonList } from "../components/buttons/mintButton";
 import { InitializeModal } from "../components/modals/initializeModal";
-import { image, headerText } from "../settings";
+import { image, headerText, LEADERBOARD_ENABLED, PUBLIC_SALE_ENABLED, FREE_MINT_LABEL } from "../settings";
 import { useRouter } from "next/router";
 import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/checkerHelper";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -349,8 +349,8 @@ export default function MintPage() {
     const router = useRouter();
     const isAdminMode = router.query.admin !== undefined;
 
-    // LFG is the free-mint group — server checks top-10 and pays the tx.
-    const allowListLabel = "LFG";
+    // LFG is the free-mint group. The server co-signs it; the claimer pays.
+    const allowListLabel = FREE_MINT_LABEL;
     const allowGuard = guards.find(g => g.label === allowListLabel);
 
     const adminGuardList = useMemo(() => {
@@ -363,14 +363,16 @@ export default function MintPage() {
 
     // states
     const showLogin = !connected || !walletPublicKey || blocked;
+    // With the leaderboard off the free mint has no weekend window — it is
+    // simply always on for any connected wallet.
     const showClaim = Boolean(
       walletPublicKey &&
       allowGuard?.allowed &&
       allowGuard.maxAmount > 0 &&
-      isFrozen
+      (!LEADERBOARD_ENABLED || isFrozen)
     );
-    // showMint = any connected wallet that is not in claim state
-    const showMint = Boolean(walletPublicKey && !showClaim);
+    // showMint = the paid public sale, only when it is switched on
+    const showMint = Boolean(PUBLIC_SALE_ENABLED && walletPublicKey && !showClaim);
 
     // claim uses only allowGuard
     const claimGuardList = useMemo(
@@ -378,8 +380,10 @@ export default function MintPage() {
       [allowGuard]
     );
 
-    // pay mint uses non-allowList allowed guards, drop default if multiple
+    // pay mint uses non-allowList allowed guards, drop default if multiple.
+    // Empty while the public sale is switched off.
     const payGuardList = useMemo(() => {
+      if (!PUBLIC_SALE_ENABLED) return [];
       const arr = guards.filter(g => g.label !== allowListLabel && g.allowed);
       return arr.length > 1 ? arr.filter(g => g.label !== 'default') : arr;
     }, [guards, allowListLabel]);
@@ -395,7 +399,7 @@ export default function MintPage() {
 
     if (showClaim) {
       title = "FREE MINT AVAILABLE";
-      descriptionContent = (
+      descriptionContent = LEADERBOARD_ENABLED ? (
         <>
           <Text as="span" fontWeight="bold">
             You earned it!
@@ -403,6 +407,15 @@ export default function MintPage() {
           <br />
           FREE MINT your flamingo this weekend —<br/>
           the window closes Monday.
+        </>
+      ) : (
+        <>
+          <Text as="span" fontWeight="bold">
+            Your flamingo is waiting.
+          </Text>
+          <br />
+          FREE MINT is open to everyone —<br/>
+          you only cover the Solana network fee.
         </>
       );
     } else if (showMint) {
@@ -417,7 +430,7 @@ export default function MintPage() {
       );
     } else if (showLogin) {
       title = "CONNECT YOUR WALLET";
-      descriptionContent = (
+      descriptionContent = LEADERBOARD_ENABLED ? (
         <>
           <Text as="span" fontWeight="bold">
             Log in to join the flock.
@@ -425,19 +438,35 @@ export default function MintPage() {
           <br />
           Rank during the week, free mint every weekend!
         </>
+      ) : (
+        <>
+          <Text as="span" fontWeight="bold">
+            Log in to join the flock.
+          </Text>
+          <br />
+          Connect your wallet and free mint your flamingo.
+        </>
       );
     } else {
       // fallback – should be rare
       title = headerText;
-      descriptionContent = (
+      descriptionContent = LEADERBOARD_ENABLED ? (
         <>
           Connect your wallet to see if you can mint and join the flock.
+        </>
+      ) : (
+        <>
+          The flock is fully hatched — every flamingo has been minted.
         </>
       );
     }
 
-    // which guard list + button props
-    const activeGuardList = showClaim ? claimGuardList : payGuardList;
+    // which guard list + button props.
+    // With the public sale off the free mint is the only button there is, so it
+    // stays on screen even when it is not claimable — ButtonList renders it
+    // disabled and surfaces the reason in its tooltip.
+    const activeGuardList =
+      showClaim || !PUBLIC_SALE_ENABLED ? claimGuardList : payGuardList;
     const claimButtonProps = showClaim
       ? { animation: `${pulseClaim} 1.6s ease-in-out infinite` }
       : undefined;
