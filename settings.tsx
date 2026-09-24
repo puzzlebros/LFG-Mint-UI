@@ -24,11 +24,6 @@
 const flag = (v: string | undefined, fallback = false) =>
   v === undefined || v.trim() === "" ? fallback : v.trim().toLowerCase() === "true";
 
-const int = (v: string | undefined, fallback: number) => {
-  const n = Number.parseInt((v ?? "").trim(), 10);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
-};
-
 export const LEADERBOARD_ENABLED = flag(process.env.NEXT_PUBLIC_LEADERBOARD_ENABLED);
 export const PUBLIC_SALE_ENABLED = flag(process.env.NEXT_PUBLIC_PUBLIC_SALE_ENABLED);
 
@@ -42,34 +37,6 @@ export const GAME_SESSIONS_ENABLED = flag(
   LEADERBOARD_ENABLED
 );
 
-// ── Free mint rate limiting (see pages/api/allowlistMint.ts) ────────────────
-// The candy guard's ADMIN group has no mintLimit, so without these an open
-// free mint could be drained by a single script. Both are per wallet; set
-// either to 0 to switch that layer off.
-//
-// These raise the cost of a drain, they do not make one impossible. The cap
-// below counts assets a wallet currently HOLDS, so someone who transfers their
-// mints to a burner resets it; the cooldown is per lambda instance, so it is
-// leaky across a cold fleet. A hard per-wallet mint counter needs persistent
-// storage (Vercel KV or similar) — deliberately not added here.
-
-/**
- * Max collection assets a wallet may hold before it stops being served.
- * Measured against the live collection when this was set: holdings ran
- * 212 / 58 / 35 / 34 / 19 / 16 / 15 / 12 / 9 … across 33 holders, so 25 turns
- * away only the four largest while leaving every ordinary holder alone.
- * Lower it for tighter supply control, at the cost of blocking collectors.
- */
-export const FREE_MINT_PER_WALLET_LIMIT = int(
-  process.env.NEXT_PUBLIC_FREE_MINT_PER_WALLET_LIMIT,
-  25
-);
-
-/** Seconds a wallet must wait between free mint requests. */
-export const FREE_MINT_COOLDOWN_SECONDS = int(
-  process.env.NEXT_PUBLIC_FREE_MINT_COOLDOWN_SECONDS,
-  30
-);
 
 /** Candy guard group label used for the free mint. */
 export const FREE_MINT_LABEL = "LFG";

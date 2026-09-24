@@ -5,6 +5,10 @@
 //   • enabled  — weekend-only, and the wallet must sit in the Supabase top-10.
 //   • disabled — open to anyone, any day. Supabase is never contacted.
 //
+// There is deliberately no per-wallet cap and no rate limit: the ADMIN group
+// carries no mintLimit either, so a single wallet may mint the collection out.
+// That is the intended behaviour — the supply cap is the candy machine's.
+//
 // The LFG free mint runs on the candy guard's "ADMIN" group, which is protected by
 // addressGate(DEPLOY_KEYPAIR).  addressGate validates the `minter` account, while the
 // SOL fees (network fee + rent + the ~0.003 SOL Metaplex Core creation fee) are charged
@@ -36,53 +40,7 @@ import {
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
 import { PublicKey as Web3PublicKey } from "@solana/web3.js";
-import { dasApi } from "@metaplex-foundation/digital-asset-standard-api";
-import {
-  LEADERBOARD_ENABLED,
-  FREE_MINT_PER_WALLET_LIMIT,
-  FREE_MINT_COOLDOWN_SECONDS,
-} from "@/settings";
-
-// ── Per-wallet rate limiting ────────────────────────────────────────────────
-// The ADMIN candy guard group carries no mintLimit, so an open free mint would
-// otherwise let one script drain the collection. Two cheap layers, no candy
-// guard change and no database:
-//
-//   1. an in-process cooldown — stops a tight loop against a warm instance and
-//      covers the window in which the DAS indexer has not yet caught up with
-//      the wallet's previous mint;
-//   2. an on-chain count of collection assets the wallet already holds — the
-//      durable cap, correct across cold starts and parallel lambda instances.
-//
-// Layer 1 alone is per-instance and therefore leaky; layer 2 alone lags the
-// indexer. Together they bound a single wallet. Neither stops someone spreading
-// across many funded wallets — no per-wallet rule can, a Metaplex mintLimit
-// guard included.
-
-const lastServedAt = new Map<string, number>();
-
-function pruneLastServed(cutoff: number) {
-  if (lastServedAt.size < 5_000) return;
-  lastServedAt.forEach((t, w) => {
-    if (t < cutoff) lastServedAt.delete(w);
-  });
-}
-
-/** Collection assets `owner` already holds, via DAS. Throws if DAS is unreachable. */
-async function countOwnedFromCollection(
-  umi: ReturnType<typeof createUmi>,
-  owner: string,
-  collection: string
-): Promise<number> {
-  const list = await umi.rpc.searchAssets({
-    owner: publicKey(owner),
-    grouping: ["collection", collection],
-    burnt: false,
-    limit: 1000,
-    page: 1,
-  });
-  return list.total ?? list.items.length;
-}
+import { LEADERBOARD_ENABLED } from "@/settings";
 
 type Ok = {
   transaction: string;           // base64, partially signed (minter + asset)
@@ -132,21 +90,6 @@ export default async function handler(
     return res.status(400).json({ error: "Invalid ownerWallet" });
   }
 
-  // 1b) Cooldown — cheapest check, so it runs before any network call.
-  const cooldownMs = FREE_MINT_COOLDOWN_SECONDS * 1000;
-  if (cooldownMs > 0) {
-    const now = Date.now();
-    pruneLastServed(now - cooldownMs);
-    const last = lastServedAt.get(ownerWallet);
-    if (last !== undefined && now - last < cooldownMs) {
-      const wait = Math.ceil((cooldownMs - (now - last)) / 1000);
-      res.setHeader("Retry-After", String(wait));
-      return res
-        .status(429)
-        .json({ error: `Slow down — try again in ${wait}s.` });
-    }
-  }
-
   // 2+3) Leaderboard gating. Skipped entirely when the mechanic is disabled —
   //       the free mint is then open to every wallet on every day, and nothing
   //       here reaches out to Supabase.
@@ -182,7 +125,7 @@ export default async function handler(
 
   // 4) Set up server-side UMI. DEPLOY_KEYPAIR is only the addressGate `minter` now —
   //    it is deliberately NOT the fee payer, so it spends nothing on this mint.
-  const umi = createUmi(rpc).use(mplCandyMachine()).use(dasApi());
+  const umi = createUmi(rpc).use(mplCandyMachine());
   const keypairBytes = new Uint8Array(JSON.parse(kpRaw) as number[]);
   const serverKP = umi.eddsa.createKeypairFromSecretKey(keypairBytes);
   umi.use(keypairIdentity(serverKP));
@@ -191,32 +134,6 @@ export default async function handler(
   try {
     const cm = await fetchCandyMachine(umi, publicKey(cmId));
     const cg = await fetchCandyGuard(umi, cm.mintAuthority);
-
-    // 4b) Durable per-wallet cap, counted on chain.
-    //     Fails CLOSED: if DAS is unreachable we cannot prove the wallet is
-    //     under the cap, and handing out a co-signed mint anyway would make an
-    //     indexer outage an unbounded, irreversible giveaway. A paused mint is
-    //     the recoverable failure; a drained collection is not.
-    if (FREE_MINT_PER_WALLET_LIMIT > 0) {
-      let owned: number;
-      try {
-        owned = await countOwnedFromCollection(
-          umi,
-          ownerWallet,
-          cm.collectionMint.toString()
-        );
-      } catch (e: any) {
-        console.error("[allowlistMint] DAS lookup failed:", e?.message ?? e);
-        return res.status(503).json({
-          error: "Could not verify your mint count right now. Please try again shortly.",
-        });
-      }
-      if (owned >= FREE_MINT_PER_WALLET_LIMIT) {
-        return res.status(429).json({
-          error: `Free mint limit reached — ${FREE_MINT_PER_WALLET_LIMIT} per wallet.`,
-        });
-      }
-    }
 
     const assetSigner = generateSigner(umi);
     // The claimer signs client-side; server-side it is a placeholder signer so the
@@ -255,10 +172,6 @@ export default async function handler(
     ]);
 
     const serialized = umi.transactions.serialize(partiallySigned);
-
-    // Recorded on hand-out, not on confirmation: we cannot know whether the
-    // claimer broadcasts it, and the conservative choice is to assume they did.
-    if (cooldownMs > 0) lastServedAt.set(ownerWallet, Date.now());
 
     console.log(
       `[allowlistMint] prepared mint for ${ownerWallet}: asset=${assetSigner.publicKey}`
