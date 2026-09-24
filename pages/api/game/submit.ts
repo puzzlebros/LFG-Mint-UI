@@ -9,9 +9,10 @@ import { LEADERBOARD_ENABLED } from '@/settings';
 // Grab environment‐vars. Use `!` so TS knows they’re non‐null strings. If any
 // are actually missing at runtime, we throw immediately.
 ////////////////////////////////////////////////////////////////////////////////
-const JWT_SECRET = process.env.SESSION_JWT_SECRET!;
-if (!JWT_SECRET) {
-  throw new Error('Missing SESSION_JWT_SECRET');
+function getJwtSecret(): string {
+  const secret = process.env.SESSION_JWT_SECRET;
+  if (!secret) throw new Error('Missing SESSION_JWT_SECRET');
+  return secret;
 }
 
 // Supabase config is resolved lazily inside the handler: with the leaderboard
@@ -73,7 +74,7 @@ export default async function handler(
   try {
     // `jwt.verify` may return `string | object | Jwt | JwtPayload`, so first
     // cast to `unknown`, then to our `SessionPayload`. This silences TS errors.
-    const decoded = jwt.verify(token, JWT_SECRET, {
+    const decoded = jwt.verify(token, getJwtSecret(), {
       algorithms: ['HS256'],
     });
     payload = (decoded as unknown) as SessionPayload;

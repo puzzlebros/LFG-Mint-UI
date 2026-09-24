@@ -5,14 +5,16 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { reverseLookup } from '@bonfida/spl-name-service';
+import { GAME_SESSIONS_ENABLED } from '@/settings';
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Pull SESSION_JWT_SECRET out, using `!` to assert it is non-null at runtime.
-// (If it really isn’t set, we immediately throw.)
+// Resolved lazily: with sessions off nothing is signed, so a deployment in that
+// state must not be forced to carry SESSION_JWT_SECRET.
 // ──────────────────────────────────────────────────────────────────────────────
-const JWT_SECRET = process.env.SESSION_JWT_SECRET!;
-if (!JWT_SECRET) {
-  throw new Error('Missing SESSION_JWT_SECRET environment variable');
+function getJwtSecret(): string {
+  const secret = process.env.SESSION_JWT_SECRET;
+  if (!secret) throw new Error('Missing SESSION_JWT_SECRET environment variable');
+  return secret;
 }
 
 type Data = {
@@ -26,6 +28,13 @@ export default async function handler(
   console.log('🔥 /api/game/start invoked');
   if (req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed');
+  }
+
+  // Sessions off → no SNS reverse lookup, no RPC call, no signed token and no
+  // wallet address recorded anywhere. The response keeps its shape so the Unity
+  // build still starts; /api/game/submit ignores the token in this state.
+  if (!GAME_SESSIONS_ENABLED) {
+    return res.status(200).json({ token: 'disabled' });
   }
 
   const { walletAddress, userName: clientName } = req.body ?? {};
@@ -74,7 +83,7 @@ export default async function handler(
   };
 
   // ─── Sign the JWT with HS256. Use `JWT_SECRET!` so TS knows it's a string. ──
-  const token = jwt.sign(jwtPayload, JWT_SECRET, {
+  const token = jwt.sign(jwtPayload, getJwtSecret(), {
     algorithm: 'HS256',
   });
 
