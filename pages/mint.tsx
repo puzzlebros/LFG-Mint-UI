@@ -448,9 +448,20 @@ export default function MintPage() {
         </>
       );
     } else {
-      // fallback – should be rare
+      // fallback – should be rare.
+      // Distinguish "sold out" from "we could not read the chain": when the RPC
+      // is down or rate limited, candyMachine is undefined and availableCount
+      // falls back to 0, which must NOT be reported to visitors as sold out.
       title = headerText;
-      descriptionContent = LEADERBOARD_ENABLED ? (
+      descriptionContent = !candyMachine ? (
+        <>
+          <Text as="span" fontWeight="bold">
+            Can&apos;t reach Solana right now.
+          </Text>
+          <br />
+          This is on our side, not yours — please try again in a moment.
+        </>
+      ) : LEADERBOARD_ENABLED ? (
         <>
           Connect your wallet to see if you can mint and join the flock.
         </>
@@ -511,8 +522,9 @@ export default function MintPage() {
     {descriptionContent}
   </Text>
 
-          {/* Hide LFGs remaining on showLogin */}
-          {!showLogin && (
+          {/* Hide LFGs remaining on showLogin, and whenever the candy machine
+              could not be read — availableCount would be a misleading 0 */}
+          {!showLogin && candyMachine && (
             <Text
               textAlign="center"
               mt={{ base: "-2", md: "-2" }}
