@@ -35,13 +35,45 @@ import {
 import {
   mplCandyMachine,
   fetchCandyMachine,
-  fetchCandyGuard,
   mintV1,
 } from "@metaplex-foundation/mpl-core-candy-machine";
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
 import { PublicKey as Web3PublicKey } from "@solana/web3.js";
 import { LEADERBOARD_ENABLED } from "@/settings";
 import { serverRpcUrl } from "@/utils/metaplex/serverRpc";
+
+// The three addresses this route needs from the candy machine are immutable
+// for the life of the machine, so they are resolved once per process instead
+// of on every request. This endpoint is unauthenticated and bypasses the
+// /api/rpc limiter (it talks to the provider directly), so its per-request RPC
+// cost is the denial-of-wallet surface — caching takes it from 3 calls to 1.
+//
+// candyGuard is simply candyMachine.mintAuthority, so fetchCandyGuard was a
+// round-trip purely to re-derive an address we already had; it is gone.
+type CmAddresses = {
+  candyMachine: ReturnType<typeof publicKey>;
+  collectionMint: ReturnType<typeof publicKey>;
+  candyGuard: ReturnType<typeof publicKey>;
+};
+let cachedAddresses: { at: number; value: CmAddresses } | null = null;
+const ADDRESS_TTL_MS = 5 * 60 * 1000;
+
+async function getCmAddresses(
+  umi: ReturnType<typeof createUmi>,
+  cmId: string
+): Promise<CmAddresses> {
+  if (cachedAddresses && Date.now() - cachedAddresses.at < ADDRESS_TTL_MS) {
+    return cachedAddresses.value;
+  }
+  const cm = await fetchCandyMachine(umi, publicKey(cmId));
+  const value: CmAddresses = {
+    candyMachine: cm.publicKey,
+    collectionMint: cm.collectionMint,
+    candyGuard: cm.mintAuthority,
+  };
+  cachedAddresses = { at: Date.now(), value };
+  return value;
+}
 
 type Ok = {
   transaction: string;           // base64, partially signed (minter + asset)
@@ -133,8 +165,7 @@ export default async function handler(
   const minterSigner = createSignerFromKeypair(umi, serverKP);
 
   try {
-    const cm = await fetchCandyMachine(umi, publicKey(cmId));
-    const cg = await fetchCandyGuard(umi, cm.mintAuthority);
+    const cm = await getCmAddresses(umi, cmId);
 
     const assetSigner = generateSigner(umi);
     // The claimer signs client-side; server-side it is a placeholder signer so the
@@ -150,14 +181,14 @@ export default async function handler(
       .prepend(setComputeUnitLimit(umi, { units: 120_000 }))
       .add(
         mintV1(umi, {
-          candyMachine: cm.publicKey,
+          candyMachine: cm.candyMachine,
           collection: cm.collectionMint,
           asset: assetSigner,
           owner: publicKey(ownerWallet),
           payer: payerSigner,   // claimer pays network fee + rent + Core creation fee
           minter: minterSigner, // DEPLOY_KEYPAIR satisfies addressGate on the ADMIN group
           group: some("ADMIN"),
-          candyGuard: cg.publicKey,
+          candyGuard: cm.candyGuard,
           mintArgs: {},
         })
       )

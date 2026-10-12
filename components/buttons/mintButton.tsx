@@ -36,11 +36,9 @@ import {
   buildTxs,
 } from "@/utils/metaplex/mintHelper";
 import { useSolanaTime, useSolanaTimeWhen } from "@/utils/metaplex/SolanaTimeContext";
-import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
 import { confirmSignature } from "@/utils/metaplex/confirmSignature";
-import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
 import { createStandaloneToast } from "@chakra-ui/react";
 
@@ -94,9 +92,7 @@ const mintClick = async (
   setGuardList: Dispatch<SetStateAction<GuardReturn[]>>,
   onOpen: () => void,
   setCheckEligibility: Dispatch<SetStateAction<boolean>>,
-  isAdminMode: boolean,
   walletAddress: string | undefined,
-  signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | undefined,
 ) => {
   const guardToUse = chooseGuardToUse(guard, candyGuard);
 
@@ -152,7 +148,7 @@ const mintClick = async (
     //    project no longer absorbs the ~0.0035 SOL Metaplex Core creation fee.
     //    Must use signTransaction + manual send: signAndSendTransaction would have
     //    Phantom rebuild the message and drop the server's partial signatures.
-    if (guard.label === "LFG" && !isAdminMode && walletAddress) {
+    if (guard.label === "LFG" && walletAddress) {
       setLoadingState("Preparing...");
 
       const resp = await fetch("/api/allowlistMint", {
@@ -200,42 +196,6 @@ const mintClick = async (
       } finally {
         clearInterval(claimResendTimer);
       }
-
-      setLoadingState("Fetching your LFG");
-      const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
-      if (digitalAsset && jsonMetadata) {
-        setMintsCreated([{ mint: publicKey(data.mintAddress), offChainMetadata: jsonMetadata }]);
-        onOpen();
-      }
-      return;
-    }
-
-    // 3-admin) Server-side signing — bypasses Phantom/Lighthouse entirely.
-    // The API uses DEPLOY_KEYPAIR to build, sign, and broadcast server-side.
-    // Exit early so the buildTxs/signAllTransactions path is never entered.
-    if (isAdminMode && walletAddress) {
-      if (!signMessage) throw new Error("Wallet does not support message signing");
-      setLoadingState("Authenticating...");
-      // Sign a timestamped challenge — proves ownership of the connected wallet
-      // without exposing any secret. The server verifies the signature on-chain.
-      const timestamp = Date.now();
-      const challenge = new TextEncoder().encode(`lfg-admin-mint:${walletAddress}:${timestamp}`);
-      const signature = await signMessage(challenge);
-      const signatureB58 = base58.deserialize(signature)[0];
-
-      setLoadingState("Minting...");
-      const resp = await fetch("/api/adminMint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          guardLabel: freshGuardToUse.label,
-          ownerWallet: walletAddress,
-          timestamp,
-          signature: signatureB58,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error ?? "Admin mint failed");
 
       setLoadingState("Fetching your LFG");
       const { digitalAsset, jsonMetadata } = await fetchNft(umi, publicKey(data.mintAddress));
@@ -507,9 +467,7 @@ export function ButtonList({
   onBeforeMint,
 }: Props): JSX.Element {
   const solanaTime = useSolanaTime();
-  const { publicKey: walletPublicKey, signMessage } = useWallet();
-  const router = useRouter();
-  const isAdminMode = router.query.admin !== undefined;
+  const { publicKey: walletPublicKey } = useWallet();
 
   // Chain time is only needed to drive a countdown, and a countdown only
   // exists where a guard group carries a startDate or endDate. None currently
@@ -611,9 +569,7 @@ export function ButtonList({
                       setGuardList,
                       onOpen,
                       setCheckEligibility,
-                      isAdminMode,
                       walletPublicKey?.toString(),
-                      signMessage,
                     );
                   } catch (err) {
                     console.error("Mint blocked/failed:", err);

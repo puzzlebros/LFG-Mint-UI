@@ -37,7 +37,6 @@ import {
 import { ButtonList } from "../components/buttons/mintButton";
 import { InitializeModal } from "../components/modals/initializeModal";
 import { image, headerText, LEADERBOARD_ENABLED, PUBLIC_SALE_ENABLED, FREE_MINT_LABEL } from "../settings";
-import { useRouter } from "next/router";
 import { GuardReturn, DasApiAssetAndAssetMintLimit } from "../utils/metaplex/checkerHelper";
 import { useWallet } from "@solana/wallet-adapter-react";
 import axios from "axios";
@@ -344,20 +343,9 @@ export default function MintPage() {
   }, [walletPublicKey, isMinting, isDemo]);
 
   const PageContent = () => {
-    const router = useRouter();
-    const isAdminMode = router.query.admin !== undefined;
-
     // LFG is the free-mint group. The server co-signs it; the claimer pays.
     const allowListLabel = FREE_MINT_LABEL;
     const allowGuard = guards.find(g => g.label === allowListLabel);
-
-    const adminGuardList = useMemo(() => {
-      if (!isAdminMode) return [];
-      const nonAllowList = guards.filter(g => g.label !== allowListLabel);
-      if (nonAllowList.length === 0) return [];
-      const preferred = nonAllowList.find(g => g.label !== 'default') ?? nonAllowList[0];
-      return [{ ...preferred, allowed: true, reason: '' }];
-    }, [isAdminMode, guards, allowListLabel]);
 
     // states
     const showLogin = !connected || !walletPublicKey || blocked;
@@ -659,26 +647,6 @@ export default function MintPage() {
             </Center>
           )}
 
-          {/* Admin mint — only visible at /mint?admin */}
-          {isAdminMode && walletPublicKey && candyMachine && candyGuard && !loading && adminGuardList.length > 0 && (
-            <Center w="full" flexDirection="column" gap={1} mt={4}>
-              <Text textStyle="copy" fontSize="10px" letterSpacing="3px" color="gray.400">
-                ADMIN
-              </Text>
-              <ButtonList
-                guardList={adminGuardList}
-                candyMachine={candyMachine}
-                candyGuard={candyGuard}
-                umi={umi}
-                ownedTokens={ownedTokens}
-                setGuardList={setGuards}
-                setMintsCreated={setMintsCreated}
-                onOpen={onShowNftOpen}
-                setCheckEligibility={setCheckEligibility}
-                ownedCoreAssets={ownedCoreAssets}
-              />
-            </Center>
-          )}
         </VStack>
       </Flex>
     );
