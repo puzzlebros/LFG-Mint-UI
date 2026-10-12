@@ -7,6 +7,7 @@ import { GetServerSideProps } from 'next';
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { serverRpcUrl } from "@/utils/metaplex/serverRpc";
 
 interface Props {
   name: string;
@@ -51,7 +52,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   const mint = (context.params?.mint as string) ?? '';
 
   try {
-    const rpc = process.env.NEXT_PUBLIC_RPC!;
+    const rpc = serverRpcUrl()!;
     const resp = await fetch(rpc, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

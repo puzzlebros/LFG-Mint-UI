@@ -33,8 +33,20 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       ? WalletAdapterNetwork.Mainnet
       : WalletAdapterNetwork.Devnet;
 
-  const endpoint =
-    process.env.NEXT_PUBLIC_RPC || "https://api.devnet.solana.com";
+  // The browser must never see the Helius URL: anything inlined here ends up
+  // in the client bundle, which is how the API key leaked. All browser RPC
+  // goes through /api/rpc, which holds the key server-side.
+  //
+  // During SSR there is no origin to build an absolute URL from, and no RPC
+  // call is actually made (everything runs in effects), so a public endpoint
+  // stands in. It carries no credentials.
+  const endpoint = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? "https://api.mainnet-beta.solana.com"
+        : `${window.location.origin}/api/rpc`,
+    []
+  );
 
   const wallets = useMemo<Adapter[]>(() => {
     if (typeof window === "undefined") return [];

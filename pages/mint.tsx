@@ -324,11 +324,9 @@ export default function MintPage() {
       return;
     }
 
-    axios.post('/api/postMint', {
-      name: offChainMetadata.name,
-      imageUrl: offChainMetadata.image,
-      mintAddress,
-    })
+    // Only the address is sent — the server reads the name and image off the
+    // chain itself, so a caller cannot choose what the bot announces.
+    axios.post('/api/postMint', { mintAddress })
       .then(() => setPostedMint(mintAddress))
       .catch(err => console.error("⚠️ postMint failed:", err));
   }, [mintsCreated, isDemo]);

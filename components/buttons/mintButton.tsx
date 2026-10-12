@@ -39,6 +39,7 @@ import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
 import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
+import { confirmSignature } from "@/utils/metaplex/confirmSignature";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AssetV1, fetchAssetV1 } from "@metaplex-foundation/mpl-core";
 import { createStandaloneToast } from "@chakra-ui/react";
@@ -192,14 +193,10 @@ const mintClick = async (
         try { await umi.rpc.sendTransaction(signedTx, { skipPreflight: true }); } catch {}
       }, 2000);
       try {
-        await umi.rpc.confirmTransaction(claimSig, {
-          strategy: {
-            type: "blockhash",
-            blockhash: data.blockhash,
-            lastValidBlockHeight: data.lastValidBlockHeight,
-          },
-          commitment: "confirmed",
-        });
+        const outcome = await confirmSignature(umi, claimSig, { commitment: "confirmed" });
+        if (outcome.error) {
+          throw new Error(`Mint failed on-chain: ${JSON.stringify(outcome.error)}`);
+        }
       } finally {
         clearInterval(claimResendTimer);
       }
@@ -337,10 +334,10 @@ const mintClick = async (
         try { await umi.rpc.sendTransaction(tx, { skipPreflight: true }); } catch {}
       }, 2000);
       try {
-        await umi.rpc.confirmTransaction(sig, {
-          strategy: { type: "blockhash", ...latestBlockhash },
-          commitment: "confirmed",
-        });
+        const outcome = await confirmSignature(umi, sig, { commitment: "confirmed" });
+        if (outcome.error) {
+          console.error(`[mint ${i + 1}] failed on-chain:`, outcome.error);
+        }
       } catch (e) {
         console.error(`[mint ${i + 1}] confirmation failed:`, e);
       } finally {

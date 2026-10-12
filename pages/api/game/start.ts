@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { reverseLookup } from '@bonfida/spl-name-service';
 import { GAME_SESSIONS_ENABLED } from '@/settings';
+import { serverRpcUrl } from "@/utils/metaplex/serverRpc";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Resolved lazily: with sessions off nothing is signed, so a deployment in that
@@ -45,8 +46,8 @@ export default async function handler(
   // ─── Try on‐chain reverse lookup via Bonfida SNS ────────────────────────────
   let finalName = ''
   try {
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC
-    if (!rpcUrl) throw new Error('Missing NEXT_PUBLIC_RPC')
+    const rpcUrl = serverRpcUrl()
+    if (!rpcUrl) throw new Error('Missing HELIUS_RPC')
     const connection = new Connection(rpcUrl, 'confirmed')
 
     // ⬇️ lazy import so missing deps never kill cold start

@@ -10,6 +10,7 @@ import {
 } from "@metaplex-foundation/umi";
 import { createStandaloneToast } from "@chakra-ui/react";
 import { base58 } from "@metaplex-foundation/umi/serializers";
+import { confirmSignature } from "./confirmSignature";
 
 const detectBotTax = (logs: string[]) => {
   if (logs.find((l) => l.includes("Candy Guard Botting"))) {
@@ -78,21 +79,14 @@ export const verifyTx = async (
   console.log("[verifyTx] Will confirm", signatures.length, "txs");
 
   // 1. Confirm all transactions
-  const promises = [];
-  for (let i = 0; i < signatures.length; i++) {
-    promises.push(
-      umi.rpc.confirmTransaction(signatures[i], {
-        commitment,
-        strategy: { type: "blockhash", ...blockhash },
-      })
-    );
-  }
-
+  // HTTP polling, not a WebSocket subscription — see confirmSignature.ts.
   try {
-    await Promise.all(promises);
+    await Promise.all(
+      signatures.map((sig) => confirmSignature(umi, sig, { commitment }))
+    );
     console.log("[verifyTx] All txs confirmed at RPC");
   } catch (e) {
-    console.error("[verifyTx] Error in umi.rpc.confirmTransaction:", e);
+    console.error("[verifyTx] Error confirming signatures:", e);
   }
 
   // 2. Fetch & match to mint signers

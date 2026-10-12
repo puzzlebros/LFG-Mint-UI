@@ -41,6 +41,7 @@ import {
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox";
 import { PublicKey as Web3PublicKey } from "@solana/web3.js";
 import { LEADERBOARD_ENABLED } from "@/settings";
+import { serverRpcUrl } from "@/utils/metaplex/serverRpc";
 
 type Ok = {
   transaction: string;           // base64, partially signed (minter + asset)
@@ -59,7 +60,7 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const rpc         = process.env.NEXT_PUBLIC_RPC;
+  const rpc         = serverRpcUrl();
   const cmId        = process.env.NEXT_PUBLIC_CANDY_MACHINE_ID;
   const kpRaw       = process.env.DEPLOY_KEYPAIR;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
