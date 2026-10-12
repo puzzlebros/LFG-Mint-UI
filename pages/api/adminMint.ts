@@ -60,8 +60,13 @@ export default async function handler(
   }
 
   // 2) Verify the ed25519 signature — proves ownerWallet is controlled by the caller.
-  //    The Address Gate on the ADMIN candy machine group enforces the allowed wallet on-chain,
-  //    so we only need to confirm the caller actually owns the wallet they're minting to.
+  //
+  //    NOTE: this proves ownership of the wallet the caller named, and nothing
+  //    more. The previous comment here claimed the ADMIN group's addressGate
+  //    enforced the allowed wallet on-chain; it does not. addressGate validates
+  //    the `minter` account, which is DEPLOY_KEYPAIR (the server identity) on
+  //    every call, so it passes regardless of who is asking. Authorisation is
+  //    enforced below, against ADMIN_WALLETS.
   try {
     const message = new TextEncoder().encode(`lfg-admin-mint:${ownerWallet}:${timestamp}`);
     const sigBytes = base58.serialize(signature);
@@ -70,6 +75,29 @@ export default async function handler(
     if (!valid) return res.status(403).json({ error: "Invalid signature" });
   } catch {
     return res.status(403).json({ error: "Signature verification failed" });
+  }
+
+  // 3) Authorise the caller. This route mints with DEPLOY_KEYPAIR as both minter
+  //    AND fee payer, so every call spends project SOL — unlike the public free
+  //    mint, where the claimer pays. It must therefore be restricted to known
+  //    wallets. Deny by default: an unset ADMIN_WALLETS disables the route
+  //    rather than leaving it open.
+  const adminWallets = (process.env.ADMIN_WALLETS ?? "")
+    .split(",")
+    .map((w) => w.trim())
+    .filter(Boolean);
+
+  if (adminWallets.length === 0) {
+    console.error(
+      "[adminMint] ADMIN_WALLETS is not set — refusing. Set it to a " +
+        "comma-separated list of wallet addresses allowed to admin-mint."
+    );
+    return res.status(503).json({ error: "Admin minting is not configured" });
+  }
+
+  if (!adminWallets.includes(ownerWallet)) {
+    console.warn(`[adminMint] refused non-admin wallet ${ownerWallet}`);
+    return res.status(403).json({ error: "Not authorised for admin mint" });
   }
 
   const umi = createUmi(rpc).use(mplCandyMachine());

@@ -459,13 +459,24 @@ export default function MintPage() {
           <br />
           This is on our side, not yours — please try again in a moment.
         </>
+      ) : availableCount === 0 ? (
+        // Genuinely sold out — decided by the supply, never by a failed read.
+        <>
+          The flock is fully hatched — every flamingo has been minted.
+        </>
       ) : LEADERBOARD_ENABLED ? (
         <>
           Connect your wallet to see if you can mint and join the flock.
         </>
       ) : (
+        // Candy machine loaded and supply remains, but the guard check did not
+        // come back — an RPC hiccup, not a sold-out collection.
         <>
-          The flock is fully hatched — every flamingo has been minted.
+          <Text as="span" fontWeight="bold">
+            Couldn&apos;t check your eligibility just now.
+          </Text>
+          <br />
+          Please refresh in a moment.
         </>
       );
     }

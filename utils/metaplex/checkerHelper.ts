@@ -372,12 +372,34 @@ export const checkDateRequired = (
   );
 };
 
+/**
+ * Is this guard actually configured?
+ *
+ * Every field on a GuardSet is a umi Option — `{ __option: 'None' }` or
+ * `{ __option: 'Some', value }`. Both are objects, so a plain truthiness test
+ * is ALWAYS true and reports every guard as present. The three checks below
+ * used to do exactly that, which meant each eligibility check ran
+ * fetchAllDigitalAssetWithTokenByOwner (every token account in the wallet,
+ * plus metadata for each) and getAssetsByOwner, for a candy machine whose
+ * guards are only addressGate, allowList and solPayment.
+ *
+ * That is what blew through Alchemy's compute-units-per-second cap, and what
+ * made each eligibility check cost dozens of RPC calls on Helius before it.
+ * getAssetsByOwner is also a DAS method, which non-DAS providers reject
+ * outright — surfacing as "Error checking eligibility".
+ */
+const isEnabled = (guard: { __option: string } | undefined) =>
+  guard?.__option === "Some";
+
 export const checkSolBalanceRequired = (
   guards: { label: string; guards: GuardSet }[]
 ) => {
   let solBalanceRequired: boolean = false;
   guards.forEach((guard) => {
-    if (guard.guards.freezeSolPayment || guard.guards.solPayment) {
+    if (
+      isEnabled(guard.guards.freezeSolPayment) ||
+      isEnabled(guard.guards.solPayment)
+    ) {
       solBalanceRequired = true;
     }
   });
@@ -391,10 +413,10 @@ export const checkTokensRequired = (
   let nftBalanceRequired: boolean = false;
   guards.forEach((guard) => {
     if (
-      guard.guards.nftBurn ||
-      guard.guards.nftGate ||
-      guard.guards.nftPayment ||
-      guard.guards.nftMintLimit
+      isEnabled(guard.guards.nftBurn) ||
+      isEnabled(guard.guards.nftGate) ||
+      isEnabled(guard.guards.nftPayment) ||
+      isEnabled(guard.guards.nftMintLimit)
     ) {
       nftBalanceRequired = true;
     }
@@ -409,11 +431,11 @@ export const checkCoreAssetsRequired = (
   let coreAssetBalanceRequired: boolean = false;
   guards.forEach((guard) => {
     if (
-      guard.guards.assetBurn ||
-      guard.guards.assetBurnMulti ||
-      guard.guards.assetPayment ||
-      guard.guards.assetPaymentMulti ||
-      guard.guards.assetMintLimit
+      isEnabled(guard.guards.assetBurn) ||
+      isEnabled(guard.guards.assetBurnMulti) ||
+      isEnabled(guard.guards.assetPayment) ||
+      isEnabled(guard.guards.assetPaymentMulti) ||
+      isEnabled(guard.guards.assetMintLimit)
     ) {
       coreAssetBalanceRequired = true;
     }
