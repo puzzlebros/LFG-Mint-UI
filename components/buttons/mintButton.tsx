@@ -1,5 +1,5 @@
 // components/mintButton.tsx
-import React, { useState, useEffect, Dispatch, SetStateAction } from "react";
+import React, { useState, useEffect, useMemo, Dispatch, SetStateAction } from "react";
 import {
   CandyGuard,
   CandyMachine,
@@ -35,7 +35,7 @@ import {
   GuardButtonList,
   buildTxs,
 } from "@/utils/metaplex/mintHelper";
-import { useSolanaTime } from "@/utils/metaplex/SolanaTimeContext";
+import { useSolanaTime, useSolanaTimeWhen } from "@/utils/metaplex/SolanaTimeContext";
 import { useRouter } from "next/router";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { verifyTx } from "@/utils/metaplex/verifyTx";
@@ -510,6 +510,23 @@ export function ButtonList({
   const { publicKey: walletPublicKey, signMessage } = useWallet();
   const router = useRouter();
   const isAdminMode = router.query.admin !== undefined;
+
+  // Chain time is only needed to drive a countdown, and a countdown only
+  // exists where a guard group carries a startDate or endDate. None currently
+  // do, so this stays false and SolanaTimeProvider issues no RPC at all.
+  // Add a dated guard and the poll switches itself back on.
+  //
+  // Computed before the early return below so hook order stays stable.
+  const needsCountdown = useMemo(() => {
+    if (!candyGuard) return false;
+    const groups = [{ guards: candyGuard.guards }, ...candyGuard.groups];
+    return groups.some(
+      (g) =>
+        g.guards.startDate.__option === "Some" ||
+        g.guards.endDate.__option === "Some"
+    );
+  }, [candyGuard]);
+  useSolanaTimeWhen(needsCountdown);
 
   if (!candyMachine || !candyGuard) return <></>;
 
